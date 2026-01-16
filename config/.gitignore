@@ -1,0 +1,7 @@
+*.json
+!custom-environment-variables.json
+!default.json
+!prerelease.json
+!production.json
+!staging.json
+!test.json

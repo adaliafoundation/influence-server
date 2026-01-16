@@ -1,0 +1,96 @@
+{
+  "App": {
+    "bridgeClientUrl": "BRIDGE_CLIENT_URL",
+    "clientUrl": "CLIENT_URL",
+    "envCheckEnabled": "ENV_CHECK_ENABLED",
+    "imagesServerUrl": "IMAGES_SERVER_URL",
+    "isApiServer": "API_SERVER",
+    "isImagesServer": "IMAGES_SERVER",
+    "jwtSecret": "JWT_SECRET",
+    "logLevel": "LOG_LEVEL",
+    "port": "PORT"
+  },
+  "Argent": {
+    "apiKey": "ARGENT_API_KEY"
+  },
+  "Aws": {
+    "accessKey": "AWS_ACCESS_KEY",
+    "cloudfront": {
+      "distrbutionId": "AWS_CLOUDFRONT_DISRIBUTION_ID",
+      "imageHandlerDistributionId": "AWS_CLOUDFRONT_IMAGE_HANDLER_DISRIBUTION_ID"
+    },
+    "secretAccessKey": "AWS_SECRET_ACCESS_KEY"
+  },
+  "Elasticsearch": {
+    "uri": "ELASTICSEARCH_URL",
+    "indexer": {
+      "bulkBatchSizeBytes": "ELASTICSEARCH_BULK_BATCH_SIZE_BYTES",
+      "bulkBatchSizeCount": "ELASTICSEARCH_BULK_BATCH_SIZE_COUNT",
+      "runDelay": "ELASTICSEARCH_INDEXER_RUN_DELAY",
+      "runItemLimit": "ELASTICSEARCH_INDEXER_RUN_ITEM_LIMIT"
+    }
+  },
+  "Ethereum": {
+    "originBlock": "ETHEREUM_ORIGIN_BLOCK",
+    "provider": "ETHEREUM_PROVIDER"
+  },
+  "EventRetriever": {
+    "runDelay": "EVENT_RETRIEVER_RUN_DELAY",
+    "ethereum": {
+      "runDelay": "ETHEREUM_EVENT_RETRIEVER_RUN_DELAY"
+    },
+    "starknet": {
+      "runDelay": "STARKNET_EVENT_RETRIEVER_RUN_DELAY",
+      "auditRunDelay": "STARKNET_EVENT_RETRIEVER_AUDIT_RUN_DELAY",
+      "auditBlockOffset": "STARKNET_EVENT_RETRIEVER_AUDIT_BLOCK_OFFSET"
+    }
+  },
+  "EventProcessor": {
+    "runDelay": "EVENT_PROCESSOR_RUN_DELAY"
+  },
+  "Ipfs": {
+    "infura": {
+      "apiKey": "IPFS_INFURA_API_KEY",
+      "apiKeySecret": "IPFS_INFURA_API_KEY_SECRET"
+    }
+  },
+  "MongoDb": {
+    "uri": "MONGO_URL",
+    "debug": "MONGO_DEBUG"
+  },
+  "Notifications": {
+    "email": {
+      "enabled": "NOTIFICATIONS_EMAIL_ENABLED",
+      "from": {
+        "email":  "NOTIFICATIONS_EMAIL_FROM_EMAIL",
+        "name": "NOTIFICATIONS_EMAIL_FROM_NAME"
+      }
+    }
+  },
+  "NftCardBuilder": {
+    "runDelay": "NFT_CARD_BUILDER_RUN_DELAY"
+  },
+  "OpenSea": {
+    "uri": "OPEN_SEA_API",
+    "key": "OPEN_SEA_API_KEY"
+  },
+  "Redis": {
+    "uri": "REDIS_URL"
+  },
+  "SendGrid": {
+    "apiKey": "SENDGRID_API_KEY",
+    "sender": "SENDGRID_SENDER",
+    "templates": {
+      "notification": "SENDGRID_TEMPLATE_NOTIFICATION"
+    }
+  },
+  "Starknet": {
+    "originBlock": "STARKNET_ORIGIN_BLOCK",
+    "provider": "STARKNET_PROVIDER",
+    "rpcProvider": "STARKNET_RPC_PROVIDER",
+    "faucetPrivateKey": "STARKNET_FAUCET_PRIVATE_KEY"
+  },
+  "Stripe": {
+    "secretKey": "STRIPE_SECRET_KEY"
+  }
+}

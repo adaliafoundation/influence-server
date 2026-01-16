@@ -1,0 +1,11 @@
+{
+  "extension": ["js"],
+  "exit": true,
+  "require": ["./test/setup/fixtures.js"],
+  "package": "./package.json",
+  "recursive": true,
+  "reporter": "spec",
+  "timeout": "60000",
+  "ui": "bdd",
+  "watch-files": ["test/src/**/*.js"]
+}

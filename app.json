@@ -1,0 +1,51 @@
+{
+  "name": "influence-server",
+  "stack": "heroku-20",
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ],
+  "env": {
+    "API_SERVER": { "description": "Whether this server should serve API requests (0 or 1)" },
+    "AWS_ACCESS_KEY": {},
+    "AWS_SECRET_ACCESS_KEY": {},
+    "BRIDGE_CLIENT_URL": {},
+    "CLIENT_URL": {},
+    "ETHEREUM_PROVIDER": { "description": "Web3 provider address" },
+    "IMAGES_SERVER": { "description": "Whether this server should serve image requests (0 or 1)" },
+    "IMAGES_SERVER_URL": { "description": "URL for generated images server" },
+    "JWT_SECRET": {},
+    "MONGO_URL": {},
+    "REDIS_URL": { "description": "Optional Redis URL to share cache across dynos" },
+    "STRIPE_SECRET_KEY": {}
+  },
+  "environments": {
+    "test": {
+      "env": {
+        "API_SERVER": { "required": false },
+        "AWS_ACCESS_KEY": { "required": false },
+        "AWS_SECRET_ACCESS_KEY": { "required": false },
+        "BRIDGE_CLIENT_URL": { "required": false },
+        "CLIENT_URL": { "required": false },
+        "ETHEREUM_PROVIDER": { "required": false },
+        "IMAGES_SERVER": { "required": false },
+        "IMAGES_SERVER_URL": { "required": false },
+        "JWT_SECRET": { "required": false },
+        "MONGO_URL": { "required": false },
+        "REDIS_URL": { "required": false }
+      },
+      "scripts": {
+        "test": "npm run lint && npm run test"
+      }
+    },
+    "review": {
+      "env": {
+        "REDIS_URL": { "required": false }
+      },
+      "addons": [
+        { "plan": "heroku-redis:mini" }
+      ]
+    }
+  }
+}

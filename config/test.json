@@ -1,0 +1,107 @@
+{
+  "App": {
+    "bridgeClientUrl": "BRIDGE_CLIENT_URL",
+    "clientUrl": "http://localhost.local",
+    "envCheckEnabled": 0,
+    "imagesServerUrl": "IMAGES_SERVER_URL",
+    "jwtSecret": "JWT_SECRET",
+    "logLevel": "LOG_LEVEL",
+    "port": "PORT",
+    "isApiServer": "API_SERVER",
+    "isImagesServer": "IMAGES_SERVER"
+  },
+  "Argent": {
+    "uri": "http://null.localhost",
+    "apiKey": "ARGENT_API_KEY"
+  },
+  "Aws": {
+    "accessKey": "AWS_ACCESS_KEY",
+    "secretAccessKey": "AWS_SECRET_ACCESS_KEY",
+    "cloudfront": {
+      "distrbutionId": "AWS_CLOUDFRONT_DISRIBUTION_ID",
+      "imageHandlerDistributionId": "AWS_CLOUDFRONT_IMAGE_HANDLER_DISRIBUTION_ID"
+    }
+  },
+  "Cdn": {
+    "awsBucket": "",
+    "cloudfrontUrl": "https://www.bar.com",
+    "enabled": 1,
+    "imageHandlerUrl": "https://www.foo.com"
+  },
+  "Contracts": {
+    "ethereum": {
+      "arvadCrewSale": "0xe24021388601dBd07Dbd99e1f6D8199061c10892",
+      "asteroid": "0x942c95e8D7aC4E80cFDF04aC8bf2125Ff1C92F93",
+      "asteroidBridge": "0x55A30026e0896CFee359a5762BeA418D989b7682",
+      "asteroidNames": "0xB61B3c469002959677Dd1DC492C08D3996F3c1E8",
+      "asteroidSale": "0x10fFa4a25e9D720B51d7C06611316253f106AF96",
+      "asteroidScans": "0xE7CEa0DdeBFC0A055CA7F67EFB37b491c227d146",
+      "crew": "0xCcA1054066676D3421dEDbCD4Af4bCf2AfbBdDDc",
+      "crewBridge": "0x56E51D9BFeF54B6A41dF10F7FA2129071d06890B",
+      "crewToken": "0xF220F38c04EA8C9eAFC07a6B95Fe884FDCfbF860",
+      "crewFeatures": "0x2e08f07aD523966F31F3b90f1ef5D7b25142c399",
+      "crewmate": "0xEd0d8900EF95774A4A813d095bC11844e8Bf463f",
+      "crewmateBridge": "0x3Cf9510cc6BD10D3Ffb576277Bf109d6f1A42F64",
+      "crewNames": "0x8Ce93C350Ab6Cad237dd75a30c3F23386f79C3E3",
+      "ship": "0x550E1CbD65caA902dee7DB068Fdd80663aF66300",
+      "shipBridge": "0x12CB4f6385ab977c1EAa7E104Bcca7cDBA36b4C3",
+      "starknetCore": "0xde29d060D45901Fb19ED6C6e959EB22d8626708e",
+      "swayGovernor": "0xdD49761D67d27A4A0ff46b3e1756Fd6261A297A3",
+      "sway": "0xE88210749F561CCB7839593E99b00414699a80DF",
+      "swayBridge": "0xe4A4a70b9793220746e414ECf54CF9fbbF16ebFb"
+    },
+    "starknet": {
+      "asteroid": "0x56df02ae800a0a6b6e4ad65fa6c0b3d55c97b80f63c451a47844a6ca87015b7",
+      "crew": "0x67f42045568d7a0e7cf15d32b6fde313f6908c830a3a55bd5bb26965e1caa4",
+      "crewmate": "0x314553b9c33ac655538d7d207543eb2e3bebde2e7e6724cb8b1ad485f3fa622",
+      "dispatcher": "0x20cd0c1f8cc0ca293d17b8184a6d51605ef4175827432ed24818ce24891bcdf",
+      "ship": "0x4dc116bd1b8c9bc3e25d2f03e03dfd60dd42e6de2c8483bf100f259dc80e282",
+      "sway": "0x0030058f19ed447208015f6430f0102e8ab82d6c291566d7e73fe8e613c3d2ed"
+    }
+  },
+  "Elasticsearch": {
+    "uri": "http://localhost:9200"
+  },
+  "Ethereum": {
+    "originBlock": 1,
+    "provider": "wss://localhost"
+  },
+  "Ipfs": {
+    "infura": {
+      "endpoint": "https://ipfs.localhost:5001/api/v0",
+      "apiKey": "IPFS_INFURA_API_KEY",
+      "apiKeySecret": "IPFS_INFURA_API_KEY_SECRET"
+    }
+  },
+  "MongoDb": {
+    "debug": 0,
+    "autoIndex": true
+  },
+  "Notifications": {
+    "email": {
+      "from": {
+        "email": "no-reply@localhost",
+        "name": "Adalia Foundation"
+      }
+
+    }
+  },
+  "Redis": {
+    "uri": "redis://localhost:6379"
+  },
+  "SendGrid": {
+    "apiKey": "TEST_SENDGRID_API_KEY",
+    "templates": {
+      "notification": "test-template-id"
+    }
+  },
+  "Starknet": {
+    "chainId": 1,
+    "originBlock": 1,
+    "provider": "STARKNET_PROVIDER",
+    "rpcProvider": "STARKNET_RPC_PROVIDER"
+  },
+  "Stripe": {
+    "secretKey": "TEST_STRIPE_SECRET_KEY"
+  }
+}

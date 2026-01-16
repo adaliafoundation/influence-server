@@ -1,0 +1,40 @@
+const BRIDGING_STATES = {
+  PROCESSING: 'PROCESSING',
+  COMPLETE: 'COMPLETE'
+};
+
+const CHAINS = {
+  ETHEREUM: 'ETHEREUM',
+  STARKNET: 'STARKNET'
+};
+
+const SALE = {
+  ASSET_TYPES: {
+    ASTEROID: 'Asteroid',
+    CREWMATE: 'Crewmate'
+  }
+};
+
+const STARKNET = {
+  STATUSES: [
+    'NOT_RECEIVED', 'RECEIVED', 'PENDING', 'REJECTED', 'ACCEPTED_ON_L2', 'ACCEPTED_ON_L1'
+  ]
+};
+
+const STORY = {
+  TAGS: {
+    ADALIAN_RECRUITMENT: 'ADALIAN_RECRUITMENT'
+  },
+  TYPES: {
+    CREW: 'CREW',
+    CREW_MEMBER: 'CREW_MEMBER'
+  }
+};
+
+module.exports = {
+  BRIDGING_STATES,
+  CHAINS,
+  SALE,
+  STARKNET,
+  STORY
+};

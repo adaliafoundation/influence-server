@@ -1,0 +1,8 @@
+{
+  "event": "SamplingDepositStarted",
+  "logIndex": 1,
+  "timestamp": 1695691834,
+  "transactionIndex": 1,
+  "transactionHash": "0x123456789",
+
+}

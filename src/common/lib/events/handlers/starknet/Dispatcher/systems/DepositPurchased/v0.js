@@ -1,0 +1,36 @@
+const { Address } = require('@influenceth/sdk');
+const { ActivityService } = require('@common/services');
+const StarknetBaseHandler = require('../../../Handler');
+
+class Handler extends StarknetBaseHandler {
+  static eventConfig = {
+    keys: ['0x447cf85dea872f585c555b8dd39143c520052951a0386ffd13bffefbcde01e'],
+    name: 'DepositPurchased'
+  };
+
+  async processEvent() {
+    const { callerCrew, caller, deposit } = this.eventDoc.returnValues;
+
+    const activityResult = await ActivityService.findOrCreateOne({
+      addresses: [caller],
+      entities: [callerCrew, deposit],
+      event: this.eventDoc
+    });
+
+    if (activityResult?.created === 0) return;
+
+    this.messages.push({ to: `Crew::${callerCrew.id}` });
+  }
+
+  static transformEventData(event) {
+    const data = [...event.data];
+    return {
+      deposit: this._entityFromData(data),
+      price: Number(data.shift()),
+      callerCrew: this._entityFromData(data),
+      caller: Address.toStandard(data.shift(), 'starknet')
+    };
+  }
+}
+
+module.exports = Handler;

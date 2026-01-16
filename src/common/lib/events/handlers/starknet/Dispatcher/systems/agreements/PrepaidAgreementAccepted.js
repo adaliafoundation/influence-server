@@ -1,0 +1,46 @@
+const { Address } = require('@influenceth/sdk');
+const { ActivityService, ComponentService } = require('@common/services');
+const StarknetBaseHandler = require('../../../Handler');
+
+class Handler extends StarknetBaseHandler {
+  static eventConfig = {
+    keys: ['0x33b828dbd1d9227027639191ca073fcd284c1a609ed4ce9bd0a611369f5c268'],
+    name: 'PrepaidAgreementAccepted'
+  };
+
+  async processEvent() {
+    const { callerCrew, caller, permitted, target } = this.eventDoc.returnValues;
+
+    const activityResult = await ActivityService.findOrCreateOne({
+      addresses: [caller],
+      entities: [callerCrew, permitted, target],
+      event: this.eventDoc
+    });
+
+    if (activityResult?.created === 0) return;
+
+    this.messages.push({ to: `Crew::${callerCrew.id}` });
+    this.messages.push({ to: `Crew::${permitted.id}` });
+
+    // Notify the target's controller
+    const targetControlCompDoc = await ComponentService.findOneByEntity('Control', target);
+    if (targetControlCompDoc?.controller) this.messages.push({ to: `Crew::${targetControlCompDoc.controller.id}` });
+  }
+
+  static transformEventData(event) {
+    const data = [...event.data];
+    return {
+      target: this._entityFromData(data),
+      permission: Number(data.shift()),
+      permitted: this._entityFromData(data),
+      term: Number(data.shift()),
+      rate: Number(data.shift()),
+      initialTerm: Number(data.shift()),
+      noticePeriod: Number(data.shift()),
+      callerCrew: this._entityFromData(data),
+      caller: Address.toStandard(data.shift(), 'starknet')
+    };
+  }
+}
+
+module.exports = Handler;

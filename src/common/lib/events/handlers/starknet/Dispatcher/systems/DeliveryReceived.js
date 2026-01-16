@@ -1,0 +1,83 @@
+const { Address } = require('@influenceth/sdk');
+const {
+  ActivityService,
+  CrewmateService,
+  CrewService,
+  EntityService,
+  LocationComponentService
+} = require('@common/services');
+const StarknetBaseHandler = require('../../Handler');
+const { extractInventories } = require('../../utils');
+
+class Handler extends StarknetBaseHandler {
+  static eventConfig = {
+    keys: ['0x2dc24e3b0e2d3292a9686c8468d7b0a1456f1825b9cf7fc6e1d228d81de7e81'],
+    name: 'DeliveryReceived'
+  };
+
+  async processEvent() {
+    const { callerCrew, caller, dest, delivery, origin } = this.eventDoc.returnValues;
+    const data = {};
+
+    const [
+      callerCrewEntity,
+      crewmates,
+      station
+    ] = await Promise.allSettled([
+      EntityService.getEntity({ ...callerCrew, components: ['Crew', 'Location'], format: true }),
+      CrewmateService.findByCrew(callerCrew),
+      CrewService.findStation(callerCrew)
+    ]);
+
+    if (callerCrewEntity.value) data.crew = callerCrewEntity.value;
+    if (crewmates.value) data.crewmates = crewmates.value;
+    if (station.value) data.station = station.value;
+
+    const activityResult = await ActivityService.findOrCreateOne({
+      addresses: [caller],
+      data,
+      entities: [callerCrew, dest, delivery, origin],
+      event: this.eventDoc
+    });
+
+    if (activityResult?.created === 0) return;
+
+    const [
+      destEntity,
+      originEntity,
+      destAsteroidEntity,
+      originAsteroidEntity
+    ] = await Promise.allSettled([
+      EntityService.getEntity({ ...dest, components: ['Control'], format: true }),
+      EntityService.getEntity({ ...origin, components: ['Control'], format: true }),
+      LocationComponentService.getAsteroidForEntity(dest),
+      LocationComponentService.getAsteroidForEntity(origin)
+    ]);
+
+    // resolve the DeliverySent activity
+    await ActivityService.resolveStartActivity('DeliverySent', this.eventDoc, ['name', 'returnValues.delivery.id']);
+
+    // add WS messages
+    this.addCrewRoomMessage(callerCrew);
+    if (destEntity.value?.Control?.controller) this.addCrewRoomMessage(destEntity.value.Control.controller);
+    if (originEntity.value?.Control?.controller) this.addCrewRoomMessage(originEntity.value.Control.controller);
+    if (destAsteroidEntity.value) this.addAsteroidRoomMessage(destAsteroidEntity.value);
+    if (originAsteroidEntity.value) this.addAsteroidRoomMessage(originAsteroidEntity.value);
+  }
+
+  static transformEventData(event) {
+    const data = [...event.data];
+    return {
+      origin: this._entityFromData(data),
+      originSlot: Number(data.shift()),
+      products: extractInventories(data),
+      dest: this._entityFromData(data),
+      destSlot: Number(data.shift()),
+      delivery: this._entityFromData(data),
+      callerCrew: this._entityFromData(data),
+      caller: Address.toStandard(data.shift(), 'starknet')
+    };
+  }
+}
+
+module.exports = Handler;

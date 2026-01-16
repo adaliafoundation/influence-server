@@ -1,0 +1,99 @@
+{
+  "App": {
+    "envCheckEnabled": 0,
+    "logLevel": "info",
+    "port": 3001
+  },
+  "Argent": {
+    "relayerPath": "/v1/relayer/execute"
+  },
+  "Aws": {
+    "region": "us-east-2"
+  },
+  "Contracts": {
+    "starknet": {
+      "udc": "0x041a78e741e5af2fec34b695679bc6891742439f7afb8484ecd7766661ad02bf"
+    }
+  },
+  "Elasticsearch": {
+    "indexer": {
+      "bulkBatchSizeBytes": 2500000,
+      "bulkBatchSizeCount": 2000,
+      "runDelay": 1000,
+      "runItemLimit": 100
+    }
+  },
+  "Ethereum": {
+    "originBlock": 1
+  },
+  "Events": {
+    "handlers": {
+      "ethereum": {
+        "ArvadCrewSale": {
+          "SaleCancelled": {
+            "deprecatedAt": null
+          },
+          "SaleCreated": {
+            "deprecatedAt": null
+          }
+        },
+        "AsteroidNames": {
+          "NameChanged": {
+            "deprecatedAt": null
+          }
+        },
+        "AsteroidSale": {
+          "SaleCancelled": {
+            "deprecatedAt": null
+          },
+          "SaleCreated": {
+            "deprecatedAt": null
+          }
+        },
+        "AsteroidScans": {
+          "AsteroidScanned": {
+            "deprecatedAt": null
+          },
+          "ScanStarted": {
+            "deprecatedAt": null
+          }
+        },
+        "CrewNames": {
+          "NameChanged": {
+            "deprecatedAt": null
+          }
+        }
+      }
+    }
+  },
+  "EventRetriever": {
+    "runDelay": 20000,
+    "ethereum": {
+      "runDelay": 20000
+    },
+    "starknet": {
+      "runDelay": 20000
+    }
+  },
+  "EventProcessor": {
+    "runDelay": 5000
+  },
+  "MongoDb": {
+    "debug": 0
+  },
+  "Notifications": {
+    "email": {
+      "enabled": 0,
+      "from": {
+        "email": "",
+        "name": "Influence Notifications"
+      }
+    }
+  },
+  "NftCardBuilder": {
+    "runDelay": 5000
+  },
+  "Starknet": {
+    "originBlock": 1
+  }
+}

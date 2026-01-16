@@ -1,0 +1,17 @@
+{
+  "root": true,
+  "extends": [
+    "plugin:mocha/recommended",
+    "../.eslintrc.json"
+  ],
+  "rules": {
+    "mocha/no-hooks-for-single-case": ["error", {"allow": ["after", "before"]}],
+    "prefer-arrow-callback": ["off"]
+  },
+  "env": {
+    "es2021": true
+  },
+  "plugins": [
+    "mocha"
+  ]
+}

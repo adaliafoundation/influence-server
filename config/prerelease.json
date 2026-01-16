@@ -1,0 +1,80 @@
+{
+  "Argent": {
+    "uri": "https://api.hydrogen.argent47.net"
+  },
+  "Aws": {
+    "cloudfront": {
+      "distrbutionId": "AWS_CLOUDFRONT_DISRIBUTION_ID",
+      "imageHandlerDistributionId": "AWS_CLOUDFRONT_IMAGE_HANDLER_DISRIBUTION_ID"
+    }
+  },
+  "Cdn": {
+    "awsBucket": "influence",
+    "cloudfrontUrl": "",
+    "enabled": 1,
+    "imageHandlerUrl": ""
+  },
+  "Contracts": {
+    "ethereum": {
+      "arvadCrewSale": "0x4E928EB49d83E84dB40cFDb226ca6ff1B2bEA767",
+      "asteroid": "0xA986C6D24222700f78c617ed49E0D78983D0f9AF",
+      "asteroidBridge": "0x314c597ca57A82fF200735dCC1DC9479AcF2cB27",
+      "asteroidFeatures": "0x8378aB01da12116b0Bd861b268B4EC7F508D65c4",
+      "asteroidNames": "0x4a10E16C4329C7A4b9795c65a42BAf1b03473c70",
+      "asteroidSale": "0x26eAefc1f200eac53ac37D55411E4CD70BEcb60d",
+      "asteroidScans": "0x5649D1b6C3E5a1a387983253B76DcA26d6A28124",
+      "crew": "0x99Fd93A9Fd6dB25eCC490c20712827F118Ee0395",
+      "crewBridge": "0xCFa7Ea1A515b3882e7a071C2E45e0aD75F5A633C",
+      "crewFeatures": "0xDA2d1Ab6958512edC787C76F410FF1bdB05936E0",
+      "crewToken": "0xE5700883cf429bB63B69424447C7F86C8fdD1786",
+      "crewmate": "0x488E99B03a059B93575d1b7b93064A22cA464038",
+      "crewmateBridge": "0x28e0328067cB9994FDf9d18f319C126f3716736E",
+      "crewNames": "0xF4443dA25B571d92fbe58Eb70daA008292951a5F",
+      "ship": "0x3f2e6aEeBa3F509294DD49fecD1b0388463cF1BC",
+      "shipBridge": "0xEf4Cd543b98552f7F37cCf76716CFBEa93FA05E2",
+      "starknetCore": "0xE2Bb56ee936fd6433DC0F6e7e3b8365C906AA057",
+      "swayGovernor": "0x5cd3DE01C13DBC6a083a4B36E216134971A80568",
+      "sway": "0xE88210749F561CCB7839593E99b00414699a80DF",
+      "swayBridge": "0xe4A4a70b9793220746e414ECf54CF9fbbF16ebFb"
+    },
+    "starknet": {
+      "asteroid": "0x680710b95255a852ed9ead04d4c1ffcf4f0695e29fb5c327abe2b8cb305ba25",
+      "crew": "0x560387d35b9b8df47a1973b7208e52b2df4f6dda579c7902678f9c1f2625215",
+      "crewmate": "0x26b26dc1cd021d7a1e78615cdf9f8f7d19ddbec73a4187e37af1d57f9bcfdc6",
+      "dispatcher": "0x517567ac7026ce129c950e6e113e437aa3c83716cd61481c6bb8c5057e6923e",
+      "ether": "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+      "faucet": "0x6730c211d67bb7c463190f10baa95529c82de2e32d79dd4cb3b185b6d0ddf86",
+      "ship": "0x61645ea472d543200c28291c92d54066b1088de67069c1ff0ad2c4c05ef2ed8",
+      "sway": "0x0030058f19ed447208015f6430f0102e8ab82d6c291566d7e73fe8e613c3d2ed"
+    }
+  },
+  "Ethereum": {
+    "originBlock": 4976108
+  },
+  "Events": {
+    "handlers": { "ethereum": { } }
+  },
+  "Ipfs": {
+    "infura": {
+      "endpoint": "https://ipfs.infura.io:5001/api/v0"
+    }
+  },
+  "MongoDb": {
+    "autoIndex": false
+  },
+  "OpenSea": {
+    "uri": "https://testnets-api.opensea.io/api/v2",
+    "chain": "sepolia"
+  },
+  "SendGrid": {
+    "templates": {
+      "notification": ""
+    }
+  },
+  "Starknet": {
+    "chainSlug": "SN_SEPOLIA",
+    "chainId": "0x534e5f5345504f4c4941",
+    "originBlock": 14380,
+    "provider": "https://alpha-sepolia.starknet.io"
+  }
+}

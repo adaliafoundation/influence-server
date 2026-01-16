@@ -1,0 +1,118 @@
+{
+  "Aws": {
+    "cloudfront": {
+      "distrbutionId": "AWS_CLOUDFRONT_DISRIBUTION_ID",
+      "imageHandlerDistributionId": "AWS_CLOUDFRONT_IMAGE_HANDLER_DISRIBUTION_ID"
+    }
+  },
+  "Argent": {
+    "uri": ""
+  },
+  "Cdn": {
+    "awsBucket": "",
+    "cloudfrontUrl": "",
+    "enabled": 1,
+    "imageHandlerUrl": ""
+  },
+  "Contracts": {
+    "ethereum": {
+      "arvadCrewSale": "0x258432C72A28DD11318FC0373e75e87Ce65765E3",
+      "asteroid": "0x6e4c6D9B0930073e958ABd2ABa516b885260b8Ff",
+      "asteroidBridge": "0x7Ab986dA8fD240E49488557a578Ed8B878F5662A",
+      "asteroidFeatures": "0x99Ce24101bc957A0d02EC65AB7e3B507Fee42a13",
+      "asteroidNames": "0x7391833C841D8abf62F8ee332015723528035a99",
+      "asteroidSale": "0xf8cB149E5B32299a6D99F4630731829C8D891258",
+      "asteroidScans": "0x9b811024635626bc37E5d294B384077AB25DCF62",
+      "crew": "0x3F83184227663E6B6Fa1B0e7Ea64FcA505C2bA6a",
+      "crewBridge": "0x3F4b6610ab1671D1eb321573B66aE12A7c60367A",
+      "crewFeatures": "0xF17Fd8d6Cfe43B5c79597f8325BcC4dC8D60672a",
+      "crewToken": "0x746Db7B1728aF413C4e2b98216C6171B2FC9D00e",
+      "crewmate": "0xB5CC57cD1f9a9bE85a50604b0591A53d89Bd4884",
+      "crewmateBridge": "0xD61C65224ad7CBbbd366a4974291858A6615E2Bf",
+      "crewNames": "0x033B302e6E0a2A9832241194FeA8d0b2C649d92E",
+      "ship": "0xE1791C021261FAFbE095b843cdA40A2F9812D233",
+      "shipBridge": "0xdaC82240fb0228F94A4d27B12d2eFC22E07eF72c",
+      "starknetCore": "0xc662c410C0ECf747543f5bA90660f6ABeBD9C8c4",
+      "swayGovernor": "0xB11684E500b5BBa3ddF23ee2F743447F093f09d9",
+      "sway": "0x9DE7f7a6c0B00902983c6f0658E157A8a684Cfd5",
+      "swayBridge": "0xae3F60bd56613Dff8E4493C14D70807EE974a3F0"
+    },
+    "starknet": {
+      "asteroid": "0x603cf837055c64d026a3c5a9e3a83036cea6c4a3f68a9e19f7a687d726fe817",
+      "crew": "0x7280a807c8b79379bec87919433b7b836b93a92e6d71b24ee99f4ffe33dd337",
+      "crewmate": "0x241b9c4ce12c06f49fee2ec7c16337386fa5185168f538a7631aacecdf3df74",
+      "dispatcher": "0x422d33a3638dcc4c62e72e1d6942cd31eb643ef596ccac2351e0e21f6cd4bf4",
+      "ship": "0x04369e47e647ab5fc4d36cee26590276b99a89a83fc3306462d21d366611fde3",
+      "sway": "0x004878d1148318a31829523ee9c6a5ee563af6cd87f90a30809e5b0d27db8a9b"
+    }
+  },
+  "Ethereum": {
+    "originBlock": 12169984
+  },
+  "Events": {
+    "handlers": {
+      "ethereum": {
+        "ArvadCrewSale": {
+          "SaleCancelled": {
+            "deprecatedAt": 17794088
+          },
+          "SaleCreated": {
+            "deprecatedAt": 17794088
+          }
+        },
+        "AsteroidNames": {
+          "NameChanged": {
+            "deprecatedAt": 17794088
+          }
+        },
+        "AsteroidSale": {
+          "SaleCancelled": {
+            "deprecatedAt": 17794088
+          },
+          "SaleCreated": {
+            "deprecatedAt": 17794088
+          }
+        },
+        "AsteroidScans": {
+          "AsteroidScanned": {
+            "deprecatedAt": 17794088
+          },
+          "ScanStarted": {
+            "deprecatedAt": 17794088
+          }
+        },
+        "CrewNames": {
+          "NameChanged": {
+            "deprecatedAt": 17794088
+          }
+        }
+      }
+    }
+  },
+  "Ipfs": {
+    "infura": {
+      "endpoint": "https://ipfs.infura.io:5001/api/v0"
+    }
+  },
+  "MongoDb": {
+    "autoIndex": false
+  },
+  "OpenSea": {
+    "uri": "https://api.opensea.io/api/v2",
+    "chain": "ethereum"
+  },
+  "SendGrid": {
+    "templates": {
+      "notification": ""
+    }
+  },
+  "Starknet": {
+    "chainSlug": "SN_MAIN",
+    "chainId": "0x534e5f4d41494e",
+    "originBlock": 218425,
+    "provider": "https://alpha-mainnet.starknet.io"
+  },
+  "Unframed": {
+    "uri": "https://cloud.argent-api.com/v1/pandora/starknet/mainnet/nft"
+  }
+}
