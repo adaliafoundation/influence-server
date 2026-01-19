@@ -4,8 +4,10 @@ API and events server for Influence. A grand strategy game set in an asteroid be
 
 ## License
 This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0).
-
 Commercial use is not permitted without a separate license from Unstoppable Games, Inc.
+
+For the avoidance of doubt:
+The licensor considers non-commercial use under this license to include deployments or uses that collect funds solely to recover the reasonable costs of operating, maintaining, or administering the software, provided that such use is not primarily intended for or directed toward commercial advantage or monetary compensation, and that no profit is distributed to operators, contributors, or participants.
 
 ## Migration to Starknet
 1. Run scripts in `./bin/starknet-setup` to migrate asteroids and crewmates to components from snapshots.
