@@ -130,6 +130,25 @@ class PackedLotDataService {
   }
 
   /**
+   * Initialize the packed data for a leasable asteroid, sets all values to leasable for all lots
+   * @param {Object} asteroidEntity
+   */
+  static async initForLeasableAsteroid(asteroid) {
+    const asteroidEntity = Entity.toEntity(asteroid);
+    const lotCount = Asteroid.getSurfaceArea(asteroidEntity.id);
+
+    const packed = new PackedData({ size: lotCount, packedWidth: this.PACKED_WIDTH });
+    
+    const lotIndices = range(1, lotCount + 1);
+    for (const lotIndex of lotIndices) {
+      packed.set(lotIndex, 1 << LotAttribute.LEASE_STATUS.shift);
+    }
+
+    await this._cacheSet(asteroidEntity, packed);
+    return packed;
+  }
+
+  /**
    * Update the packed data for a single lot
    * @param {AsteroidDocument|String} asteroid
    * @param {LotDocument|String} lot

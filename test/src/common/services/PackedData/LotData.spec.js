@@ -156,6 +156,21 @@ describe('Packed LotData Service', function () {
     });
   });
 
+  describe('initForLeasableAsteroid', function () {
+    it('should seed the cache with leasable pattern data', async function () {
+      const asteroid = Entity.Asteroid(250_000);
+      await PackedLotDataService.initForLeasableAsteroid(asteroid);
+      const result = await PackedLotDataService.get(asteroid);
+      expect(result.packedData).to.eql([
+        0b0000000000_0000000100_0000000100_00|0,
+        0b00000100_0000000100_0000000100_0000|0,
+        0b000100_0000000100_0000000100_000000|0,
+        0b0100_0000000100_0000000100_00000001|0,
+        0b00_0000000100_00000000000000000000|0
+      ]);
+    });
+  });
+
   describe('updateLotLeaseStatus', function () {
     it('should update the lease status for the specified lot', async function () {
       const asteroidEntity = Entity.Asteroid(250_000);

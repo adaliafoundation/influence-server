@@ -55,7 +55,7 @@ const lotsWithCrew = async function () {
 const lotsWithAgreements = async function () {
   const results = new Set();
   const prepaidAgreementsCursor = mongoose.model('PrepaidAgreementComponent').find({
-    permission: Permission.IDS.LOT_USE,
+    permission: Permission.IDS.USE_LOT,
     endTime: { $gt: moment().unix() }
   })
     .select('entity')
@@ -67,7 +67,7 @@ const lotsWithAgreements = async function () {
   }
 
   const contractAgreementsCursor = mongoose.model('ContractAgreementComponent').findOne({
-    permission: Permission.IDS.LOT_USE
+    permission: Permission.IDS.USE_LOT
   })
     .select('entity')
     .lean()
@@ -83,7 +83,7 @@ const lotsWithAgreements = async function () {
 const lotsWithPolicies = async function () {
   const results = new Set();
 
-  let cursor = mongoose.model('PrepaidMerklePolicyComponent').find({ permission: Permission.IDS.LOT_USE })
+  let cursor = mongoose.model('PrepaidMerklePolicyComponent').find({ permission: Permission.IDS.USE_LOT })
     .select('entity lotIndices')
     .lean()
     .cursor();
@@ -96,7 +96,7 @@ const lotsWithPolicies = async function () {
 
   cursor = mongoose.model('ContractPolicyComponent').find({
     'entity.label': Entity.IDS.LOT,
-    permission: Permission.IDS.LOT_USE
+    permission: Permission.IDS.USE_LOT
   })
     .select('entity')
     .lean()
@@ -108,7 +108,7 @@ const lotsWithPolicies = async function () {
 
   cursor = mongoose.model('PrepaidPolicyComponent').find({
     'entity.label': Entity.IDS.LOT,
-    permission: Permission.IDS.LOT_USE
+    permission: Permission.IDS.USE_LOT
   })
     .select('entity')
     .lean()
@@ -120,7 +120,27 @@ const lotsWithPolicies = async function () {
 
   cursor = mongoose.model('PublicPolicyComponent').find({
     'entity.label': Entity.IDS.LOT,
-    permission: Permission.IDS.LOT_USE
+    permission: Permission.IDS.USE_LOT
+  })
+    .select('entity')
+    .lean()
+    .cursor();
+
+  for (let doc = await cursor.next(); doc != null; doc = await cursor.next()) {
+    results.add(doc.entity.id);
+  }
+
+  return results;
+};
+
+const asteroidsWithLeasePolicies = async function () {
+  const results = new Set();
+
+  logger.debug(`asteroid: ${Entity.IDS.ASTEROID} ; permission: ${1}`)
+
+  let cursor = mongoose.model('PrepaidPolicyComponent').find({
+    'entity.label': Entity.IDS.ASTEROID,
+    permission: Permission.IDS.USE_LOT
   })
     .select('entity')
     .lean()
@@ -144,7 +164,7 @@ const getLotsToBuild = async function () {
   return [...lotIds].map((id) => ({ id, label: Entity.IDS.LOT }));
 };
 
-const main = async function ({ asteroids, lots, initEmpty } = {}) {
+const main = async function ({ asteroids, lots, initEmpty, setLeaseStatus } = {}) {
   const timer = new Timer();
   timer.start();
 
@@ -164,34 +184,42 @@ const main = async function ({ asteroids, lots, initEmpty } = {}) {
     lotsToBuild = await getLotsToBuild();
   }
 
-  // If initEmpty, intialize all other asteroids with empty packed lot data
+  // If initEmpty, intialize all asteroids with empty packed lot data
   if (initEmpty) {
-    const asteroidsToBuild = new Set();
-    lotsToBuild.forEach((lot) => {
-      const { asteroidId } = Lot.toPosition(lot);
-      asteroidsToBuild.add(asteroidId);
-    });
-    const asteroidsToInit = without(range(1, 250_001), ...asteroidsToBuild);
+    const asteroidsToInit = range(1, 250_001);
 
-    logger.info('Initializing packed lot data for asteroids...');
+    logger.info(`Initializing packed lot data for ${asteroidsToInit.length} asteroids...`);
     await eachLimit(asteroidsToInit, 100, async (id) => {
       logger.debug(`init packed lot data for asteroid ${id}`);
       await PackedLotDataService.initForAsteroid({ id, label: Entity.IDS.ASTEROID });
     });
   }
 
+  // If setLeaseStatus, set asteroids with lease policy as leasable for all lots (the next step will overwrite specific non-leasable lots)
+  if (setLeaseStatus) {
+    const asteroidsToInit = await asteroidsWithLeasePolicies();
+
+    logger.info(`Setting lease status lot data for ${asteroidsToInit.size} asteroids...`);
+    await eachLimit(asteroidsToInit, 100, async (id) => {
+      logger.debug(`set lease status lot data for asteroid ${id}`);
+      await PackedLotDataService.initForLeasableAsteroid({ id, label: Entity.IDS.ASTEROID });
+    });
+  }
+
   let index = 1;
   const cache = {};
+  logger.info(`Building lot data for ${lotsToBuild.length} lots...`);
   for (const lot of lotsToBuild) {
     const { asteroidId, lotIndex } = Lot.toPosition(lot);
-    logger.info(`Building packed lot data for ${index}/${lotsToBuild.length} `
+    logger.debug(`build packed lot data for ${index}/${lotsToBuild.length} `
       + `lotIndex: ${lotIndex} of asteroid: ${asteroidId}`);
     cache[asteroidId] = await PackedLotDataService.update(lot, cache[asteroidId], false);
 
     index += 1;
   }
+  logger.info(`Saving lot data for ${Object.entries(cache).length} asteroids...`);
   for (const [id, data] of Object.entries(cache)) {
-    logger.info(`Saving packed data for asteroid: ${id}`);
+    logger.debug(`save packed data for asteroid: ${id}`);
     await PackedLotDataService._cacheSet({ id: id, label: Entity.IDS.ASTEROID }, data);
   }
 
@@ -213,6 +241,12 @@ const args = yargs(hideBin(process.argv))
     type: 'boolean',
     default: false,
     description: 'Initialize all asteroids with empty packed lot data'
+  })
+  .option('setLeaseStatus', {
+    alias: 's',
+    type: 'boolean',
+    default: false,
+    description: 'Initialize lot lease status for asteroids with policy'
   })
   .parse();
 
