@@ -13,6 +13,7 @@ Add a `GAME_MODE=hybrid` option to the influence-server that:
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
+- [Quick Start: Running a Hybrid Server](#quick-start-running-a-hybrid-server)
 1. [Architecture Overview](#1-architecture-overview)
 2. [Existing Simulation System (Client)](#2-existing-simulation-system-client)
 3. [Phase 1: Configuration & Mode Switching](#3-phase-1-configuration--mode-switching)
@@ -22,7 +23,7 @@ Add a `GAME_MODE=hybrid` option to the influence-server that:
 7. [Phase 5: Client Integration](#7-phase-5-client-integration)
 8. [Phase 6: Login & Ownership Sync](#8-phase-6-login--ownership-sync)
 9. [Phase 7: Time & Tick System](#9-phase-7-time--tick-system)
-10. [Phase 8: Testing](#10-phase-8-testing)
+10. [Phase 8: Testing & Verification](#10-phase-8-testing--verification)
 11. [File Change Map](#11-file-change-map)
 12. [Implementation Order & Dependencies](#12-implementation-order--dependencies)
 13. [Risks & Open Questions](#13-risks--open-questions)
@@ -153,6 +154,385 @@ The client simulation **only keeps state in the Zustand store** (browser memory)
 >
 > The GameEngine's two-phase commit (Section 6.5) depends on transactions for
 > TOCTOU protection. Without a replica set, **no hybrid-mode actions will execute**.
+
+---
+
+## Quick Start: Running a Hybrid Server
+
+### 1. Infrastructure
+
+The server needs MongoDB (replica set), and optionally Redis and Elasticsearch.
+The simplest local setup uses Docker Compose:
+
+**`docker-compose.yml`**
+
+```yaml
+version: "3.8"
+services:
+  mongo:
+    image: mongo:7
+    command: ["--replSet", "rs0"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  # One-time replica set init — run after mongo is up:
+  #   docker exec -it <mongo-container> mongosh --eval "rs.initiate()"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+
+volumes:
+  mongo-data:
+  es-data:
+```
+
+```bash
+docker compose up -d
+# Wait a few seconds for mongo to start, then init the replica set:
+docker exec -it $(docker compose ps -q mongo) mongosh --eval "rs.initiate()"
+```
+
+If you prefer a local `mongod` without Docker, see the Prerequisites section above.
+
+### 2. Environment
+
+```bash
+cp .env.example .env   # or create from scratch
+```
+
+**Minimal `.env` for hybrid mode:**
+
+```bash
+# ── Mode ──────────────────────────────────────────────
+GAME_MODE=hybrid
+
+# ── Server ────────────────────────────────────────────
+API_SERVER=1
+PORT=3001
+NODE_ENV=development
+CLIENT_URL=http://localhost:3000
+JWT_SECRET=any-random-string-here
+
+# ── MongoDB (replica set required) ────────────────────
+MONGO_URL=mongodb://localhost:27017/influence
+
+# ── Starknet RPC (needed for world fork + ownership tracking) ──
+# Public endpoints work but may be rate-limited.
+# For reliable forking, use an Alchemy/Infura/Blast Starknet RPC key.
+STARKNET_RPC_PROVIDER=https://starknet-mainnet.public.blastapi.io
+STARKNET_PROVIDER=https://alpha-mainnet.starknet.io
+
+# ── Optional ──────────────────────────────────────────
+# REDIS_URL=redis://localhost:6379
+# ELASTICSEARCH_URL=http://localhost:9200
+# IMAGES_SERVER=1
+# IMAGES_SERVER_URL=http://localhost:3001
+```
+
+**What you can skip:**
+- `ETHEREUM_PROVIDER` — not needed (Ethereum retriever is disabled in hybrid mode)
+- `CONTRACT_*` — the Ethereum-era contract addresses are unused
+- `AWS_*`, `SENDGRID_*`, `STRIPE_*`, `ARGENT_*` — external service integrations, not required for local play
+- `CLOUDINARY_URL` — only needed if image generation is enabled
+
+### 3. Install & Build
+
+```bash
+# Requires Node 18.15.0 (see package.json engines)
+nvm use 18.15.0   # or however you manage Node versions
+npm install
+```
+
+### 4. Fork the World
+
+This snapshots the current on-chain game state into your local MongoDB.
+It runs the event retriever + processor for all historical blocks, so it
+takes a while on first run (minutes to hours depending on RPC speed).
+
+```bash
+# Fork from the current chain head
+node src/workers/forkWorld.js
+
+# Or fork from a specific block
+node src/workers/forkWorld.js --block 850000 --label "my-local-universe"
+```
+
+When complete you'll see a summary:
+```
+World fork complete:
+  Block:      850000
+  Hash:       0x1a2b3c...
+  Timestamp:  2025-01-15T12:00:00.000Z
+  Label:      my-local-universe
+  Asteroids:  12345
+  Crewmates:  6789
+```
+
+### 5. Start the Server
+
+**Option A — all-in-one with pm2** (starts API + all workers):
+
+```bash
+npm run pm2-watch
+```
+
+**Option B — individual processes** (more control):
+
+```bash
+# Terminal 1: API server
+npm run watch
+
+# Terminal 2: Starknet event retriever (tracks NFT ownership changes)
+npm run starknetEventRetriever
+
+# Terminal 3: Event processor
+npm run eventProcessor
+
+# Terminal 4: Elasticsearch indexer (optional — only if ES is running)
+npm run elasticIndexer
+```
+
+**Workers you do NOT need in hybrid mode** (they exit automatically):
+- `ethereumEventRetriever` — disabled, exits on startup
+- `starknetEventAuditor` — disabled, exits on startup
+
+### 6. Verify
+
+```bash
+# Check the API is running
+curl http://localhost:3001/v2/world
+# → { "forkBlock": 850000, "forkBlockHash": "0x...", "label": "my-local-universe", ... }
+
+# Check entities exist (asteroids should be populated from the fork)
+curl http://localhost:3001/v2/entities?label=1&limit=5
+```
+
+### 7. Connect the Client
+
+In the influence-client repo, configure it to point at your local server
+with hybrid mode enabled (see Section 7 — Client Integration for details):
+
+```bash
+# In influence-client/.env or appConfig
+REACT_APP_API_URL=http://localhost:3001
+REACT_APP_GAME_MODE=hybrid
+```
+
+### Docker: One-Command Deployment
+
+For the simplest possible setup, the entire stack (server + workers + MongoDB +
+Redis + Elasticsearch) can run with a single `docker compose up`.
+
+**New file: `Dockerfile`**
+
+```dockerfile
+FROM node:18.15.0-slim
+
+WORKDIR /app
+
+# Install pm2 globally for process management
+RUN npm install -g pm2
+
+# Copy package files first for layer caching
+COPY package.json package-lock.json ./
+RUN npm ci --production
+
+# Copy application code
+COPY . .
+
+# The API server port
+EXPOSE 3001
+
+# Entrypoint handles: wait for mongo, init replica set, fork if needed, start pm2
+ENTRYPOINT ["./docker-entrypoint.sh"]
+```
+
+**New file: `docker-entrypoint.sh`**
+
+```bash
+#!/usr/bin/env bash
+set -e
+
+# ── Wait for MongoDB to be reachable ──────────────────
+echo "Waiting for MongoDB at ${MONGO_URL:-mongodb://mongo:27017/influence}..."
+until node -e "
+  const mongoose = require('mongoose');
+  mongoose.connect(process.env.MONGO_URL || 'mongodb://mongo:27017/influence')
+    .then(() => process.exit(0))
+    .catch(() => process.exit(1));
+" 2>/dev/null; do
+  sleep 2
+done
+echo "MongoDB is up."
+
+# ── Init replica set if needed (for the bundled mongo container) ──
+if [ "${MONGO_INIT_REPLICA:-0}" = "1" ]; then
+  echo "Initializing MongoDB replica set..."
+  mongosh "${MONGO_URL:-mongodb://mongo:27017/influence}" --eval "
+    try { rs.status() }
+    catch(e) { rs.initiate() }
+  " 2>/dev/null || true
+  sleep 3
+fi
+
+# ── Fork world if not already forked ──────────────────
+echo "Checking for existing world fork..."
+FORK_EXISTS=$(node -e "
+  require('module-alias/register');
+  require('dotenv').config({ silent: true });
+  require('@common/storage/db');
+  const mongoose = require('mongoose');
+  setTimeout(async () => {
+    try {
+      const count = await mongoose.connection.db.collection('worldforks').countDocuments();
+      console.log(count > 0 ? 'yes' : 'no');
+    } catch(e) { console.log('no'); }
+    process.exit(0);
+  }, 2000);
+" 2>/dev/null)
+
+if [ "$FORK_EXISTS" = "yes" ]; then
+  echo "World already forked — skipping."
+else
+  echo "No world fork found. Forking from chain..."
+  FORK_ARGS=""
+  [ -n "$FORK_BLOCK" ] && FORK_ARGS="$FORK_ARGS --block $FORK_BLOCK"
+  [ -n "$FORK_LABEL" ] && FORK_ARGS="$FORK_ARGS --label $FORK_LABEL"
+  node src/workers/forkWorld.js $FORK_ARGS
+  echo "World fork complete."
+fi
+
+# ── Start all processes via pm2 ───────────────────────
+echo "Starting influence-server (API + workers)..."
+exec pm2-runtime ecosystem.config.js
+```
+
+**New file: `docker-compose.yml`** (replaces the infrastructure-only version)
+
+```yaml
+version: "3.8"
+
+services:
+  # ── Influence Server (API + all workers) ────────────
+  influence-server:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - GAME_MODE=hybrid
+      - API_SERVER=1
+      - PORT=3001
+      - NODE_ENV=development
+      - CLIENT_URL=http://localhost:3000
+      - JWT_SECRET=change-me-in-production
+      - MONGO_URL=mongodb://mongo:27017/influence?replicaSet=rs0
+      - MONGO_INIT_REPLICA=1
+      - REDIS_URL=redis://redis:6379
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - STARKNET_RPC_PROVIDER=${STARKNET_RPC_PROVIDER:-https://starknet-mainnet.public.blastapi.io}
+      - STARKNET_PROVIDER=${STARKNET_PROVIDER:-https://alpha-mainnet.starknet.io}
+      # Optional: fork from a specific block instead of chain head
+      # - FORK_BLOCK=850000
+      # - FORK_LABEL=my-local-universe
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      elasticsearch:
+        condition: service_started
+
+  # ── MongoDB (replica set) ───────────────────────────
+  mongo:
+    image: mongo:7
+    command: ["--replSet", "rs0"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: mongosh --eval "db.runCommand('ping').ok" --quiet
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis ───────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # ── Elasticsearch ───────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+
+volumes:
+  mongo-data:
+  es-data:
+```
+
+**Usage:**
+
+```bash
+# Start everything (first run will fork the world — takes a while)
+docker compose up -d
+
+# Watch the fork progress
+docker compose logs -f influence-server
+
+# Subsequent starts skip the fork — server is up in seconds
+docker compose up -d
+
+# Fork from a specific block
+FORK_BLOCK=850000 docker compose up -d
+
+# Use a dedicated Starknet RPC for faster forking
+STARKNET_RPC_PROVIDER=https://starknet-mainnet.g.alchemy.com/v2/YOUR_KEY docker compose up -d
+
+# Tear down (preserves data in Docker volumes)
+docker compose down
+
+# Full reset (wipes world state — will re-fork on next start)
+docker compose down -v
+```
+
+**What happens on `docker compose up`:**
+1. MongoDB, Redis, Elasticsearch start in parallel
+2. Server container waits for MongoDB health check
+3. Entrypoint initializes the replica set (idempotent — skips if already done)
+4. Checks for an existing `WorldFork` document — if none, runs `forkWorld.js`
+5. Starts pm2 with all processes (API + starknet retriever + event processor + elastic indexer)
+6. Ethereum retriever and auditor self-exit (hybrid mode)
+7. Server is ready at `http://localhost:3001`
+
+### Cloud Deployment Notes
+
+- **MongoDB Atlas**: Use an M10+ cluster (replica set by default). Set `MONGO_INIT_REPLICA=0` — Atlas manages its own replica set. Transaction support is included.
+- **Starknet RPC**: Use a dedicated endpoint (Alchemy, Infura, Blast) with an API key — public endpoints will likely rate-limit during the initial fork.
+- **The fork step is one-time**: Once `forkWorld.js` has run, the MongoDB contains the full world state. Subsequent container restarts skip directly to pm2 startup.
+- **Scaling**: The `influence-server` container can be split into separate API and worker containers sharing the same `MONGO_URL` for production deployments.
 
 ---
 
@@ -1468,69 +1848,360 @@ module.exports = model('Counter', CounterSchema);
 
 ### 7.1 Client Changes Overview
 
-The client needs to route game action submissions to the server API instead of Starknet when in hybrid mode. The existing simulation system shows exactly how to intercept — we follow the same pattern but POST to the server instead of updating local Zustand state.
+The client currently submits game actions as Starknet transactions. In hybrid
+mode, it needs to POST to the local server instead. The changes are concentrated
+in a few files — the read path (entity queries, search, activity feed, Socket.IO)
+is completely unchanged.
+
+**Scope:** ~6 files modified, 0 new files. The hardest part is not the hybrid
+branch itself (it follows the existing simulation pattern) but disabling all the
+Starknet transaction machinery that doesn't apply.
 
 ### 7.2 New Client Config
 
-**File: `influence-client/src/appConfig/`** — Add to config:
+**File: `influence-client/src/appConfig/_default.json`** — Add:
 ```json
 {
-  "GameMode": "chain"   // "chain" or "hybrid"
+  "GameMode": "chain"
 }
 ```
 
 Environment variable override: `REACT_APP_GAME_MODE=hybrid`
 
-### 7.3 Modify ChainTransactionContext
+**New helper** (or add to an existing utils file):
+```js
+const appConfig = require('appConfig'); // or however the client imports config
+const getGameMode = () => appConfig.get('GameMode') || 'chain';
+const isHybrid = () => getGameMode() === 'hybrid';
+```
+
+### 7.3 Modify ChainTransactionContext — executeSystem
 
 **File: `influence-client/src/contexts/ChainTransactionContext.js`**
 
-The `executeSystem` callback (line ~1166) already branches for simulation. Add a third branch for hybrid mode:
+The `executeSystem` callback (line ~1166) already has a simulation branch. Add
+a hybrid branch **before** the Starknet flow. The simulation branch is the
+template — hybrid mode is similar but POSTs to the server instead of updating
+local Zustand state.
 
 ```js
 const executeSystem = useCallback(async (key, vars, meta = {}) => {
   if (simulationEnabled) {
-    // ... existing simulation logic (tutorial mode)
+    // ... existing simulation logic (tutorial mode, lines 1167-1177)
   }
-  
-  if (gameMode === 'hybrid') {
-    // Submit to local server API instead of Starknet
-    const response = await api.post('/v2/actions/' + key, {
-      callerCrew: crew,
-      vars,
-      meta
-    });
-    
-    // Create a pseudo pending transaction with the server's response
-    const txHash = response.data.txHash || `0xlocal_${Date.now()}`;
-    dispatchPendingTransaction({ key, vars, meta, txHash });
-    
-    // The server emits Socket.IO events which will trigger
-    // ActivitiesContext to invalidate React Query caches
-    // (same flow as chain mode, just faster)
-    return;
+
+  if (isHybrid()) {
+    try {
+      const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const response = await api.post(`/v2/actions/${key}`, {
+        callerCrew: crew,
+        vars,
+        meta
+      }, {
+        headers: { 'X-Idempotency-Key': idempotencyKey }
+      });
+
+      // Dispatch as "pending" then immediately "complete" — the server
+      // already committed the state and will emit Socket.IO events.
+      const txHash = response.data.event?.transactionHash || `0xlocal_${Date.now()}`;
+      dispatchPendingTransaction({ key, vars, meta, txHash });
+      dispatchPendingTransactionComplete(txHash);
+      return;
+    } catch (error) {
+      if (error.response?.status === 409) {
+        // WriteConflict — auto-retry once
+        // (TODO: exponential backoff for repeated conflicts)
+        return executeSystem(key, vars, meta);
+      }
+      onTransactionError(error.response?.data?.error || error.message, key, vars);
+      return;
+    }
   }
-  
-  // ... existing Starknet transaction flow
+
+  // ... existing Starknet transaction flow (lines 1180+)
 });
 ```
 
-### 7.4 What Stays the Same on the Client
+**Key differences from the simulation branch:**
+- POSTs to server (network call) instead of local state mutation
+- Sends idempotency key for crash safety
+- Handles 409 (WriteConflict) with auto-retry
+- Dispatches both `pending` and `complete` — no polling needed
+
+### 7.4 Skip Token Approvals
+
+**File: `influence-client/src/contexts/ChainTransactionContext.js` (lines ~800-811)**
+
+The current flow prepends ERC-20 approval calls before game actions:
+```js
+// Current code — approve escrow amount
+if (totalEscrow > 0n) {
+  calls.unshift(System.getApproveErc20Call(totalEscrow, SWAY_ADDRESS, ESCROW_ADDRESS));
+}
+// approve purchase token
+if (totalPrice > 0n) {
+  calls.unshift(System.getApproveErc20Call(totalPrice, TOKEN_ADDRESS, DISPATCHER_ADDRESS));
+}
+```
+
+In hybrid mode, there are no on-chain tokens to approve — the server manages
+balances directly. Wrap this block:
+```js
+if (!isHybrid()) {
+  // ... existing approval logic
+}
+```
+
+### 7.5 Skip Gas Estimation & Paymaster
+
+**File: `influence-client/src/contexts/ChainTransactionContext.js` (lines ~579-627)**
+
+The `executeWithAccount()` function estimates gas fees and selects a paymaster:
+```js
+const fees = await walletAccount.estimatePaymasterTransactionFee(formattedCalls, { feeMode: { gasToken } });
+```
+
+In hybrid mode, `executeWithAccount()` is never called — the hybrid branch in
+`executeSystem` returns before reaching it. **No changes needed** to this
+function, but verify that no other code path calls it in hybrid mode.
+
+### 7.6 Skip Session Key Setup
+
+**File: `influence-client/src/contexts/SessionContext.js`**
+
+On wallet connect, the client sets up Starknet session keys (line ~42-48):
+```js
+const allowedMethods = [
+  { 'Contract Address': appConfig.get('Starknet.Address.dispatcher'), selector: 'run_system' },
+  { 'Contract Address': appConfig.get('Starknet.Address.swayToken'), selector: 'transfer_with_confirmation' },
+  // ...
+];
+```
+
+This drives the session key request to Argent/Braavos on connect. In hybrid
+mode the whole session key flow is unnecessary (no gas, no chain transactions).
+
+Guard the session key initialization:
+```js
+// In the wallet connection flow (lines ~96-200)
+if (!isHybrid()) {
+  // ... existing session key setup, paymaster init
+}
+```
+
+The wallet connection itself still happens (needed for JWT auth) — only the
+session key and paymaster parts are skipped.
+
+### 7.7 Skip Transaction Polling & Revert Detection
+
+**File: `influence-client/src/contexts/ChainTransactionContext.js`**
+
+Three polling mechanisms need to be skipped in hybrid mode:
+
+**A) `provider.waitForTransaction()` (line ~956):**
+```js
+// Currently polls every 5s for transaction receipt
+provider.waitForTransaction(txHash, { retryInterval: 5000 })
+```
+Not called in hybrid mode because the hybrid branch dispatches `complete`
+immediately. But guard the pending transaction recovery on page load:
+
+```js
+// In the effect that recovers pending transactions on mount (~line 941):
+if (isHybrid()) return; // No pending chain transactions to recover
+```
+
+**B) Event-based confirmation (line ~992):**
+```js
+const txEvent = getTxEvent(txHash);  // matches txHash against activity list
+if (txEvent) {
+  contracts[key].onConfirmed(txEvent, vars);
+  dispatchPendingTransactionComplete(txHash);
+}
+```
+Not reached in hybrid mode (already dispatched `complete` in executeSystem).
+No changes needed.
+
+**C) Revert detection after 30s (lines ~1002-1028):**
+```js
+provider.getTransactionReceipt(txHash)
+  .then((receipt) => {
+    if (receipt?.execution_status === 'REVERTED') { ... }
+  })
+```
+Same — not reached for hybrid transactions. No changes needed.
+
+### 7.8 SWAY Balance
+
+**File: `influence-client/src/hooks/useWalletTokenBalance.js`**
+
+The `useSwayBalance` hook (line ~42) reads balance directly from Starknet RPC:
+```js
+provider.callContract({
+  contractAddress: tokenAddress,
+  entrypoint: 'balanceOf',
+  calldata: [accountAddress]
+})
+```
+
+In hybrid mode this returns the real on-chain balance, which has nothing to do
+with the forked game state. Two options:
+
+**Option A — Server-side SWAY balance (recommended):**
+
+Add a SWAY balance component to the server's ECS. The fork tool imports the
+on-chain balance at fork time. Game actions that involve SWAY (buy orders,
+agreement payments) debit/credit via component writes.
+
+Client change:
+```js
+// In useWalletTokenBalance.js
+if (isHybrid()) {
+  // Read from server API instead of Starknet RPC
+  const { data } = useQuery(['swayBalance', accountAddress], () =>
+    api.get(`/v2/entities?id=${crewId}&label=1&components=Wallet`).then(r => r.data)
+  );
+  return data?.Wallet?.swayBalance || 0n;
+}
+```
+
+Server change: new `WalletComponent` or similar (add to the plan if chosen).
+
+**Option B — Infinite SWAY (simpler, for dev/testing):**
+
+```js
+// In useWalletTokenBalance.js
+if (isHybrid()) {
+  return { data: BigInt('50000000000000000000000000'), isLoading: false }; // 50M SWAY
+}
+```
+
+This matches the `MockTransactionManager`'s starting balance
+(`50e6 * TOKEN_SCALE`). Simpler but means SWAY is meaningless in hybrid mode.
+
+**Decision:** This is Open Question #3 (SWAY token economy). Start with
+Option B for the initial implementation, migrate to Option A if SWAY scarcity
+matters for gameplay testing.
+
+**Components that display SWAY balance:**
+- `src/game/interface/hud/SystemControls.js` (lines 175, 228-230) — top HUD bar
+- Various action dialogs: `ShoppingList.js`, `MarketplaceOrder.js`,
+  `PurchaseEntity.js`, `FormAgreement.js`
+
+These don't need changes — they consume `useSwayBalance` which handles the
+mode branching internally.
+
+### 7.9 Other Direct RPC Calls
+
+Two other places read directly from Starknet RPC:
+
+**A) Random event check**
+**File: `influence-client/src/contexts/CrewContext.js` (line ~234)**
+```js
+provider.callContract(System.getRunSystemCall('CheckForRandomEvent', vars, DISPATCHER_ADDRESS))
+```
+
+In hybrid mode, random events don't exist (no on-chain entropy source). Either:
+- Return a no-op result (no random event)
+- Implement a server-side random event endpoint if needed later
+
+```js
+if (isHybrid()) return null; // No random events in hybrid mode
+```
+
+**B) Agreement eligibility check**
+**File: `influence-client/src/game/interface/hud/actionDialogs/FormAgreement.js` (lines ~240-248)**
+```js
+provider.callContract({
+  contractAddress: policy.contract,
+  entrypoint: 'accept',
+  calldata: [...]
+})
+```
+
+This is a `staticCall` (read-only) to check if a policy contract would accept
+the caller. In hybrid mode, the server handles policy validation — this check
+should either be skipped or routed to a server endpoint.
+
+```js
+if (isHybrid()) {
+  // Server validates policies during action execution.
+  // Optimistically allow all — server returns 400 if invalid.
+  return true;
+}
+```
+
+### 7.10 Error Handling for New HTTP Status Codes
+
+The hybrid `executeSystem` branch returns errors that the chain flow doesn't.
+Add user-facing error handling:
+
+```js
+// In the hybrid catch block (Section 7.3):
+catch (error) {
+  const status = error.response?.status;
+  const message = error.response?.data?.error;
+
+  if (status === 409) {
+    // WriteConflict — auto-retry (already handled above)
+  } else if (status === 400) {
+    // Validation failure — show to user
+    onTransactionError(message || 'Action validation failed', key, vars);
+  } else if (status === 500) {
+    onTransactionError('Server error — please try again', key, vars);
+  } else {
+    onTransactionError(message || 'Network error', key, vars);
+  }
+}
+```
+
+### 7.11 World Fork Display
+
+Add a small UI element showing which universe the player is in. Fetch from
+`GET /v2/world` on app load:
+
+```js
+// New hook: useWorldFork.js
+const useWorldFork = () => {
+  return useQuery(['worldFork'], () => api.get('/v2/world').then(r => r.data), {
+    enabled: isHybrid(),
+    staleTime: Infinity  // fork metadata never changes
+  });
+};
+```
+
+Display in the HUD (e.g., next to the SWAY balance in `SystemControls.js`):
+```jsx
+{isHybrid() && worldFork && (
+  <ForkBadge>
+    {worldFork.label} · Block {worldFork.forkBlock.toLocaleString()}
+  </ForkBadge>
+)}
+```
+
+### 7.12 What Stays the Same on the Client
 
 - **Entity queries** — unchanged, still hit `/v2/entities`, Elasticsearch
-- **Socket.IO** — unchanged, server still emits events
-- **Activity feed** — unchanged, server still creates Activity records
-- **React Query cache invalidation** — unchanged, driven by Socket.IO events from server
+- **Socket.IO** — unchanged, server still emits events via Dispatcher handlers
+- **Activity feed** — unchanged, server creates Activity records in sideEffectPhase
+- **React Query cache invalidation** — unchanged, driven by Socket.IO events
 - **NFT images/metadata** — unchanged
-- **Auth flow** — unchanged (wallet connection + JWT)
+- **Auth flow** — unchanged (wallet connection + JWT). Wallet connect is still
+  needed to sign the login challenge, even though no chain transactions happen.
 - **Search** — unchanged (Elasticsearch)
 
-### 7.5 What Changes on the Client
+### 7.13 Client File Change Summary
 
-1. `ChainTransactionContext.js` — hybrid branch in `executeSystem`
-2. Disable gas estimation / paymaster / token approval flows in hybrid mode (not needed)
-3. Remove "waiting for transaction" polling (server responds synchronously)
-4. Time-gated actions (construction, extraction, processing) may need a "fast forward" or "complete now" mechanism since there's no on-chain block progression
+| File | Change |
+|------|--------|
+| `src/appConfig/_default.json` | Add `GameMode` key |
+| `src/contexts/ChainTransactionContext.js` | Hybrid branch in `executeSystem` (~line 1166); skip approval prepend (~line 800); guard pending tx recovery on mount |
+| `src/contexts/SessionContext.js` | Skip session key + paymaster init in hybrid mode |
+| `src/hooks/useWalletTokenBalance.js` | Return mock/server SWAY balance in hybrid mode |
+| `src/contexts/CrewContext.js` | Skip `CheckForRandomEvent` RPC call in hybrid mode |
+| `src/game/interface/hud/actionDialogs/FormAgreement.js` | Skip policy `accept` RPC call in hybrid mode |
+| `src/game/interface/hud/SystemControls.js` | Add world fork badge (optional) |
+| `src/hooks/useWorldFork.js` | New hook: fetch fork metadata from `/v2/world` |
 
 ---
 
@@ -1821,22 +2492,370 @@ The hybrid server should read/write the `TIME_ACCELERATION` constant from the `C
 
 ---
 
-## 10. Phase 8: Testing
+## 10. Phase 8: Testing & Verification
 
-### 10.1 Strategy
+### 10.1 Health Check Endpoint
 
-The existing test suite uses `mongodb-memory-server` and Mocha/Chai/Sinon. New tests follow the same patterns.
+There is no health endpoint in the current codebase. Add one so that every phase
+can be verified with a single curl. This is also needed by Docker health checks
+and load balancers in production.
 
-### 10.2 New Test Files
+**New file: `src/api/controllers/health.js`**
+
+```js
+const KoaRouter = require('@koa/router');
+const mongoose = require('mongoose');
+const appConfig = require('config');
+const { getMode, isHybrid } = require('@common/lib/gameMode');
+
+const router = new KoaRouter();
+
+router.get('/v2/health', async (ctx) => {
+  const checks = {};
+
+  // MongoDB
+  // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
+  checks.mongodb = {
+    status: mongoose.connection.readyState === 1 ? 'ok' : 'error',
+    readyState: mongoose.connection.readyState
+  };
+
+  // Redis (optional)
+  try {
+    const redis = require('@common/lib/cache').client; // adjust to actual redis client export
+    if (redis?.isOpen) {
+      checks.redis = { status: 'ok' };
+    } else {
+      checks.redis = { status: 'not_connected' };
+    }
+  } catch (e) {
+    checks.redis = { status: 'not_configured' };
+  }
+
+  // Elasticsearch (optional)
+  try {
+    const esUri = appConfig.get('Elasticsearch.uri');
+    checks.elasticsearch = { status: esUri ? 'configured' : 'not_configured' };
+  } catch (e) {
+    checks.elasticsearch = { status: 'not_configured' };
+  }
+
+  // Game mode
+  checks.gameMode = {
+    mode: getMode(),
+    hybrid: isHybrid()
+  };
+
+  // World fork (hybrid only)
+  if (isHybrid()) {
+    try {
+      const fork = await mongoose.model('WorldFork').findOne({}).lean();
+      checks.worldFork = fork
+        ? { status: 'ok', block: fork.blockNumber, label: fork.label, forkedAt: fork.forkedAt }
+        : { status: 'missing' };
+    } catch (e) {
+      checks.worldFork = { status: 'error', error: e.message };
+    }
+  }
+
+  const allOk = checks.mongodb.status === 'ok'
+    && (!isHybrid() || checks.worldFork?.status === 'ok');
+
+  ctx.status = allOk ? 200 : 503;
+  ctx.body = { status: allOk ? 'ok' : 'degraded', checks };
+});
+
+module.exports = router;
+```
+
+Add to `src/api/controllers/index.js` (always mounted — useful in both modes).
+
+### 10.2 Per-Phase Verification
+
+Each phase has concrete checks you can run immediately after completing it.
+This is not an afterthought — **build the verification step before building the phase.**
+
+#### After Phase 1: Configuration
+
+```bash
+# Verify gameMode helper resolves correctly
+GAME_MODE=hybrid node -e "
+  require('module-alias/register');
+  require('dotenv').config({ silent: true });
+  const { getMode, isHybrid } = require('@common/lib/gameMode');
+  console.log('mode:', getMode(), 'isHybrid:', isHybrid());
+"
+# → mode: hybrid isHybrid: true
+
+# Verify config loads the new section
+GAME_MODE=hybrid node -e "
+  require('dotenv').config({ silent: true });
+  const config = require('config');
+  console.log('GameMode config:', JSON.stringify(config.get('GameMode')));
+"
+# → GameMode config: {"mode":"hybrid","chainSyncContracts":["asteroid","crewmate"]}
+
+# Verify MongoDB replica set supports transactions
+node -e "
+  require('module-alias/register');
+  require('dotenv').config({ silent: true });
+  require('@common/storage/db');
+  const mongoose = require('mongoose');
+  setTimeout(async () => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    await session.abortTransaction();
+    session.endSession();
+    console.log('Transactions OK');
+    process.exit(0);
+  }, 2000);
+"
+# → Transactions OK (or "Transaction numbers are only allowed..." if replica set is missing)
+```
+
+#### After Phase 2: Selective Event Pipeline
+
+```bash
+# Start the server and workers in hybrid mode, then check:
+GAME_MODE=hybrid node src/workers/eventRetriever.js --eventSource ethereum
+# → "Ethereum retriever disabled in hybrid mode" + exit
+
+GAME_MODE=hybrid node src/workers/starknetEventAuditor.js
+# → "Starknet event auditor disabled in hybrid mode" + exit
+
+# Starknet retriever should start normally (filtered to asteroid + crewmate)
+GAME_MODE=hybrid node src/workers/eventRetriever.js --eventSource starknet
+# → Starts polling (Ctrl+C to stop)
+```
+
+#### After Phase 3: Action API Endpoints
+
+```bash
+# Start the API server
+GAME_MODE=hybrid npm run watch &
+
+# Health check
+curl http://localhost:3001/v2/health
+# → { "status": "ok", "checks": { "mongodb": { "status": "ok" }, "gameMode": { "mode": "hybrid" }, ... } }
+
+# Unknown action should return 400
+curl -X POST http://localhost:3001/v2/actions/NonExistentAction \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $JWT_TOKEN" \
+  -d '{"callerCrew": {"id": 1, "label": 1}, "vars": {}}'
+# → { "error": "Unknown action: NonExistentAction" }
+
+# Without auth should return 401
+curl -X POST http://localhost:3001/v2/actions/ConstructionPlan \
+  -H "Content-Type: application/json" \
+  -d '{"callerCrew": {"id": 1, "label": 1}, "vars": {}}'
+# → 401
+```
+
+#### After Phase 4: First Handler (e.g., ConstructionPlan)
+
+This is where you need real entity data. Either fork the world first (Phase 6)
+or seed test data manually:
+
+```bash
+# Option A: Fork the world (runs the full retriever catch-up)
+node src/workers/forkWorld.js --label "dev-test"
+
+# Option B: Seed minimal test entities directly
+node -e "
+  require('module-alias/register');
+  require('dotenv').config({ silent: true });
+  require('@common/storage/db');
+  const mongoose = require('mongoose');
+  const Entity = require('@common/lib/Entity');
+  setTimeout(async () => {
+    // Create a test asteroid
+    const asteroid = Entity.Asteroid(1);
+    await mongoose.model('Entity').updateOne(
+      { uuid: asteroid.uuid }, asteroid, { upsert: true }
+    );
+    // Create a test crew owned by a test address
+    const crew = Entity.Crew(1);
+    await mongoose.model('Entity').updateOne(
+      { uuid: crew.uuid }, crew, { upsert: true }
+    );
+    await mongoose.model('NftComponent').create({
+      entity: crew, owners: { starknet: '0xYOUR_TEST_ADDRESS' }
+    });
+    await mongoose.model('CrewComponent').create({
+      entity: crew, status: 1 /* ready */
+    });
+    console.log('Test entities seeded');
+    process.exit(0);
+  }, 2000);
+"
+```
+
+Then test the action:
+
+```bash
+curl -X POST http://localhost:3001/v2/actions/ConstructionPlan \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $JWT_TOKEN" \
+  -d '{
+    "callerCrew": { "id": 1, "label": 1 },
+    "vars": { "asteroidId": 1, "lotIndex": 42, "buildingType": 1 }
+  }'
+# Success → 200 with result
+# Validation failure → 400 with error message
+# Check that the Building entity was created:
+curl "http://localhost:3001/v2/entities?id=NEW_BUILDING_ID&label=5&components=Building,Location"
+```
+
+#### After Phase 5: Client Integration
+
+```bash
+# Start the client pointed at the local server
+cd /path/to/influence-client
+REACT_APP_API_URL=http://localhost:3001 REACT_APP_GAME_MODE=hybrid npm start
+
+# Manual test checklist:
+# □ Connect wallet
+# □ See your asteroids and crewmates (from the fork)
+# □ Plan a construction → verify building appears on the lot
+# □ Check the Activity feed updates via Socket.IO
+# □ Refresh the page — verify state persisted in MongoDB
+```
+
+#### After Phase 6: World Fork
+
+```bash
+# Run the fork
+node src/workers/forkWorld.js --label "test-fork"
+
+# Verify fork metadata
+curl http://localhost:3001/v2/world
+# → { "forkBlock": 850000, "label": "test-fork", ... }
+
+# Verify entity data was populated
+curl http://localhost:3001/v2/health
+# → worldFork.status: "ok"
+
+# Spot-check: count asteroids
+node -e "
+  require('module-alias/register');
+  require('dotenv').config({ silent: true });
+  require('@common/storage/db');
+  const mongoose = require('mongoose');
+  setTimeout(async () => {
+    const count = await mongoose.model('NftComponent').countDocuments({ 'entity.label': 1 });
+    console.log('Asteroids:', count);
+    process.exit(0);
+  }, 2000);
+"
+```
+
+### 10.3 Smoke Test Script
+
+A single script that exercises the full hybrid flow end-to-end. Run it after
+any change to verify nothing is broken.
+
+**New file: `test/smoke/hybrid.sh`**
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_URL="${1:-http://localhost:3001}"
+PASS=0
+FAIL=0
+
+check() {
+  local name="$1" cmd="$2" expected="$3"
+  result=$(eval "$cmd" 2>/dev/null || echo "CURL_FAILED")
+  if echo "$result" | grep -q "$expected"; then
+    echo "  ✓ $name"
+    PASS=$((PASS + 1))
+  else
+    echo "  ✗ $name (expected '$expected', got: $result)"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+echo "Hybrid server smoke test: $BASE_URL"
+echo ""
+
+echo "Infrastructure:"
+check "Health endpoint reachable" \
+  "curl -s $BASE_URL/v2/health" '"status"'
+check "MongoDB connected" \
+  "curl -s $BASE_URL/v2/health | node -e \"process.stdin.on('data',d=>{console.log(JSON.parse(d).checks.mongodb.status)})\"" \
+  "ok"
+check "Game mode is hybrid" \
+  "curl -s $BASE_URL/v2/health | node -e \"process.stdin.on('data',d=>{console.log(JSON.parse(d).checks.gameMode.mode)})\"" \
+  "hybrid"
+check "World fork exists" \
+  "curl -s $BASE_URL/v2/world" '"forkBlock"'
+
+echo ""
+echo "API:"
+check "Actions endpoint exists (401 without auth)" \
+  "curl -s -o /dev/null -w '%{http_code}' -X POST $BASE_URL/v2/actions/ConstructionPlan" \
+  "401"
+check "Unknown action returns error" \
+  "curl -s -X POST $BASE_URL/v2/actions/FakeAction -H 'Content-Type: application/json' -H 'Authorization: Bearer test'" \
+  "error"
+
+echo ""
+echo "Data:"
+check "Entities endpoint returns results" \
+  "curl -s '$BASE_URL/v2/entities?label=1&limit=1'" \
+  "id"
+
+echo ""
+echo "Results: $PASS passed, $FAIL failed"
+[ "$FAIL" -eq 0 ] || exit 1
+```
+
+```bash
+# Usage:
+chmod +x test/smoke/hybrid.sh
+./test/smoke/hybrid.sh                          # default: localhost:3001
+./test/smoke/hybrid.sh http://my-server:3001    # remote server
+```
+
+### 10.4 Unit Tests
+
+The existing test suite uses `mongodb-memory-server` (with replica set support)
+and Mocha/Chai/Sinon. The fixture setup in `test/setup/fixtures.js` spins up an
+in-memory MongoDB, creates test credentials, and exposes `this.GLOBALS` and
+`this.utils` to all tests.
+
+**Important:** `mongodb-memory-server` defaults to a standalone instance, which
+does **not** support transactions. The test setup needs to create a replica set:
+
+```js
+// In test/setup/fixtures.js — change MongoMemoryServer to MongoMemoryReplSet:
+const { MongoMemoryReplSet } = require('mongodb-memory-server');
+
+// In beforeAll:
+mongoServer = await MongoMemoryReplSet.create({
+  replSet: { count: 1, storageEngine: 'wiredTiger' },
+  binary: { version: '6.0.14' }
+});
+```
+
+This is required for any test that exercises `GameEngine.execute()` (which uses
+transactions). Existing tests that don't use transactions are unaffected.
+
+**New test files:**
 
 ```
 test/src/common/gameLogic/
-├── GameEngine.spec.js
+├── GameEngine.spec.js              # Two-phase execution, idempotency, error codes
+├── helpers/
+│   ├── syntheticEvent.spec.js      # Event creation, ordering, keys, idempotency lookup
+│   └── idGenerator.spec.js         # Counter model, ID uniqueness
 ├── validators/
-│   ├── access.spec.js
-│   ├── crew.spec.js
-│   ├── inventory.spec.js
-│   └── location.spec.js
+│   ├── access.spec.js              # Crew ownership, caller permission
+│   ├── crew.spec.js                # Crew ready state, busy check
+│   ├── inventory.spec.js           # Resource sufficiency, capacity
+│   └── location.spec.js            # Lot occupancy, asteroid presence
 ├── handlers/
 │   ├── construction/
 │   │   ├── plan.spec.js
@@ -1845,29 +2864,126 @@ test/src/common/gameLogic/
 │   ├── production/
 │   │   ├── extractStart.spec.js
 │   │   └── extractFinish.spec.js
-│   └── ...
-└── helpers/
-    └── idGenerator.spec.js
+│   └── ... (one per handler)
+test/src/api/controllers/
+│   ├── actions.spec.js             # API-level: auth, routing, error codes, idempotency
+│   └── health.spec.js              # Health endpoint responses
 ```
 
-### 10.3 Test Approach
+**Test pattern for each handler** (follows existing ConstructionPlanned.spec.js style):
 
-Each handler test should:
-1. Set up entities in mongodb-memory-server (use existing test factories)
-2. Call the handler's `validate()` + `execute()`
-3. Assert MongoDB state was updated correctly
-4. Assert Activity record was created
-5. Assert IndexItem was queued
-6. Test validation failures (wrong owner, insufficient resources, wrong state, etc.)
+```js
+describe('ConstructionPlan Action Handler', function () {
+  let jwt;
 
-### 10.4 Integration Tests
+  beforeEach(async function () {
+    // Seed: asteroid, crew with ownership, empty lot
+    // (use existing test factories + direct model creates)
+  });
 
-Add API-level tests for the `/v2/actions/:action` endpoint:
+  afterEach(function () {
+    return this.utils.resetCollections([
+      'Entity', 'BuildingComponent', 'LocationComponent',
+      'ControlComponent', 'Activity', 'Starknet'
+    ]);
+  });
+
+  describe('validate()', function () {
+    it('should reject if caller does not own the crew', async function () { ... });
+    it('should reject if crew is busy (not ready)', async function () { ... });
+    it('should reject if lot is occupied', async function () { ... });
+    it('should reject invalid building type', async function () { ... });
+  });
+
+  describe('full execution via GameEngine.execute()', function () {
+    it('should create Building entity with correct components', async function () {
+      const result = await GameEngine.execute({
+        action: 'ConstructionPlan',
+        address: TEST_ADDRESS,
+        callerCrew: { id: 1, label: 1 },
+        vars: { asteroidId: 1, lotIndex: 42, buildingType: 1 }
+      });
+      // Assert Building entity exists
+      const building = await mongoose.model('BuildingComponent').findOne({});
+      expect(building).to.exist;
+      expect(building.buildingType).to.equal(1);
+    });
+
+    it('should create a synthetic Starknet event', async function () { ... });
+    it('should create an Activity record (via Dispatcher handler)', async function () { ... });
+    it('should queue entity for ES indexing', async function () { ... });
+    it('should return idempotent result on retry with same key', async function () {
+      const key = 'test-idempotency-key';
+      const r1 = await GameEngine.execute({ ..., idempotencyKey: key });
+      const r2 = await GameEngine.execute({ ..., idempotencyKey: key });
+      expect(r2.replayed).to.be.true;
+    });
+  });
+
+  describe('TOCTOU protection', function () {
+    it('should throw WriteConflict on concurrent modification', async function () {
+      // Start two executions for the same lot in parallel
+      // One should succeed, one should throw WriteConflict (error code 112)
+    });
+  });
+
+  describe('getReturnValues() vs transformEventData() parity', function () {
+    it('should produce the same structure as the Dispatcher handler', function () {
+      // Compare handler.getReturnValues() against
+      // DispatcherHandler.transformEventData(syntheticEvent)
+    });
+  });
+});
 ```
-test/src/api/controllers/actions.spec.js
+
+### 10.5 Integration Tests
+
+API-level tests using `supertest` (already a devDependency). These test the
+full request cycle: HTTP request → auth → controller → GameEngine → DB → response.
+
+```js
+// test/src/api/controllers/actions.spec.js
+describe('POST /v2/actions/:action', function () {
+  it('should return 401 without auth token', async function () { ... });
+  it('should return 400 for unknown action', async function () { ... });
+  it('should return 400 for validation failure', async function () { ... });
+  it('should return 200 for valid action', async function () { ... });
+  it('should return 409 on WriteConflict', async function () { ... });
+  it('should return same result with idempotency key on retry', async function () { ... });
+});
+
+describe('GET /v2/health', function () {
+  it('should return 200 with all checks', async function () { ... });
+  it('should return 503 if mongodb is down', async function () { ... });
+});
+
+describe('GET /v2/world', function () {
+  it('should return fork metadata', async function () { ... });
+  it('should return 404 if no fork exists', async function () { ... });
+});
 ```
 
-These use `supertest` (already a devDependency) to test the full request cycle.
+### 10.6 Recommended Implementation Order
+
+Build verification alongside each phase, not after:
+
+```
+Phase 1 → immediately run the Phase 1 verification commands above
+Phase 2 → verify workers start/exit correctly
+Phase 3 → add health controller + actions controller
+       → run smoke test (infrastructure checks pass, actions return 401/400)
+Phase 4 → for EACH handler:
+       1. Write the handler
+       2. Write its unit test
+       3. Run the test: npm test -- --grep "ConstructionPlan"
+       4. Manual curl test against the running server
+       → run smoke test after each batch
+Phase 5 → manual client testing (see checklist above)
+Phase 6 → fork a world, run full smoke test, connect client to forked data
+```
+
+The smoke test script should pass after Phase 3 (with some checks skipped) and
+fully pass after Phase 6. Run it as a gate before marking any phase complete.
 
 ---
 
@@ -1903,7 +3019,14 @@ These use `supertest` (already a devDependency) to test the full request cycle.
 | `src/workers/forkWorld.js` | CLI tool to snapshot on-chain state and record fork point |
 | `src/common/storage/db/models/Counter.js` | ID counter model |
 | `src/api/controllers/actions.js` | Action API endpoints |
-| `test/src/common/gameLogic/**/*.spec.js` | Tests |
+| `Dockerfile` | Container image for the influence-server |
+| `docker-entrypoint.sh` | Entrypoint: waits for mongo, inits replica set, forks world if needed, starts pm2 |
+| `docker-compose.yml` | Full stack: server + MongoDB (replica set) + Redis + Elasticsearch |
+| `src/api/controllers/health.js` | Health check endpoint (`GET /v2/health`) |
+| `test/smoke/hybrid.sh` | End-to-end smoke test script |
+| `test/src/common/gameLogic/**/*.spec.js` | Unit tests for game logic engine |
+| `test/src/api/controllers/actions.spec.js` | Integration tests for action API |
+| `test/src/api/controllers/health.spec.js` | Integration tests for health endpoint |
 
 ### Modified Files
 
@@ -1919,14 +3042,21 @@ These use `supertest` (already a devDependency) to test the full request cycle.
 | `src/workers/eventRetriever.js` | Disable Ethereum retriever in hybrid mode |
 | `src/workers/starknetEventAuditor.js` | Disable in hybrid mode |
 | `src/common/storage/db/models/index.js` | Register Counter and WorldFork models |
+| `src/api/controllers/index.js` | Export health controller (in addition to actions) |
+| `test/setup/fixtures.js` | Switch `MongoMemoryServer` to `MongoMemoryReplSet` for transaction support |
 
 ### Client Changes (influence-client)
 
 | File | Change |
 |------|--------|
 | `src/appConfig/_default.json` | Add `GameMode` config key |
-| `src/contexts/ChainTransactionContext.js` | Add hybrid branch in `executeSystem` |
-| `src/hooks/useSimulationEnabled.js` | Possibly extend for hybrid awareness |
+| `src/contexts/ChainTransactionContext.js` | Hybrid branch in `executeSystem` (~line 1166); skip approval prepend (~line 800); guard pending tx recovery on mount |
+| `src/contexts/SessionContext.js` | Skip session key + paymaster init when `isHybrid()` |
+| `src/hooks/useWalletTokenBalance.js` | Return mock/server SWAY balance in hybrid mode |
+| `src/contexts/CrewContext.js` | Skip `CheckForRandomEvent` RPC call in hybrid mode |
+| `src/game/interface/hud/actionDialogs/FormAgreement.js` | Skip policy `accept` RPC call in hybrid mode |
+| `src/game/interface/hud/SystemControls.js` | Add world fork badge (optional) |
+| `src/hooks/useWorldFork.js` | **New file:** fetch fork metadata from `GET /v2/world` |
 
 ---
 
@@ -1958,8 +3088,12 @@ Phase 4: Game Logic Engine — Core (2-3 weeks)
   └── Depends on: Phase 3
 
 Phase 5: Client Integration (2-3 days)
-  ├── ChainTransactionContext hybrid branch
-  ├── Config additions
+  ├── Client gameMode config + isHybrid() helper
+  ├── ChainTransactionContext: hybrid branch in executeSystem, skip approvals
+  ├── SessionContext: skip session key + paymaster init
+  ├── useWalletTokenBalance: mock SWAY balance (Option B initially)
+  ├── CrewContext + FormAgreement: skip direct RPC calls
+  ├── World fork badge in HUD (optional)
   └── Depends on: Phase 3 (can start in parallel with Phase 4)
 
 Phase 6: Login & Ownership Sync (2-3 days)
@@ -1972,9 +3106,15 @@ Phase 7: Time System (1 day)
   ├── Player-triggered completion (Option A) — mostly free, just server-side timestamp check
   └── Depends on: Phase 4
 
-Phase 8: Testing (ongoing, parallel with Phase 4)
-  ├── Test each handler as it's built
-  └── Integration tests after Phase 3 + 4
+Phase 8: Testing & Verification (ongoing, parallel with all phases)
+  ├── Phase 1: run verification commands (gameMode, config, transactions)
+  ├── Phase 3: add health controller + smoke test script
+  ├── Phase 3: update test fixtures (MongoMemoryReplSet for transactions)
+  ├── Phase 4: write unit test for EACH handler alongside the handler itself
+  ├── Phase 4: run smoke test after each handler batch
+  ├── Phase 5: manual client testing (checklist in Section 10.2)
+  ├── Phase 6: fork world + full smoke test + integration tests
+  └── Gate: smoke test must pass before marking any phase complete
 ```
 
 **Total estimated scope:** ~4-5 weeks for a fully functional hybrid mode with all game actions.
