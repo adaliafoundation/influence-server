@@ -93,6 +93,10 @@
   "NftCardBuilder": {
     "runDelay": 5000
   },
+  "GameMode": {
+    "mode": "chain",
+    "chainSyncContracts": ["asteroid", "crewmate"]
+  },
   "Starknet": {
     "originBlock": 1
   }

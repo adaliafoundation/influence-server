@@ -84,6 +84,9 @@
       "notification": "SENDGRID_TEMPLATE_NOTIFICATION"
     }
   },
+  "GameMode": {
+    "mode": "GAME_MODE"
+  },
   "Starknet": {
     "originBlock": "STARKNET_ORIGIN_BLOCK",
     "provider": "STARKNET_PROVIDER",
