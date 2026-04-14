@@ -804,7 +804,7 @@ src/common/gameLogic/
 │   ├── idGenerator.js         # Generates unique entity IDs (replaces on-chain ID assignment)
 │   ├── timeAcceleration.js    # Game time calculations (uses @influenceth/sdk Time)
 │   ├── modifiers.js           # Crew/building efficiency modifiers
-│   └── bootstrap.js           # Startup ownership data check
+│   └── (removed — replaced by forkWorld.js worker + WorldFork model)
 ├── validators/
 │   ├── access.js              # Permission checking (mirrors influence-starknet/src/common/access.cairo)
 │   ├── crew.js                # Crew readiness, food, delegation checks
@@ -1561,56 +1561,187 @@ In hybrid mode, the Starknet event retriever already runs for asteroid + crewmat
 contracts (Section 4.2). Transfer events are fetched, stored, and processed by the
 existing handlers. **No new ownership sync code is needed for ongoing updates.**
 
-### 8.3 Initial Bootstrap: Historical Event Catch-Up
+### 8.3 World Fork Tool
 
-On first boot of a hybrid server, the MongoDB has no ownership data. The retriever
-needs to catch up on all historical Transfer events from the chain.
+A hybrid server's game state is a **fork** of the on-chain world at a specific
+Starknet block. The fork tool is a one-time CLI that snapshots the chain state
+into the local MongoDB and records the fork point — block number, block hash,
+and timestamp — so it can be queried by the API and displayed in the game client.
 
-The existing retriever already supports this via the `--run-once --fromBlock` flags:
-
+**Usage:**
 ```bash
-# First boot: retrieve all historical asteroid + crewmate events
-node src/workers/eventRetriever.js \
-  --eventSource starknet \
-  --run-once \
-  --fromBlock 0
+# Fork from the current chain head
+node src/workers/forkWorld.js
 
-# Then run the processor to apply them
-node src/workers/eventProcessor.js --ts 0
+# Fork from a specific block
+node src/workers/forkWorld.js --block 850000
+
+# Fork with a custom label
+node src/workers/forkWorld.js --label "dev-test-universe"
 ```
 
-After the initial catch-up, the retriever runs in its normal polling loop and
-picks up new Transfer events as they occur.
+**What it does (in order):**
+1. Resolves the target block (defaults to latest via `StarknetProvider.getBlockNumber()`)
+2. Retrieves the block metadata (hash, timestamp) via `StarknetProvider.getBlock()`
+3. Runs the event retriever catch-up from block 0 to the target block
+4. Runs the event processor to apply all retrieved events
+5. Writes a `WorldFork` document to MongoDB recording the fork point
+6. Logs a summary and exits
 
-**File: `src/common/gameLogic/helpers/bootstrap.js`** (optional convenience wrapper)
+**New file: `src/workers/forkWorld.js`**
 
 ```js
-const { NftComponentService } = require('@common/services');
+require('module-alias/register');
+require('dotenv').config({ silent: true });
+require('@common/storage/db');
+const mongoose = require('mongoose');
+const yargs = require('yargs/yargs');
+const { hideBin } = require('yargs/helpers');
 const logger = require('@common/lib/logger');
+const StarknetProvider = require('@common/lib/starknet/provider');
+const { StarknetRetriever } = require('@common/lib/events/retrievers/starknet/retriever');
+const EventProcessor = require('@common/lib/events/processor/EventProcessor');
 
-/**
- * Check if initial ownership data exists. If not, log a warning
- * directing the operator to run the initial retriever catch-up.
- * Called on server startup in hybrid mode.
- */
-async function checkOwnershipBootstrap() {
-  const NftComponent = mongoose.model('NftComponent');
-  const asteroidCount = await NftComponent.countDocuments({ 'entity.label': Entity.IDS.ASTEROID });
-  const crewmateCount = await NftComponent.countDocuments({ 'entity.label': Entity.IDS.CREWMATE });
+const done = function (error) {
+  if (error) logger.inspect(error, 'error');
+  logger.info('done');
+  process.exit();
+};
 
-  if (asteroidCount === 0 && crewmateCount === 0) {
-    logger.warn(
-      'No NFT ownership data found. Run the initial event catch-up:\n'
-      + '  node src/workers/eventRetriever.js --eventSource starknet --run-once --fromBlock 0\n'
-      + '  node src/workers/eventProcessor.js --ts 0'
+const args = yargs(hideBin(process.argv))
+  .option('block', {
+    type: 'number',
+    description: 'Starknet block number to fork from (default: latest)',
+    demand: false
+  })
+  .option('label', {
+    type: 'string',
+    description: 'Human-readable label for this universe',
+    default: null
+  })
+  .help()
+  .parse();
+
+const main = async function ({ block, label }) {
+  const WorldFork = mongoose.model('WorldFork');
+
+  // Check if already forked
+  const existing = await WorldFork.findOne({});
+  if (existing) {
+    logger.error(
+      `World already forked at block ${existing.blockNumber} (${existing.forkedAt.toISOString()}).`
+      + ' Drop the database to re-fork.'
     );
-  } else {
-    logger.info(`Ownership bootstrap OK: ${asteroidCount} asteroids, ${crewmateCount} crewmates`);
+    return;
   }
-}
 
-module.exports = { checkOwnershipBootstrap };
+  // 1. Resolve target block
+  const provider = new StarknetProvider();
+  const targetBlockNumber = block || await provider.getBlockNumber();
+  const targetBlock = await provider.getBlock(targetBlockNumber);
+
+  logger.info(`Forking world from Starknet block ${targetBlockNumber} (hash: ${targetBlock.blockHash})`);
+
+  // 2. Retrieve all events from genesis to target block
+  const retriever = new StarknetRetriever();
+  await retriever.runOnce({ fromBlock: 0, toBlock: targetBlockNumber });
+
+  // 3. Process all retrieved events
+  const processor = new EventProcessor({ runDelay: 0 });
+  await processor.main({ timestamp: 0 });
+
+  // 4. Record the fork point
+  await WorldFork.create({
+    blockNumber: targetBlockNumber,
+    blockHash: targetBlock.blockHash,
+    blockTimestamp: new Date(targetBlock.timestamp * 1000),
+    forkedAt: new Date(),
+    label: label || `fork-${targetBlockNumber}`
+  });
+
+  // 5. Summary
+  const NftComponent = mongoose.model('NftComponent');
+  const asteroidCount = await NftComponent.countDocuments({ 'entity.label': 1 }); // Entity.IDS.ASTEROID
+  const crewmateCount = await NftComponent.countDocuments({ 'entity.label': 2 }); // Entity.IDS.CREWMATE
+
+  logger.info([
+    'World fork complete:',
+    `  Block:      ${targetBlockNumber}`,
+    `  Hash:       ${targetBlock.blockHash}`,
+    `  Timestamp:  ${new Date(targetBlock.timestamp * 1000).toISOString()}`,
+    `  Label:      ${label || `fork-${targetBlockNumber}`}`,
+    `  Asteroids:  ${asteroidCount}`,
+    `  Crewmates:  ${crewmateCount}`
+  ].join('\n'));
+};
+
+main(args)
+  .then(done)
+  .catch(done);
 ```
+
+**New file: `src/common/storage/db/models/WorldFork.js`**
+
+```js
+const mongoose = require('mongoose');
+const { Schema } = mongoose;
+
+const schema = new Schema({
+  blockNumber: { type: Number, required: true },
+  blockHash: { type: String, required: true },
+  blockTimestamp: { type: Date, required: true },  // on-chain block time
+  forkedAt: { type: Date, required: true },         // when the fork was created
+  label: { type: String, default: null }
+}, { timestamps: true });
+
+// Only one fork per database
+schema.index({}, { unique: true });
+
+module.exports = mongoose.model('WorldFork', schema);
+```
+
+**Startup check** — Replace the bootstrap.js helper. On server startup in hybrid
+mode, check for the WorldFork document:
+
+```js
+// In server startup (hybrid mode only)
+const WorldFork = mongoose.model('WorldFork');
+const fork = await WorldFork.findOne({});
+if (!fork) {
+  logger.error(
+    'No world fork found. Run the fork tool first:\n'
+    + '  node src/workers/forkWorld.js'
+  );
+  process.exit(1);
+}
+logger.info(`Hybrid mode: world forked from block ${fork.blockNumber} (${fork.label})`);
+```
+
+**API endpoint** — Expose the fork info so the client can display it:
+
+```js
+// In the actions controller (or a new world controller), hybrid mode only
+router.get('/v2/world', async (ctx) => {
+  const fork = await mongoose.model('WorldFork').findOne({}).lean();
+  if (!fork) {
+    ctx.status = 404;
+    ctx.body = { error: 'No world fork found' };
+    return;
+  }
+  ctx.status = 200;
+  ctx.body = {
+    forkBlock: fork.blockNumber,
+    forkBlockHash: fork.blockHash,
+    forkBlockTimestamp: fork.blockTimestamp,
+    forkedAt: fork.forkedAt,
+    label: fork.label
+  };
+});
+```
+
+This answers **Open Question #1** (initial world state) — the fork tool snapshots
+whatever exists on-chain at the target block. It also addresses **Open Question #4**
+(multi-server state) — each server is its own "universe" identified by its fork point.
 
 ### 8.4 Per-Login Ownership Check
 
@@ -1768,7 +1899,8 @@ These use `supertest` (already a devDependency) to test the full request cycle.
 | `src/common/gameLogic/helpers/idGenerator.js` | Entity ID generation |
 | `src/common/gameLogic/helpers/timeAcceleration.js` | Time calculation |
 | `src/common/gameLogic/helpers/modifiers.js` | Crew/building modifiers |
-| `src/common/gameLogic/helpers/bootstrap.js` | Startup check for ownership data (warns if initial catch-up needed) |
+| `src/common/storage/db/models/WorldFork.js` | Fork point metadata (block number, hash, timestamp, label) |
+| `src/workers/forkWorld.js` | CLI tool to snapshot on-chain state and record fork point |
 | `src/common/storage/db/models/Counter.js` | ID counter model |
 | `src/api/controllers/actions.js` | Action API endpoints |
 | `test/src/common/gameLogic/**/*.spec.js` | Tests |
@@ -1786,7 +1918,7 @@ These use `supertest` (already a devDependency) to test the full request cycle.
 | `src/common/lib/events/processor/EventProcessor.js` | Filter events in hybrid mode |
 | `src/workers/eventRetriever.js` | Disable Ethereum retriever in hybrid mode |
 | `src/workers/starknetEventAuditor.js` | Disable in hybrid mode |
-| `src/common/storage/db/models/index.js` | Register Counter model |
+| `src/common/storage/db/models/index.js` | Register Counter and WorldFork models |
 
 ### Client Changes (influence-client)
 
@@ -1831,8 +1963,9 @@ Phase 5: Client Integration (2-3 days)
   └── Depends on: Phase 3 (can start in parallel with Phase 4)
 
 Phase 6: Login & Ownership Sync (2-3 days)
-  ├── bootstrap.js (startup ownership data check)
-  ├── Initial event catch-up via existing retriever (--run-once --fromBlock 0)
+  ├── forkWorld.js CLI tool (retrieves chain state, records fork point)
+  ├── WorldFork model + startup check (exit if no fork)
+  ├── GET /v2/world endpoint (exposes fork info to client)
   └── Depends on: Phase 1, Phase 2
 
 Phase 7: Time System (1 day)
@@ -1874,13 +2007,13 @@ Phase 8: Testing (ongoing, parallel with Phase 4)
 
 ### Open Questions
 
-1. **Initial world state** — When a player connects to a fresh hybrid server, what asteroids exist? Use `seedData.js` to populate the asteroid belt, or sync all asteroid entities from chain on first boot?
+1. ~~**Initial world state**~~ — **Answered by Section 8.3 (World Fork Tool).** The `forkWorld.js` CLI snapshots the on-chain state at a target block into MongoDB. Whatever entities exist on-chain at that block are the initial world state.
 
 2. **Crew creation** — On-chain, crews are NFTs that must be minted. In hybrid mode, should crew creation be free and local? Or tied to the on-chain Crewmate NFTs the user owns?
 
 3. **SWAY token economy** — Should the local server simulate SWAY balances? The client's `MockTransactionManager` gives users a starting balance (`50e6 * TOKEN_SCALE`). The hybrid server would need a similar mechanism.
 
-4. **Multi-server state** — If two hybrid servers run independently, they'll have divergent game states. Is this expected (each server is its own "world")? Or should there be a sync mechanism?
+4. ~~**Multi-server state**~~ — **Answered by Section 8.3 (World Fork Tool).** Each server is its own "universe" identified by its fork point (block number + label). The `GET /v2/world` endpoint exposes this so the client can display which universe the player is in.
 
 5. **Read-only chain data** — Some data the client reads directly from Starknet RPC (e.g., SWAY balance via `useWalletTokenBalance`). In hybrid mode, should the client read these from the local server instead?
 
