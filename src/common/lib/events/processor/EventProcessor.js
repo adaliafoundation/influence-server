@@ -1,3 +1,5 @@
+const appConfig = require('config');
+const { Address } = require('@influenceth/sdk');
 const { delay } = require('lodash');
 const { Timer } = require('timer-node');
 const { eachSeries } = require('async');
@@ -7,7 +9,16 @@ const { EthereumBlockCache, StarknetBlockCache } = require('@common/lib/cache');
 const web3 = require('@common/lib/web3');
 const logger = require('@common/lib/logger');
 const eventEmitter = require('@common/lib/sio/emitter');
+const { isHybrid } = require('@common/lib/gameMode');
 const EventConfig = require('./config');
+
+// In hybrid mode, only process events from asteroid and crewmate contracts.
+const HYBRID_ALLOWED_CONTRACTS = isHybrid()
+  ? new Set([
+    Address.toStandard(appConfig.get('Contracts.starknet.asteroid')),
+    Address.toStandard(appConfig.get('Contracts.starknet.crewmate'))
+  ])
+  : null;
 
 class EventProcessor {
   constructor(props = {}) {
@@ -20,6 +31,17 @@ class EventProcessor {
     return eachSeries(events, async (event) => {
       const { address, event: eventName } = event;
       if (!address || !eventName) throw new Error('Missing required value for address or event');
+
+      // In hybrid mode, only process events from whitelisted contracts (asteroid +
+      // crewmate for NFT ownership). All other events (dispatcher, crew, ship,
+      // sway) are handled locally by the GameEngine.
+      if (HYBRID_ALLOWED_CONTRACTS && !HYBRID_ALLOWED_CONTRACTS.has(Address.toStandard(address))) {
+        logger.debug(`Hybrid mode: skipping event ${eventName} from ${address}`);
+        event.set('lastProcessed', new Date());
+        await event.save();
+        return;
+      }
+
       const EventHandlerClass = EventConfig.getHandlerByAddressAndEvent({ address, eventName });
 
       if (!EventHandlerClass) {

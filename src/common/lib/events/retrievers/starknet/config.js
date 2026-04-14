@@ -2,23 +2,34 @@ const appConfig = require('config');
 const { Address } = require('@influenceth/sdk');
 const { reduce, set } = require('lodash');
 const { num: { toHex } } = require('starknet');
+const { isHybrid } = require('@common/lib/gameMode');
 const { starknet: handlers } = require('../../handlers');
 
 const STARKNET_CONTRACT_ASTEROID = appConfig.get('Contracts.starknet.asteroid');
-const STARKNET_CONTRACT_CREW = appConfig.get('Contracts.starknet.crew');
 const STARKNET_CONTRACT_CREWMATE = appConfig.get('Contracts.starknet.crewmate');
-const STARKNET_CONTRACT_DISPATCHER = appConfig.get('Contracts.starknet.dispatcher');
-const STARKNET_CONTRACT_SHIP = appConfig.get('Contracts.starknet.ship');
-const STARKNET_CONTRACT_SWAY = appConfig.get('Contracts.starknet.sway');
 
-const ADDRESS_NAME_MAP = {
-  [STARKNET_CONTRACT_ASTEROID]: handlers.Asteroid,
-  [STARKNET_CONTRACT_CREW]: handlers.Crew,
-  [STARKNET_CONTRACT_CREWMATE]: handlers.Crewmate,
-  [STARKNET_CONTRACT_DISPATCHER]: handlers.Dispatcher,
-  [STARKNET_CONTRACT_SHIP]: handlers.Ship,
-  [STARKNET_CONTRACT_SWAY]: handlers.Sway
-};
+// In hybrid mode, only track NFT ownership events from asteroid and crewmate contracts.
+// All game action events come from the dispatcher, which is handled locally by the GameEngine.
+let ADDRESS_NAME_MAP;
+if (isHybrid()) {
+  ADDRESS_NAME_MAP = {
+    [STARKNET_CONTRACT_ASTEROID]: handlers.Asteroid,
+    [STARKNET_CONTRACT_CREWMATE]: handlers.Crewmate
+  };
+} else {
+  const STARKNET_CONTRACT_CREW = appConfig.get('Contracts.starknet.crew');
+  const STARKNET_CONTRACT_DISPATCHER = appConfig.get('Contracts.starknet.dispatcher');
+  const STARKNET_CONTRACT_SHIP = appConfig.get('Contracts.starknet.ship');
+  const STARKNET_CONTRACT_SWAY = appConfig.get('Contracts.starknet.sway');
+  ADDRESS_NAME_MAP = {
+    [STARKNET_CONTRACT_ASTEROID]: handlers.Asteroid,
+    [STARKNET_CONTRACT_CREW]: handlers.Crew,
+    [STARKNET_CONTRACT_CREWMATE]: handlers.Crewmate,
+    [STARKNET_CONTRACT_DISPATCHER]: handlers.Dispatcher,
+    [STARKNET_CONTRACT_SHIP]: handlers.Ship,
+    [STARKNET_CONTRACT_SWAY]: handlers.Sway
+  };
+}
 
 class StarknetEventConfig {
   static _eventsConfig;
