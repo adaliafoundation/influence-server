@@ -18,6 +18,7 @@ const Referral = require('./Referral');
 const SwayClaim = require('./SwayClaim');
 const SwayCrossing = require('./SwayCrossing');
 const User = require('./User');
+const WorldFork = require('./WorldFork');
 
 const componentModels = require('./Components');
 
@@ -41,6 +42,7 @@ module.exports = {
   SwayClaim,
   SwayCrossing,
   User,
+  WorldFork,
   Ethereum,
   Starknet,
   ...componentModels

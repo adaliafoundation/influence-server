@@ -22,6 +22,7 @@ const sales = require('./sales');
 const search = require('./search');
 const stripe = require('./stripe');
 const users = require('./users');
+const world = require('./world');
 
 module.exports = {
   actions,
@@ -47,5 +48,6 @@ module.exports = {
   sales,
   search,
   stripe,
-  users
+  users,
+  world
 };
