@@ -33,6 +33,14 @@ schema
       partialFilterExpression: { event: 'EventAnnotated' }
     }
   )
-  .index({ status: 1, blockNumber: -1 });
+  .index({ status: 1, blockNumber: -1 })
+  .index(
+    { 'returnValues.idempotencyKey': 1 },
+    {
+      name: 'idempotency_key_unique',
+      unique: true,
+      partialFilterExpression: { 'returnValues.idempotencyKey': { $exists: true } }
+    }
+  );
 
 module.exports = EventModel.discriminator('Starknet', schema);
