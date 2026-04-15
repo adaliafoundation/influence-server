@@ -43,7 +43,7 @@ class CancelSellOrderHandler extends BaseActionHandler {
       storageSlot: Number(storageSlot) || 1
     };
 
-    this.existingOrder = await ComponentService.findOne({ component: 'Order', filter: orderFilter });
+    this.existingOrder = await ComponentService.findOne('Order', orderFilter);
 
     this.product = Number(product);
     this.price = Number(price) || 0;

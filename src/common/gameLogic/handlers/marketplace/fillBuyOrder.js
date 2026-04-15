@@ -54,7 +54,7 @@ class FillBuyOrderHandler extends BaseActionHandler {
       storageSlot: this.storageSlot
     };
 
-    const existingOrder = await ComponentService.findOne({ component: 'Order', filter: orderFilter });
+    const existingOrder = await ComponentService.findOne('Order', orderFilter);
     if (existingOrder) {
       const newAmount = (existingOrder.amount || 0) - this.amount;
       await this.writeComponent('Order', {
