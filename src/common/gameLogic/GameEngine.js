@@ -48,6 +48,14 @@ const loadHandlers = () => {
     CancelDelivery: require('./handlers/delivery/cancel'),
     ReceiveDelivery: require('./handlers/delivery/receive'),
     DumpDelivery: require('./handlers/delivery/dump'),
+    // Marketplace
+    CreateBuyOrder: require('./handlers/marketplace/createBuyOrder'),
+    CreateSellOrder: require('./handlers/marketplace/createSellOrder'),
+    FillBuyOrder: require('./handlers/marketplace/fillBuyOrder'),
+    CancelBuyOrder: require('./handlers/marketplace/cancelBuyOrder'),
+    FillSellOrder: require('./handlers/marketplace/fillSellOrder'),
+    CancelSellOrder: require('./handlers/marketplace/cancelSellOrder'),
+    ConfigureExchange: require('./handlers/marketplace/configureExchange'),
     // TODO: Add remaining handlers as they are implemented
   };
 
@@ -60,8 +68,23 @@ const loadHandlers = () => {
   handlers.LeaseAndProcessProductsStart = handlers.ProcessProductsStart;
   handlers.LeaseAndAssembleShipStart = handlers.AssembleShipStart;
   handlers.PurchaseDepositAndImprove = handlers.SampleDepositImprove;
+  handlers.EscrowDepositAndCreateBuyOrder = handlers.CreateBuyOrder;
 
   return handlers;
+};
+
+/**
+ * Virtual/batch actions that decompose into multiple individual handler calls.
+ * Each entry maps a client action name to the underlying handler name.
+ * When vars is an array, each element is executed as a separate action.
+ */
+const BATCH_ACTIONS = {
+  BulkFillSellOrder: { handler: 'FillSellOrder' },
+  EscrowWithdrawalAndFillBuyOrders: {
+    handler: 'FillBuyOrder',
+    cancelHandler: 'CancelBuyOrder',
+    getCancelFlag: (meta) => meta?.isCancellation
+  }
 };
 
 class GameEngine {
@@ -94,6 +117,33 @@ class GameEngine {
    * @returns {object} Action result
    */
   static async execute({ action, address, callerCrew, vars, meta, idempotencyKey }) {
+    // ── Batch action unwrap ──────────────────────────────────────────
+    const batchConfig = BATCH_ACTIONS[action];
+    if (batchConfig) {
+      const varSets = Array.isArray(vars) ? vars : [vars];
+      const isCancellation = batchConfig.getCancelFlag?.(meta);
+      const targetAction = isCancellation && batchConfig.cancelHandler
+        ? batchConfig.cancelHandler
+        : batchConfig.handler;
+
+      const results = [];
+      for (const varSet of varSets) {
+        // eslint-disable-next-line no-await-in-loop
+        const result = await this.execute({
+          action: targetAction,
+          address,
+          callerCrew: callerCrew || varSet.caller_crew,
+          vars: varSet,
+          meta,
+          idempotencyKey: idempotencyKey
+            ? `${idempotencyKey}-${results.length}`
+            : undefined
+        });
+        results.push(result);
+      }
+      return results.length === 1 ? results[0] : results;
+    }
+
     // ── Idempotency check ────────────────────────────────────────────
     if (idempotencyKey) {
       const existing = await SyntheticEvent.findByIdempotencyKey(idempotencyKey);
