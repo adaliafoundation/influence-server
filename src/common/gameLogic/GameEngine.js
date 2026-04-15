@@ -33,6 +33,14 @@ const loadHandlers = () => {
     // Processing
     ProcessProductsStart: require('./handlers/production/processProductsStart'),
     ProcessProductsFinish: require('./handlers/production/processProductsFinish'),
+    // Ship & Transit
+    AssembleShipStart: require('./handlers/ship/assembleStart'),
+    AssembleShipFinish: require('./handlers/ship/assembleFinish'),
+    TransitBetweenStart: require('./handlers/ship/transitStart'),
+    TransitBetweenFinish: require('./handlers/ship/transitFinish'),
+    DockShip: require('./handlers/ship/dock'),
+    UndockShip: require('./handlers/ship/undock'),
+    CommandeerShip: require('./handlers/ship/commandeer'),
     // TODO: Add remaining handlers as they are implemented
   };
 
@@ -40,8 +48,10 @@ const loadHandlers = () => {
   // In hybrid mode, these resolve to the same handler since on-chain
   // lease/purchase/initialize logic is not needed locally.
   handlers.InitializeAndStartSurfaceScan = handlers.ScanSurfaceStart;
+  handlers.InitializeAndStartTransit = handlers.TransitBetweenStart;
   handlers.FlexibleExtractResourceStart = handlers.ExtractResourceStart;
   handlers.LeaseAndProcessProductsStart = handlers.ProcessProductsStart;
+  handlers.LeaseAndAssembleShipStart = handlers.AssembleShipStart;
   handlers.PurchaseDepositAndImprove = handlers.SampleDepositImprove;
 
   return handlers;
