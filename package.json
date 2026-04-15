@@ -20,7 +20,9 @@
     "watch-all": "./node_modules/.bin/pm2 start ecosystem.config.js; pm2 monit ; ./node_modules/.bin/pm2 stop all",
     "pm2-watch": "./node_modules/.bin/pm2 start ecosystem.config.js; pm2 logs",
     "pm2-monitor": "./node_modules/.bin/pm2 start ecosystem.config.js; pm2 monit ; ./node_modules/.bin/pm2 stop all",
-    "pm2-restart-all": "./node_modules/.bin/pm2 restart all"
+    "pm2-restart-all": "./node_modules/.bin/pm2 restart all",
+    "dump": "node ./bin/dump.js",
+    "restore": "node ./bin/restore.js"
   },
   "repository": {
     "type": "git",
