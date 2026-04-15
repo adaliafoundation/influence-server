@@ -18,6 +18,7 @@ const mongoose = require('mongoose');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 const EntityLib = require('@common/lib/Entity');
+const PackedLotDataService = require('@common/services/PackedData/LotData');
 const logger = require('@common/lib/logger');
 const seedData = require('./data.json');
 
@@ -47,10 +48,16 @@ const COLLECTIONS = [
   'LocationComponent',
   'ControlComponent',
   'BuildingComponent',
+  'ShipComponent',
   'InventoryComponent',
   'StationComponent',
+  'DockComponent',
+  'ExtractorComponent',
+  'ProcessorComponent',
+  'DryDockComponent',
   'User',
-  'WorldFork'
+  'WorldFork',
+  'Activity'
 ];
 
 const replaceWallet = (obj, address) => JSON.parse(
@@ -82,6 +89,19 @@ const main = async () => {
       } catch (e) {
         logger.warn(`  Skipped ${name}: ${e.message}`);
       }
+    }
+    // Also clear raw event collections (Starknet discriminator + counters)
+    try {
+      const eventsResult = await mongoose.connection.db.collection('events').deleteMany({});
+      logger.info(`  Cleared events: ${eventsResult.deletedCount}`);
+    } catch (e) {
+      logger.warn(`  Skipped events: ${e.message}`);
+    }
+    try {
+      const countersResult = await mongoose.connection.db.collection('counters').deleteMany({});
+      logger.info(`  Cleared counters: ${countersResult.deletedCount}`);
+    } catch (e) {
+      logger.warn(`  Skipped counters: ${e.message}`);
     }
   }
 
@@ -209,9 +229,23 @@ const main = async () => {
   }
   logger.info(`BuildingComponents: ${seedData.buildingComponents.length}`);
 
-  // 11. Inventory
+  // 11. Ship
+  const ShipComponent = mongoose.model('ShipComponent');
+  for (const s of (seedData.shipComponents || [])) {
+    await ShipComponent.findOneAndUpdate(
+      { 'entity.id': s.entity.id, 'entity.label': s.entity.label },
+      s,
+      { upsert: true, new: true }
+    );
+  }
+  logger.info(`ShipComponents: ${(seedData.shipComponents || []).length}`);
+
+  // 12. Inventory (auto-compute mass from contents)
   const InventoryComponent = mongoose.model('InventoryComponent');
   for (const inv of seedData.inventoryComponents) {
+    if (inv.contents && inv.contents.length > 0 && !inv.mass) {
+      inv.mass = inv.contents.reduce((sum, c) => sum + (c.amount || 0), 0);
+    }
     await InventoryComponent.findOneAndUpdate(
       { 'entity.id': inv.entity.id, 'entity.label': inv.entity.label, slot: inv.slot },
       inv,
@@ -231,7 +265,51 @@ const main = async () => {
   }
   logger.info(`StationComponents: ${seedData.stationComponents.length}`);
 
-  // 13. User
+  // 14. Dock
+  const DockComponent = mongoose.model('DockComponent');
+  for (const d of (seedData.dockComponents || [])) {
+    await DockComponent.findOneAndUpdate(
+      { 'entity.id': d.entity.id, 'entity.label': d.entity.label },
+      d,
+      { upsert: true, new: true }
+    );
+  }
+  logger.info(`DockComponents: ${(seedData.dockComponents || []).length}`);
+
+  // 15. Extractor
+  const ExtractorComponent = mongoose.model('ExtractorComponent');
+  for (const e of (seedData.extractorComponents || [])) {
+    await ExtractorComponent.findOneAndUpdate(
+      { 'entity.id': e.entity.id, 'entity.label': e.entity.label, slot: e.slot },
+      e,
+      { upsert: true, new: true }
+    );
+  }
+  logger.info(`ExtractorComponents: ${(seedData.extractorComponents || []).length}`);
+
+  // 16. Processor
+  const ProcessorComponent = mongoose.model('ProcessorComponent');
+  for (const p of (seedData.processorComponents || [])) {
+    await ProcessorComponent.findOneAndUpdate(
+      { 'entity.id': p.entity.id, 'entity.label': p.entity.label, slot: p.slot },
+      p,
+      { upsert: true, new: true }
+    );
+  }
+  logger.info(`ProcessorComponents: ${(seedData.processorComponents || []).length}`);
+
+  // 17. DryDock
+  const DryDockComponent = mongoose.model('DryDockComponent');
+  for (const dd of (seedData.dryDockComponents || [])) {
+    await DryDockComponent.findOneAndUpdate(
+      { 'entity.id': dd.entity.id, 'entity.label': dd.entity.label, slot: dd.slot },
+      dd,
+      { upsert: true, new: true }
+    );
+  }
+  logger.info(`DryDockComponents: ${(seedData.dryDockComponents || []).length}`);
+
+  // 18. User
   const User = mongoose.model('User');
   await User.findOneAndUpdate(
     { address: walletAddress },
@@ -255,6 +333,26 @@ const main = async () => {
   } else {
     logger.info(`WorldFork: already exists (${existingFork.label})`);
   }
+
+  // 16. Rebuild packed lot data cache (map icons)
+  const asteroidIds = seedData.entities
+    .filter((e) => e.label === EntityLib.IDS.ASTEROID)
+    .map((e) => e.id);
+  for (const aid of asteroidIds) {
+    await PackedLotDataService.initForAsteroid({ id: aid, label: EntityLib.IDS.ASTEROID });
+  }
+  const occupiedLocs = await mongoose.model('LocationComponent').find({
+    'entity.label': { $in: [EntityLib.IDS.BUILDING, EntityLib.IDS.CREW, EntityLib.IDS.SHIP] }
+  }).lean();
+  const updatedLots = new Set();
+  for (const doc of occupiedLocs) {
+    const lotLoc = (doc.locations || []).find((l) => l.label === EntityLib.IDS.LOT);
+    if (lotLoc && !updatedLots.has(lotLoc.uuid)) {
+      updatedLots.add(lotLoc.uuid);
+      await PackedLotDataService.update(lotLoc);
+    }
+  }
+  logger.info(`PackedLotData: ${asteroidIds.length} asteroid(s), ${updatedLots.size} lots updated`);
 
   // Summary
   const counts = {};

@@ -84,7 +84,7 @@ class ProcessProductsStartHandler extends BaseActionHandler {
   async applyStateChanges() {
     const setupTime = Process.getSetupTime(this.processId, 1);
     const processingTime = Process.getProcessingTime(this.processId, this.recipes, 1);
-    this.finishTime = this.now + Math.ceil(setupTime + processingTime);
+    this.finishTime = this.now + await this.gameSecondsToReal(Math.ceil(setupTime + processingTime));
 
     const outputs = Process.getOutputs(this.processId, this.recipes, 1) || [];
     const primaryOutput = outputs[0]?.product || this.vars.target_output || 0;

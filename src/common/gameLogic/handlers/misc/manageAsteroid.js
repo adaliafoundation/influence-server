@@ -1,5 +1,5 @@
 const { Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
@@ -23,6 +23,17 @@ class ManageAsteroidHandler extends BaseActionHandler {
     await AccessValidator.assertControlledBy(this.crew, this.address);
 
     this.asteroid = { id: asteroidRef.id, label: Entity.IDS.ASTEROID };
+
+    // Check if the crew already manages this asteroid
+    const existingControl = await ComponentService.findOneByEntity('Control', this.asteroid);
+    if (existingControl?.controller) {
+      const EntityLib = require('@common/lib/Entity');
+      const currentController = EntityLib.toEntity(existingControl.controller);
+      const crewEntity = EntityLib.toEntity(this.crew);
+      if (currentController.uuid === crewEntity.uuid) {
+        throw new ValidationError('Crew already manages this asteroid');
+      }
+    }
   }
 
   // eslint-disable-next-line class-methods-use-this

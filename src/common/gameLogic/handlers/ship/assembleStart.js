@@ -65,7 +65,7 @@ class AssembleShipStartHandler extends BaseActionHandler {
     const shipTypeConfig = Ship.TYPES[this.shipType];
     const processConfig = Process.TYPES[shipTypeConfig.processType];
     const assemblyTime = (processConfig?.setupTime || 0) + (processConfig?.recipeTime || 0);
-    this.finishTime = this.now + assemblyTime;
+    this.finishTime = this.now + await this.gameSecondsToReal(assemblyTime);
 
     // Generate a new ship ID
     this.shipId = await IdGenerator.next(Entity.IDS.SHIP);

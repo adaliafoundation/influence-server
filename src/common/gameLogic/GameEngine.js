@@ -288,8 +288,10 @@ class GameEngine {
     // ── Phase 2: Side effects (non-transactional) ────────────────────
     try {
       await handler.sideEffectPhase();
+      logger.info(`Side effect phase completed for ${action}`);
     } catch (error) {
-      logger.error(`Side effect phase failed for ${action}:`, error);
+      logger.error(`Side effect phase failed for ${action}: ${error.message}`);
+      logger.error(error.stack);
     }
 
     // 3. Emit Socket.IO events
