@@ -72,7 +72,27 @@ const loadHandlers = () => {
     TransferPrepaidAgreement: require('./handlers/agreements/transferPrepaidAgreement'),
     AcceptContractAgreement: require('./handlers/agreements/acceptContractAgreement'),
     ReclaimLot: require('./handlers/agreements/reclaimLot'),
-    // TODO: Add remaining handlers as they are implemented
+    // Misc / Utility
+    ChangeName: require('./handlers/misc/changeName'),
+    AnnotateEvent: require('./handlers/misc/annotateEvent'),
+    RepossessBuilding: require('./handlers/misc/repossessBuilding'),
+    ResolveRandomEvent: require('./handlers/misc/resolveRandomEvent'),
+    RekeyInbox: require('./handlers/misc/rekeyInbox'),
+    DirectMessage: require('./handlers/misc/directMessage'),
+    // Emergency
+    ActivateEmergency: require('./handlers/misc/activateEmergency'),
+    DeactivateEmergency: require('./handlers/misc/deactivateEmergency'),
+    CollectEmergencyPropellant: require('./handlers/misc/collectEmergencyPropellant'),
+    // Asteroid
+    ManageAsteroid: require('./handlers/misc/manageAsteroid'),
+    InitializeAsteroid: require('./handlers/misc/initializeAsteroid'),
+    PurchaseAsteroid: require('./handlers/misc/purchaseAsteroid'),
+    // Deposit Sales
+    ListDepositForSale: require('./handlers/misc/listDepositForSale'),
+    UnlistDepositForSale: require('./handlers/misc/unlistDepositForSale'),
+    PurchaseDeposit: require('./handlers/misc/purchaseDeposit'),
+    // Rewards
+    ClaimPrepareForLaunchReward: require('./handlers/misc/claimPrepareForLaunchReward'),
   };
 
   // Aliases for composite/flexible client action names.
@@ -85,6 +105,9 @@ const loadHandlers = () => {
   handlers.LeaseAndAssembleShipStart = handlers.AssembleShipStart;
   handlers.PurchaseDepositAndImprove = handlers.SampleDepositImprove;
   handlers.EscrowDepositAndCreateBuyOrder = handlers.CreateBuyOrder;
+
+  // Aliases for asteroid initialization composites (handled by BATCH_ACTIONS decompose)
+  // are not needed here — they are resolved through the BATCH_ACTIONS table.
 
   return handlers;
 };
@@ -122,6 +145,37 @@ const BATCH_ACTIONS = {
         ...accountAdditions.map((a) => ({ action: 'WhitelistAccount', vars: { ...baseVars, permitted: a } })),
         ...accountRemovals.map((r) => ({ action: 'RemoveAccountFromWhitelist', vars: { ...baseVars, permitted: r } }))
       ];
+    }
+  },
+  // InitializeAndManageAsteroid decomposes into [InitializeAsteroid, ManageAsteroid]
+  InitializeAndManageAsteroid: {
+    decompose: (vars) => [
+      { action: 'InitializeAsteroid', vars },
+      { action: 'ManageAsteroid', vars }
+    ]
+  },
+  // InitializeAndPurchaseAsteroid decomposes into [InitializeAsteroid, PurchaseAsteroid]
+  InitializeAndPurchaseAsteroid: {
+    decompose: (vars) => [
+      { action: 'InitializeAsteroid', vars },
+      { action: 'PurchaseAsteroid', vars }
+    ]
+  },
+  // InitializeAndClaimPrepareForLaunchReward decomposes into [InitializeAsteroid, ClaimPrepareForLaunchReward]
+  InitializeAndClaimPrepareForLaunchReward: {
+    decompose: (vars) => [
+      { action: 'InitializeAsteroid', vars },
+      { action: 'ClaimPrepareForLaunchReward', vars }
+    ]
+  },
+  // FinishAllReady decomposes the finishCalls array into individual action calls
+  FinishAllReady: {
+    decompose: (vars) => {
+      const { finishCalls = [] } = vars;
+      return finishCalls.map(({ key, vars: callVars }) => ({
+        action: key,
+        vars: callVars
+      }));
     }
   }
 };
