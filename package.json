@@ -13,6 +13,7 @@
     "eventProcessor": "node ./src/workers/eventProcessor.js",
     "elasticIndexer": "node ./src/workers/elasticsearch.js",
     "nftCardBuilder": "node ./src/workers/nftCardBuilder.js",
+    "loadSeedData": "node ./src/workers/loadSeedData.js",
     "lint": "./node_modules/.bin/eslint ./src ./test",
     "start": "node ./src/api/server.js",
     "test": "NODE_ENV=test LOG_LEVEL=test ALLOW_CONFIG_MUTATIONS=true ./node_modules/.bin/mocha",

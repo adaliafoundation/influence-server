@@ -10,7 +10,7 @@ class EventEmitter {
 
   constructor() {
     const options = { url: appConfig.get('Redis.uri'), pingInterval: 60000 };
-    if (appConfig.util.getEnv('NODE_ENV') !== 'development') {
+    if (!['development', 'docker'].includes(appConfig.util.getEnv('NODE_ENV'))) {
       Object.assign(options, { socket: { tls: true, rejectUnauthorized: false } });
     }
     this.#redisClient = createClient(options);
