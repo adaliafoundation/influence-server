@@ -345,4 +345,126 @@ describe('Actions – Ship operations', function () {
       expect(res.body.error).to.include('Not authorized');
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  //  AssembleShipFinish
+  // ═══════════════════════════════════════════════════════════════
+
+  describe('AssembleShipFinish', function () {
+    it('finishes ship assembly and sets status to AVAILABLE', async function () {
+      // First start assembly to create an UNDER_CONSTRUCTION ship
+      const startRes = await postAction(server, TOKEN, 'AssembleShipStart', {
+        caller_crew: CREW_1,
+        dry_dock: SHIPYARD,
+        ship_type: 2, // Light Transport
+        dry_dock_slot: 1,
+        origin: { id: WAREHOUSE.id, label: WAREHOUSE.label },
+        origin_slot: 1
+      });
+
+      expect(startRes.status).to.equal(200);
+      const newShipId = startRes.body.event.returnValues.ship.id;
+
+      // Finish assembly
+      const res = await postAction(server, TOKEN, 'AssembleShipFinish', {
+        caller_crew: CREW_1,
+        dry_dock: SHIPYARD,
+        dry_dock_slot: 1
+      });
+
+      expect(res.status).to.equal(200);
+
+      // Verify DB: ship status is now AVAILABLE
+      const ship = await mongoose.model('ShipComponent').findOne({
+        'entity.id': newShipId, 'entity.label': 6
+      }).lean();
+      expect(ship).to.exist;
+      expect(ship.status).to.equal(Ship.STATUSES.AVAILABLE);
+
+      // Cleanup: delete created ship entities
+      await mongoose.model('ShipComponent').deleteOne({ 'entity.id': newShipId });
+      await mongoose.model('Entity').deleteOne({ id: newShipId, label: 6 });
+      await mongoose.model('LocationComponent').deleteOne({ 'entity.id': newShipId, 'entity.label': 6 });
+      await mongoose.model('ControlComponent').deleteOne({ 'entity.id': newShipId, 'entity.label': 6 });
+    });
+
+    it('rejects when no ship at dry dock', async function () {
+      const res = await postAction(server, TOKEN, 'AssembleShipFinish', {
+        caller_crew: CREW_1,
+        dry_dock: SHIPYARD,
+        dry_dock_slot: 1
+      });
+
+      expect(res.status).to.equal(400);
+    });
+
+    it('rejects when caller does not control crew', async function () {
+      const res = await postAction(server, WRONG_TOKEN, 'AssembleShipFinish', {
+        caller_crew: CREW_1,
+        dry_dock: SHIPYARD,
+        dry_dock_slot: 1
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('Not authorized');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  //  TransitBetweenFinish
+  // ═══════════════════════════════════════════════════════════════
+
+  describe('TransitBetweenFinish', function () {
+    it('finishes transit and clears transit fields', async function () {
+      // Set up state: put crew on ship and set ship in transit with past arrival
+      await mongoose.model('LocationComponent').updateOne(
+        { 'entity.id': CREW_1.id, 'entity.label': 1 },
+        { $set: { 'location.id': SHIP_1.id, 'location.label': 6 } }
+      );
+
+      const pastTime = Math.floor(Date.now() / 1000) - 100;
+      await mongoose.model('ShipComponent').updateOne(
+        { 'entity.id': SHIP_1.id, 'entity.label': 6 },
+        { $set: {
+          transitArrival: pastTime,
+          transitDeparture: pastTime - 3600,
+          transitOrigin: { id: 1, label: 3 },
+          transitDestination: { id: 2, label: 3 }
+        } }
+      );
+
+      const res = await postAction(server, TOKEN, 'TransitBetweenFinish', {
+        caller_crew: CREW_1
+      });
+
+      expect(res.status).to.equal(200);
+
+      // Verify DB: transit fields cleared
+      const ship = await mongoose.model('ShipComponent').findOne({
+        'entity.id': SHIP_1.id, 'entity.label': 6
+      }).lean();
+      expect(ship.transitArrival).to.equal(0);
+
+      // Cleanup
+      await resetSeedData();
+    });
+
+    it('rejects when crew is not on a ship', async function () {
+      // Crew is at habitat (default seed state), not on a ship
+      const res = await postAction(server, TOKEN, 'TransitBetweenFinish', {
+        caller_crew: CREW_1
+      });
+
+      expect(res.status).to.equal(400);
+    });
+
+    it('rejects when caller does not control crew', async function () {
+      const res = await postAction(server, WRONG_TOKEN, 'TransitBetweenFinish', {
+        caller_crew: CREW_1
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('Not authorized');
+    });
+  });
 });

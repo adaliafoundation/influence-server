@@ -31,7 +31,7 @@ class AcceptContractAgreementHandler extends BaseActionHandler {
     this.target = await EntityService.getEntity({
       id: targetRef.id,
       label: targetRef.label,
-      components: ['ContractPolicies'],
+      components: ['ContractPolicy'],
       format: true
     });
 
@@ -39,8 +39,9 @@ class AcceptContractAgreementHandler extends BaseActionHandler {
     this.permitted = permittedRef || this.vars.caller_crew;
 
     // Read contract address from the target's policy
-    const policy = this.target?.ContractPolicies?.[this.permission];
-    this.contract = policy?.contract || '0x0';
+    const policies = this.target?.ContractPolicies || [];
+    const policy = policies.find((p) => p.permission === this.permission);
+    this.contract = policy?.address || '0x0';
   }
 
   async applyStateChanges() {

@@ -31,7 +31,7 @@ class AcceptPrepaidAgreementHandler extends BaseActionHandler {
     this.target = await EntityService.getEntity({
       id: targetRef.id,
       label: targetRef.label,
-      components: ['PrepaidPolicies'],
+      components: ['PrepaidPolicy'],
       format: true
     });
 
@@ -40,7 +40,8 @@ class AcceptPrepaidAgreementHandler extends BaseActionHandler {
     this.now = Math.floor(Date.now() / 1000);
 
     // Read policy terms from the target entity
-    const policy = this.target?.PrepaidPolicies?.[this.permission];
+    const policies = this.target?.PrepaidPolicies || [];
+    const policy = policies.find((p) => p.permission === this.permission);
     this.rate = policy?.rate || 0;
     this.initialTerm = policy?.initialTerm || 0;
     this.noticePeriod = policy?.noticePeriod || 0;

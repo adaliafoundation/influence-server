@@ -58,8 +58,11 @@ const COLLECTIONS_TO_CLEAR = [
   'StationComponent', 'DockComponent', 'ExtractorComponent',
   'ProcessorComponent', 'DryDockComponent',
   'DepositComponent', 'DeliveryComponent',
+  'OrderComponent', 'ExchangeComponent',
   'PublicPolicyComponent', 'WhitelistAgreementComponent',
   'PrepaidPolicyComponent', 'ContractPolicyComponent',
+  'PrepaidAgreementComponent', 'ContractAgreementComponent',
+  'PrivateSaleComponent',
   'User', 'WorldFork', 'Activity'
 ];
 
@@ -406,6 +409,87 @@ async function createSampledDeposit(id, { resource = 1, remainingYield = 5000, l
   return { id, label: 7 };
 }
 
+async function createDeliveryEntity(id, { status, origin, dest, contents, finishTime = 0, controllerCrew = CREW_1 } = {}) {
+  const uuid = EntityLib.toUuid(id, 9); // 9 = DELIVERY
+  await mongoose.model('Entity').updateOne({ uuid }, { $setOnInsert: { id, label: 9, uuid } }, { upsert: true });
+  await mongoose.model('DeliveryComponent').findOneAndUpdate(
+    { 'entity.id': id, 'entity.label': 9 },
+    {
+      entity: { id, label: 9 },
+      status,
+      origin: origin || { id: WAREHOUSE.id, label: WAREHOUSE.label },
+      originSlot: 1,
+      dest: dest || { id: EXTRACTOR.id, label: EXTRACTOR.label },
+      destSlot: 1,
+      contents: contents || [{ product: 1, amount: 100 }],
+      finishTime
+    },
+    { upsert: true, new: true }
+  );
+  await mongoose.model('ControlComponent').findOneAndUpdate(
+    { 'entity.id': id, 'entity.label': 9 },
+    { entity: { id, label: 9 }, controller: { id: controllerCrew.id, label: controllerCrew.label } },
+    { upsert: true, new: true }
+  );
+  return { id, label: 9 };
+}
+
+async function createOrder(exchangeId, { crew, orderType, product, amount, price, storage, storageSlot = 1, status = 1 } = {}) {
+  const crewEntity = crew || CREW_1;
+  const storageEntity = storage || WAREHOUSE;
+  await mongoose.model('OrderComponent').findOneAndUpdate(
+    {
+      'entity.id': exchangeId, 'entity.label': 5,
+      'crew.id': crewEntity.id, 'crew.label': crewEntity.label,
+      orderType, product, price,
+      'storage.id': storageEntity.id, 'storage.label': storageEntity.label,
+      storageSlot
+    },
+    {
+      entity: { id: exchangeId, label: 5 },
+      crew: { id: crewEntity.id, label: crewEntity.label },
+      orderType,
+      product: Number(product),
+      amount: Number(amount),
+      price: Number(price),
+      storage: { id: storageEntity.id, label: storageEntity.label },
+      storageSlot,
+      status,
+      validTime: 0,
+      makerFee: 0
+    },
+    { upsert: true, new: true }
+  );
+}
+
+async function createPrepaidPolicy(targetId, targetLabel, { permission, rate = 100, initialTerm = 86400, noticePeriod = 3600 } = {}) {
+  const uuid = EntityLib.toUuid(targetId, targetLabel);
+  await mongoose.model('PrepaidPolicyComponent').findOneAndUpdate(
+    { 'entity.uuid': uuid, permission },
+    {
+      entity: { id: targetId, label: targetLabel, uuid },
+      permission,
+      rate,
+      initialTerm,
+      noticePeriod
+    },
+    { upsert: true, new: true }
+  );
+}
+
+async function createContractPolicy(targetId, targetLabel, { permission, contract = '0x1234' } = {}) {
+  const uuid = EntityLib.toUuid(targetId, targetLabel);
+  await mongoose.model('ContractPolicyComponent').findOneAndUpdate(
+    { 'entity.uuid': uuid, permission },
+    {
+      entity: { id: targetId, label: targetLabel, uuid },
+      permission,
+      address: contract
+    },
+    { upsert: true, new: true }
+  );
+}
+
 // ─── Exports ───────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -440,5 +524,9 @@ module.exports = {
   setCrewBusy,
   createEmptyLot,
   createUnscannedAsteroid,
-  createSampledDeposit
+  createSampledDeposit,
+  createDeliveryEntity,
+  createOrder,
+  createPrepaidPolicy,
+  createContractPolicy
 };
