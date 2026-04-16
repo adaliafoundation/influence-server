@@ -42,7 +42,8 @@
     "starknet": {
       "runDelay": "STARKNET_EVENT_RETRIEVER_RUN_DELAY",
       "auditRunDelay": "STARKNET_EVENT_RETRIEVER_AUDIT_RUN_DELAY",
-      "auditBlockOffset": "STARKNET_EVENT_RETRIEVER_AUDIT_BLOCK_OFFSET"
+      "auditBlockOffset": "STARKNET_EVENT_RETRIEVER_AUDIT_BLOCK_OFFSET",
+      "blockDelay": "STARKNET_EVENT_RETRIEVER_BLOCK_DELAY"
     }
   },
   "EventProcessor": {
