@@ -84,11 +84,15 @@ class StarknetRetriever {
     }
   }
 
-  async runner({ runDelay } = {}) {
+  async runner({ runDelay, blockDelay } = {}) {
     const _runDelay = Number(
       runDelay || appConfig.EventRetriever.starknet?.runDelay || appConfig.EventRetriever.runDelay
     );
     if (!_runDelay) throw new Error('No run delay provided');
+
+    const _blockDelay = Number(
+      blockDelay ?? appConfig.EventRetriever.starknet?.blockDelay ?? 1000
+    );
 
     const keepRunning = true;
 
@@ -120,7 +124,11 @@ class StarknetRetriever {
         logger.info(`${logSlug}, latestSyncedBlock -> headBlock: ${fromBlock} -> ${toBlock}`);
 
         for (let b = Number(fromBlock); b <= Number(toBlock); b += 1) {
-          await new Promise((resolve) => { delay(resolve, 1000); });
+          // Only delay between blocks when near the chain head to avoid hammering the RPC.
+          // During catch-up (many blocks behind), skip the delay to sync as fast as possible.
+          if (_blockDelay > 0 && (toBlock - b) <= 5) {
+            await new Promise((resolve) => { delay(resolve, _blockDelay); });
+          }
           // An error thrown in retrieveAndProcess won't be caught and will break the loop
           await this.retrieveAndProcessBlock(b);
         }

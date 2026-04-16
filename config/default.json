@@ -72,7 +72,8 @@
       "runDelay": 20000
     },
     "starknet": {
-      "runDelay": 20000
+      "runDelay": 20000,
+      "blockDelay": 1000
     }
   },
   "EventProcessor": {
