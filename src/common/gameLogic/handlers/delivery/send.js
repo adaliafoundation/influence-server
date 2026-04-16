@@ -50,7 +50,7 @@ class SendDeliveryHandler extends BaseActionHandler {
 
   async applyStateChanges() {
     // Simple fixed delivery time for local mode
-    this.finishTime = this.now + 60;
+    this.finishTime = this.now + this.capDuration(60);
 
     this.deliveryId = await IdGenerator.next(Entity.IDS.DELIVERY);
 
