@@ -83,7 +83,7 @@ class AssembleShipStartHandler extends BaseActionHandler {
           data: {
             shipType: this.shipType,
             status: Ship.STATUSES.UNDER_CONSTRUCTION,
-            variant: Ship.getVariant(this.shipId),
+            variant: Ship.VARIANTS.STANDARD,
             readyAt: 0,
             emergencyAt: 0,
             transitDeparture: 0,

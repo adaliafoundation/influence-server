@@ -35,7 +35,7 @@ class ScanSurfaceFinishHandler extends BaseActionHandler {
     if (this.asteroid.Celestial?.scanStatus !== Asteroid.SCAN_STATUSES.SURFACE_SCANNING) {
       throw new ValidationError('Asteroid is not currently surface scanning');
     }
-    StateMachineValidator.assertFinished(this.asteroid.Celestial, 'Surface scan');
+    StateMachineValidator.assertFinished(this.asteroid.Celestial, 'Surface scan', 'scanFinishTime');
   }
 
   async applyStateChanges() {
