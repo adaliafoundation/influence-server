@@ -1,5 +1,5 @@
-const { Deposit, Entity, Extractor, Permission } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { Building, Deposit, Entity, Extractor, Permission } = require('@influenceth/sdk');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
@@ -40,7 +40,7 @@ class ExtractResourceStartHandler extends BaseActionHandler {
     await AccessValidator.assertControlledBy(this.crew, this.address);
     CrewValidator.assertReady(this.crew);
 
-    // 2. Extractor building must exist
+    // 2. Extractor building must exist and be OPERATIONAL
     this.extractor = await EntityService.getEntity({
       id: extractorRef.id,
       label: Entity.IDS.BUILDING,
@@ -48,11 +48,22 @@ class ExtractResourceStartHandler extends BaseActionHandler {
       format: true
     });
     if (!this.extractor) throw new ValidationError('Extractor building not found');
+    if (this.extractor.Building.status !== Building.CONSTRUCTION_STATUSES.OPERATIONAL) {
+      throw new ValidationError('Extractor building is not operational');
+    }
+
+    // 2b. Extractor slot must be IDLE
+    const extractorEntity = { id: extractorRef.id, label: Entity.IDS.BUILDING };
+    const extractors = await ComponentService.findByEntity('Extractor', extractorEntity);
+    const slot = extractors.find((e) => e.slot === (Number(extractorSlot) || 1));
+    if (!slot || slot.status !== 0) {
+      throw new ValidationError('Extractor slot is not idle');
+    }
 
     // 3. Must have EXTRACT_RESOURCES permission
     await AccessValidator.assertPermission(this.crew, this.extractor, Permission.IDS.EXTRACT_RESOURCES);
 
-    // 4. Deposit must exist and be SAMPLED
+    // 4. Deposit must exist and be SAMPLED or USED
     this.deposit = await EntityService.getEntity({
       id: depositRef.id,
       label: Entity.IDS.DEPOSIT,
@@ -60,7 +71,8 @@ class ExtractResourceStartHandler extends BaseActionHandler {
       format: true
     });
     if (!this.deposit) throw new ValidationError('Deposit not found');
-    if (this.deposit.Deposit.status !== Deposit.STATUSES.SAMPLED) {
+    if (this.deposit.Deposit.status !== Deposit.STATUSES.SAMPLED
+      && this.deposit.Deposit.status !== Deposit.STATUSES.USED) {
       throw new ValidationError('Deposit must be sampled before extraction');
     }
     if (this.deposit.Deposit.remainingYield < targetYield) {
@@ -107,6 +119,8 @@ class ExtractResourceStartHandler extends BaseActionHandler {
       yieldEff: this.deposit.Deposit.yieldEff,
       finishTime: this.finishTime
     });
+
+    await this.setCrewBusy(this.crew, this.finishTime);
 
     return { finishTime: this.finishTime };
   }

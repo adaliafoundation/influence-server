@@ -28,8 +28,12 @@ class RemoveAccountFromWhitelistHandler extends BaseActionHandler {
     this.permitted = permitted; // address string
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async applyStateChanges() {
+    await this.deleteComponent('WhitelistAccountAgreement', {
+      entity: this.vars.target,
+      permission: this.permission,
+      permitted: this.permitted
+    });
     return {};
   }
 

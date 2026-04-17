@@ -1,5 +1,5 @@
-const { Entity, Order } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { Entity, Order, Product } = require('@influenceth/sdk');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
@@ -47,6 +47,12 @@ class CreateSellOrderHandler extends BaseActionHandler {
     this.storageSlot = Number(storageSlot) || 1;
     this.makerFee = this.exchange.Exchange?.makerFee || 0;
     this.validTime = Math.floor(Date.now() / 1000);
+
+    // 3. Load storage inventory for product deduction
+    this.storage = storageRef;
+    const storageEntity = { id: storageRef.id, label: storageRef.label || Entity.IDS.BUILDING };
+    const inventories = await ComponentService.findByEntity('Inventory', storageEntity);
+    this.storageInv = inventories.find(i => i.slot === this.storageSlot);
   }
 
   async applyStateChanges() {
@@ -63,6 +69,41 @@ class CreateSellOrderHandler extends BaseActionHandler {
       validTime: this.validTime,
       makerFee: this.makerFee
     });
+
+    // Remove products from storage inventory (lock them for the sell order)
+    if (this.storageInv) {
+      const updatedContents = (this.storageInv.contents || []).map(c => {
+        if (c.product === this.product) {
+          return { product: c.product, amount: c.amount - this.amount };
+        }
+        return c;
+      }).filter(c => c.amount > 0);
+
+      let newMass = 0;
+      let newVolume = 0;
+      for (const c of updatedContents) {
+        const pt = Product.TYPES[c.product];
+        if (pt) { newMass += c.amount * pt.massPerUnit; newVolume += c.amount * pt.volumePerUnit; }
+      }
+
+      // Reserve space for potential cancellation return
+      const pt = Product.TYPES[this.product];
+      const productMass = pt ? this.amount * pt.massPerUnit : 0;
+      const productVolume = pt ? this.amount * pt.volumePerUnit : 0;
+
+      const storageEntity = { id: this.storage.id, label: this.storage.label || Entity.IDS.BUILDING };
+      await this.writeComponent('Inventory', {
+        entity: storageEntity,
+        inventoryType: this.storageInv.inventoryType,
+        slot: this.storageInv.slot,
+        status: this.storageInv.status,
+        mass: newMass,
+        volume: newVolume,
+        reservedMass: (this.storageInv.reservedMass || 0) + productMass,
+        reservedVolume: (this.storageInv.reservedVolume || 0) + productVolume,
+        contents: updatedContents
+      });
+    }
 
     return {};
   }

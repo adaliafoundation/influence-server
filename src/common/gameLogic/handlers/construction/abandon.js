@@ -1,5 +1,5 @@
 const { Building, Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const StateMachineValidator = require('../../validators/stateMachine');
@@ -40,6 +40,14 @@ class ConstructionAbandonHandler extends BaseActionHandler {
 
     // 3. Caller must control the building
     await AccessValidator.assertControlledBy(this.building, this.address);
+
+    // 4. Site inventory must be empty before abandoning
+    const buildingEntity = { id: this.building.id, label: Entity.IDS.BUILDING };
+    const inventories = await ComponentService.findByEntity('Inventory', buildingEntity);
+    const siteInv = inventories.find((inv) => inv.slot === 1);
+    if (siteInv?.contents && siteInv.contents.some((c) => c.amount > 0)) {
+      throw new ValidationError('Site inventory must be empty before abandoning');
+    }
   }
 
   async applyStateChanges() {

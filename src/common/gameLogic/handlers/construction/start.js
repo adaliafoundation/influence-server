@@ -1,5 +1,5 @@
-const { Building, Entity, Process } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { Building, Entity, Inventory, Process } = require('@influenceth/sdk');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
@@ -46,6 +46,27 @@ class ConstructionStartHandler extends BaseActionHandler {
 
     // 4. Caller must control the building
     await AccessValidator.assertControlledBy(this.building, this.address);
+
+    // 5. Site inventory must have enough construction materials
+    const buildingType = this.building.Building.buildingType;
+    const constructionType = Building.getConstructionType(buildingType);
+    if (constructionType?.requirements) {
+      const buildingEntity = { id: this.building.id, label: Entity.IDS.BUILDING };
+      const inventories = await ComponentService.findByEntity('Inventory', buildingEntity);
+      const siteInv = inventories.find((inv) => inv.slot === 1);
+      const contentsMap = {};
+      if (siteInv?.contents) {
+        for (const item of siteInv.contents) {
+          contentsMap[item.product] = (contentsMap[item.product] || 0) + item.amount;
+        }
+      }
+      for (const [product, required] of Object.entries(constructionType.requirements)) {
+        const available = contentsMap[product] || 0;
+        if (available < required) {
+          throw new ValidationError('Insufficient construction materials');
+        }
+      }
+    }
   }
 
   async applyStateChanges() {
@@ -66,6 +87,30 @@ class ConstructionStartHandler extends BaseActionHandler {
       plannedAt: this.building.Building.plannedAt,
       finishTime: this.finishTime
     });
+
+    // Lock site inventory so no more materials can be delivered
+    const buildingEntity = { id: this.building.id, label: Entity.IDS.BUILDING };
+    const inventories = await ComponentService.findByEntity('Inventory', buildingEntity);
+    const siteInv = inventories.find((inv) =>
+      Inventory.TYPES[inv.inventoryType]?.category === Inventory.CATEGORIES.SITE
+    );
+    if (siteInv) {
+      await this.writeComponent('Inventory', {
+        entity: buildingEntity,
+        inventoryType: siteInv.inventoryType,
+        slot: siteInv.slot,
+        status: Inventory.STATUSES.UNAVAILABLE,
+        mass: siteInv.mass,
+        volume: siteInv.volume,
+        reservedMass: siteInv.reservedMass,
+        reservedVolume: siteInv.reservedVolume,
+        contents: siteInv.contents
+      });
+    }
+
+    // Mark crew as busy for a fraction of the build time (Cairo: 2*travelTime + buildTime/8)
+    const crewBusyUntil = this.now + Math.ceil(constructionTime / 8);
+    await this.setCrewBusy(this.crew, crewBusyUntil);
 
     return { finishTime: this.finishTime };
   }

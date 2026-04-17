@@ -7,7 +7,8 @@ const {
   TOKEN, WRONG_TOKEN,
   CREW_1, ASTEROID_1, WAREHOUSE, EXTRACTOR,
   buildActionServer, postAction, applyStubs,
-  resetSeedData, setCrewBusy, createEmptyLot, createSampledDeposit
+  resetSeedData, setCrewBusy, createEmptyLot, createSampledDeposit,
+  createUnscannedAsteroid
 } = require('@test/helpers/actionTestHelper');
 
 describe('Actions – Deposit sampling', function () {
@@ -48,7 +49,7 @@ describe('Actions – Deposit sampling', function () {
         lot: EMPTY_LOT,
         resource: 1,
         origin: WAREHOUSE,
-        origin_slot: 1
+        origin_slot: 2
       });
 
       expect(res.status).to.equal(200);
@@ -68,11 +69,23 @@ describe('Actions – Deposit sampling', function () {
       expect(deposit.status).to.equal(1); // Deposit.STATUSES.SAMPLING
       expect(deposit.finishTime).to.be.greaterThan(Math.floor(Date.now() / 1000));
 
-      // Cleanup: remove created deposit entities
+      // Verify: core drill was consumed from origin inventory
+      const inv = await mongoose.model('InventoryComponent').findOne({
+        'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 2
+      }).lean();
+      const coreDrills = inv.contents.find((c) => c.product === 175);
+      expect(coreDrills.amount).to.equal(19); // Started with 20, used 1
+
+      // Cleanup: remove created deposit entities and reset inventory/crew
       await mongoose.model('Entity').deleteOne({ id: depositId, label: 7 });
       await mongoose.model('DepositComponent').deleteOne({ 'entity.id': depositId, 'entity.label': 7 });
       await mongoose.model('ControlComponent').deleteOne({ 'entity.id': depositId, 'entity.label': 7 });
       await mongoose.model('LocationComponent').deleteOne({ 'entity.id': depositId, 'entity.label': 7 });
+      await mongoose.model('InventoryComponent').updateOne(
+        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 2, 'contents.product': 175 },
+        { $set: { 'contents.$.amount': 20 } }
+      );
+      await setCrewBusy(CREW_1.id, 0);
     });
 
     it('rejects when lot is missing', async function () {
@@ -80,7 +93,7 @@ describe('Actions – Deposit sampling', function () {
         caller_crew: CREW_1,
         resource: 1,
         origin: WAREHOUSE,
-        origin_slot: 1
+        origin_slot: 2
       });
 
       expect(res.status).to.equal(400);
@@ -92,7 +105,7 @@ describe('Actions – Deposit sampling', function () {
         caller_crew: CREW_1,
         lot: EMPTY_LOT,
         origin: WAREHOUSE,
-        origin_slot: 1
+        origin_slot: 2
       });
 
       expect(res.status).to.equal(400);
@@ -108,7 +121,7 @@ describe('Actions – Deposit sampling', function () {
         lot: EMPTY_LOT,
         resource: 1,
         origin: WAREHOUSE,
-        origin_slot: 1
+        origin_slot: 2
       });
 
       expect(res.status).to.equal(400);
@@ -123,11 +136,30 @@ describe('Actions – Deposit sampling', function () {
         lot: EMPTY_LOT,
         resource: 1,
         origin: WAREHOUSE,
-        origin_slot: 1
+        origin_slot: 2
       });
 
       expect(res.status).to.equal(400);
       expect(res.body.error).to.include('Not authorized');
+    });
+
+    it('rejects when asteroid is not resource-scanned', async function () {
+      // Create an unscanned asteroid (scanStatus=0)
+      const asteroidId = 500;
+      await createUnscannedAsteroid(asteroidId);
+      // Create a lot on that asteroid
+      const lotOnUnscanned = await createEmptyLot(asteroidId, 11);
+
+      const res = await postAction(server, TOKEN, 'SampleDepositStart', {
+        caller_crew: CREW_1,
+        lot: lotOnUnscanned,
+        resource: 1,
+        origin: WAREHOUSE,
+        origin_slot: 2
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('resource-scanned');
     });
   });
 
@@ -236,7 +268,7 @@ describe('Actions – Deposit sampling', function () {
         deposit,
         lot: EMPTY_LOT,
         origin: WAREHOUSE,
-        origin_slot: 1
+        origin_slot: 2
       });
 
       expect(res.status).to.equal(200);
@@ -250,6 +282,13 @@ describe('Actions – Deposit sampling', function () {
       }).lean();
       expect(dep.status).to.equal(1); // Deposit.STATUSES.SAMPLING
       expect(dep.finishTime).to.be.greaterThan(Math.floor(Date.now() / 1000));
+
+      // Cleanup: reset crew readyAt and restore core drill count
+      await setCrewBusy(CREW_1.id, 0);
+      await mongoose.model('InventoryComponent').updateOne(
+        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 2, 'contents.product': 175 },
+        { $set: { 'contents.$.amount': 20 } }
+      );
     });
 
     it('rejects when deposit is not SAMPLED', async function () {
@@ -284,7 +323,7 @@ describe('Actions – Deposit sampling', function () {
         deposit: { id: 702 },
         lot: EMPTY_LOT,
         origin: WAREHOUSE,
-        origin_slot: 1
+        origin_slot: 2
       });
 
       expect(res.status).to.equal(400);
@@ -302,7 +341,7 @@ describe('Actions – Deposit sampling', function () {
         deposit,
         lot: EMPTY_LOT,
         origin: WAREHOUSE,
-        origin_slot: 1
+        origin_slot: 2
       });
 
       expect(res.status).to.equal(400);
@@ -319,7 +358,7 @@ describe('Actions – Deposit sampling', function () {
         deposit,
         lot: EMPTY_LOT,
         origin: WAREHOUSE,
-        origin_slot: 1
+        origin_slot: 2
       });
 
       expect(res.status).to.equal(400);

@@ -1,4 +1,4 @@
-const { Entity, Ship } = require('@influenceth/sdk');
+const { DryDock, Entity, Ship } = require('@influenceth/sdk');
 const EntityLib = require('@common/lib/Entity');
 const { ComponentService, EntityService, LocationComponentService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
@@ -69,6 +69,59 @@ class AssembleShipFinishHandler extends BaseActionHandler {
       transitDeparture: 0,
       transitArrival: 0
     });
+
+    // Reset DryDock to IDLE
+    await this.writeComponent('DryDock', {
+      entity: { id: this.dryDock.id, label: Entity.IDS.BUILDING },
+      slot: this.dryDockSlot,
+      status: DryDock.STATUSES.IDLE,
+      outputShip: { id: 0, label: 0 },
+      finishTime: 0
+    });
+
+    // Create ship sub-components based on ship config
+    const shipEntity = { id: this.ship.id, label: Entity.IDS.SHIP };
+    const shipConfig = Ship.TYPES[this.ship.Ship.shipType];
+    if (shipConfig) {
+      // Create propellant inventory
+      if (shipConfig.propellantSlot && shipConfig.propellantInventoryType) {
+        await this.writeComponent('Inventory', {
+          entity: shipEntity,
+          slot: shipConfig.propellantSlot,
+          inventoryType: shipConfig.propellantInventoryType,
+          status: 1, // AVAILABLE
+          mass: 0,
+          volume: 0,
+          reservedMass: 0,
+          reservedVolume: 0,
+          contents: []
+        });
+      }
+
+      // Create cargo inventory
+      if (shipConfig.cargoSlot && shipConfig.cargoInventoryType) {
+        await this.writeComponent('Inventory', {
+          entity: shipEntity,
+          slot: shipConfig.cargoSlot,
+          inventoryType: shipConfig.cargoInventoryType,
+          status: 1, // AVAILABLE
+          mass: 0,
+          volume: 0,
+          reservedMass: 0,
+          reservedVolume: 0,
+          contents: []
+        });
+      }
+
+      // Create station component
+      if (shipConfig.stationType) {
+        await this.writeComponent('Station', {
+          entity: shipEntity,
+          stationType: shipConfig.stationType,
+          population: 0
+        });
+      }
+    }
 
     // Move ship to destination if specified
     if (this.destination) {

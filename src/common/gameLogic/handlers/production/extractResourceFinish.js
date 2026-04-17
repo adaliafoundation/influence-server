@@ -1,4 +1,4 @@
-const { Entity, Extractor } = require('@influenceth/sdk');
+const { Entity, Extractor, Inventory, Product } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
@@ -53,17 +53,60 @@ class ExtractResourceFinishHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
+    const { outputProduct, destination, destinationSlot } = this.extractorComponent;
+    const extractedYield = this.extractorComponent.yield;
+
     // Set extractor back to IDLE
     await this.writeComponent('Extractor', {
       entity: { id: this.extractor.id, label: Entity.IDS.BUILDING },
       slot: this.extractorSlot,
       status: Extractor.STATUSES.IDLE,
-      outputProduct: this.extractorComponent.outputProduct,
+      outputProduct,
       yield: 0,
-      destination: this.extractorComponent.destination,
-      destinationSlot: this.extractorComponent.destinationSlot,
+      destination,
+      destinationSlot,
       finishTime: 0
     });
+
+    // Add extracted product to destination inventory
+    if (extractedYield > 0 && outputProduct && destination) {
+      const destEntity = { id: destination.id, label: destination.label };
+      const destInvs = await ComponentService.findByEntity('Inventory', destEntity);
+      const destInv = destInvs.find((inv) => inv.slot === (destinationSlot || 1));
+
+      if (destInv) {
+        // yield is in grams; product amounts are stored in grams
+        const updatedContents = [...(destInv.contents || [])];
+        const existing = updatedContents.find((c) => c.product === outputProduct);
+        if (existing) {
+          existing.amount += extractedYield;
+        } else {
+          updatedContents.push({ product: outputProduct, amount: extractedYield });
+        }
+
+        let newMass = 0;
+        let newVolume = 0;
+        for (const c of updatedContents) {
+          const pt = Product.TYPES[c.product];
+          if (pt) {
+            newMass += c.amount * pt.massPerUnit;
+            newVolume += c.amount * pt.volumePerUnit;
+          }
+        }
+
+        await this.writeComponent('Inventory', {
+          entity: destEntity,
+          inventoryType: destInv.inventoryType,
+          slot: destInv.slot,
+          status: destInv.status,
+          mass: newMass,
+          volume: newVolume,
+          reservedMass: 0,
+          reservedVolume: 0,
+          contents: updatedContents
+        });
+      }
+    }
 
     return { extractorId: this.extractor.id };
   }

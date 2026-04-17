@@ -1,5 +1,5 @@
 const { Asteroid, Entity, Product } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const StateMachineValidator = require('../../validators/stateMachine');
@@ -36,6 +36,15 @@ class ScanResourcesFinishHandler extends BaseActionHandler {
       throw new ValidationError('Asteroid is not currently resource scanning');
     }
     StateMachineValidator.assertFinished(this.asteroid.Celestial, 'Resource scan', 'scanFinishTime');
+
+    // 3. Crew must control the asteroid
+    const asteroidControl = await ComponentService.findOne('Control', {
+      'entity.id': asteroidRef.id,
+      'entity.label': Entity.IDS.ASTEROID
+    });
+    if (!asteroidControl || asteroidControl.controller.id !== callerCrewRef.id) {
+      throw new ValidationError('Crew does not control this asteroid');
+    }
   }
 
   async applyStateChanges() {

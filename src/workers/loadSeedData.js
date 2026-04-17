@@ -135,6 +135,17 @@ async function main({ wallet }) {
   // Stations
   await upsertArray('StationComponent', seedData.stationComponents, ['entity.id', 'entity.label']);
 
+  // Exchanges
+  await upsertArray('ExchangeComponent', seedData.exchangeComponents || [], ['entity.id', 'entity.label']);
+
+  // Public policies
+  for (const pp of (seedData.publicPolicyComponents || [])) {
+    await mongoose.model('PublicPolicyComponent').findOneAndUpdate(
+      { 'entity.id': pp.entity.id, 'entity.label': pp.entity.label, permission: pp.permission },
+      pp, { upsert: true, new: true }
+    );
+  }
+
   // Docks
   await upsertArray('DockComponent', seedData.dockComponents || [], ['entity.id', 'entity.label']);
 

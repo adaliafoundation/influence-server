@@ -1,6 +1,6 @@
-const { Delivery, Entity } = require('@influenceth/sdk');
+const { Delivery, Entity, Product } = require('@influenceth/sdk');
 const EntityLib = require('@common/lib/Entity');
-const { EntityService } = require('@common/services');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
@@ -66,6 +66,38 @@ class PackageDeliveryHandler extends BaseActionHandler {
         }
       ]
     );
+
+    // Remove products from origin inventory
+    const originEntity = { id: this.vars.origin.id, label: this.vars.origin.label };
+    const originInventories = await ComponentService.findByEntity('Inventory', originEntity);
+    const originInv = originInventories.find((inv) => inv.slot === this.originSlot);
+    if (originInv) {
+      const updatedContents = [...(originInv.contents || [])];
+      for (const item of this.products) {
+        const existing = updatedContents.find((c) => c.product === item.product);
+        if (existing) existing.amount -= item.amount;
+      }
+      const filtered = updatedContents.filter((c) => c.amount > 0);
+
+      let newMass = 0;
+      let newVolume = 0;
+      for (const c of filtered) {
+        const pt = Product.TYPES[c.product];
+        if (pt) { newMass += c.amount * pt.massPerUnit; newVolume += c.amount * pt.volumePerUnit; }
+      }
+
+      await this.writeComponent('Inventory', {
+        entity: originEntity,
+        inventoryType: originInv.inventoryType,
+        slot: originInv.slot,
+        status: originInv.status,
+        mass: newMass,
+        volume: newVolume,
+        reservedMass: originInv.reservedMass,
+        reservedVolume: originInv.reservedVolume,
+        contents: filtered
+      });
+    }
 
     return { deliveryId: this.deliveryId };
   }

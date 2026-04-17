@@ -6,7 +6,7 @@ const {
   TOKEN, WRONG_TOKEN,
   CREW_1, EXTRACTOR, WAREHOUSE,
   buildActionServer, postAction, applyStubs,
-  resetSeedData, setCrewBusy, createSampledDeposit
+  resetSeedData, setCrewBusy, setBuildingStatus, createSampledDeposit
 } = require('@test/helpers/actionTestHelper');
 
 describe('Actions – Extraction', function () {
@@ -68,11 +68,12 @@ describe('Actions – Extraction', function () {
       }).lean();
       expect(dep.remainingYield).to.equal(4000);
 
-      // Cleanup: reset extractor to idle
+      // Cleanup: reset extractor to idle and crew to ready
       await mongoose.model('ExtractorComponent').updateOne(
         { 'entity.id': EXTRACTOR.id, 'entity.label': 5, slot: 1 },
         { $set: { status: 0, yield: 0, finishTime: 0 } }
       );
+      await setCrewBusy(CREW_1.id, 0);
     });
 
     it('rejects when deposit is not sampled', async function () {
@@ -148,6 +149,56 @@ describe('Actions – Extraction', function () {
       expect(res.body.error).to.include('Not authorized');
     });
 
+    it('rejects when extractor slot is not idle', async function () {
+      // Set extractor slot 1 to RUNNING
+      await mongoose.model('ExtractorComponent').updateOne(
+        { 'entity.id': EXTRACTOR.id, 'entity.label': 5, slot: 1 },
+        { $set: { status: 1 } }
+      );
+      const deposit = await createSampledDeposit(510);
+
+      const res = await postAction(server, TOKEN, 'ExtractResourceStart', {
+        caller_crew: CREW_1,
+        extractor: EXTRACTOR,
+        extractor_slot: 1,
+        deposit,
+        destination: { id: WAREHOUSE.id, label: WAREHOUSE.label },
+        destination_slot: 1,
+        yield: 100
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('idle');
+
+      // Cleanup
+      await mongoose.model('ExtractorComponent').updateOne(
+        { 'entity.id': EXTRACTOR.id, 'entity.label': 5, slot: 1 },
+        { $set: { status: 0 } }
+      );
+    });
+
+    it('rejects when extractor building is not operational', async function () {
+      // Set building status to PLANNED (1)
+      await setBuildingStatus(EXTRACTOR.id, 1);
+      const deposit = await createSampledDeposit(511);
+
+      const res = await postAction(server, TOKEN, 'ExtractResourceStart', {
+        caller_crew: CREW_1,
+        extractor: EXTRACTOR,
+        extractor_slot: 1,
+        deposit,
+        destination: { id: WAREHOUSE.id, label: WAREHOUSE.label },
+        destination_slot: 1,
+        yield: 100
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('operational');
+
+      // Cleanup: restore to OPERATIONAL (3)
+      await setBuildingStatus(EXTRACTOR.id, 3);
+    });
+
     it('rejects when crew is busy', async function () {
       const futureTime = Math.floor(Date.now() / 1000) + 99999;
       await setCrewBusy(CREW_1.id, futureTime);
@@ -189,6 +240,11 @@ describe('Actions – Extraction', function () {
           destinationSlot: 1
         }}
       );
+      // Set some phantom reservations on the destination inventory
+      await mongoose.model('InventoryComponent').updateOne(
+        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1 },
+        { $set: { reservedMass: 9999, reservedVolume: 9999 } }
+      );
 
       const res = await postAction(server, TOKEN, 'ExtractResourceFinish', {
         caller_crew: CREW_1,
@@ -204,6 +260,13 @@ describe('Actions – Extraction', function () {
       }).lean();
       expect(ext.status).to.equal(Extractor.STATUSES.IDLE);
       expect(ext.finishTime).to.equal(0);
+
+      // Verify: phantom reservations cleared
+      const inv = await mongoose.model('InventoryComponent').findOne({
+        'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1
+      }).lean();
+      expect(inv.reservedMass).to.equal(0);
+      expect(inv.reservedVolume).to.equal(0);
     });
 
     it('rejects when extractor is not RUNNING', async function () {

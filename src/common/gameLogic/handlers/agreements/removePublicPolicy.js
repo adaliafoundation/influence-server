@@ -26,8 +26,11 @@ class RemovePublicPolicyHandler extends BaseActionHandler {
     this.permission = Number(permission);
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async applyStateChanges() {
+    await this.deleteComponent('PublicPolicy', {
+      entity: this.vars.target,
+      permission: this.permission
+    });
     return {};
   }
 

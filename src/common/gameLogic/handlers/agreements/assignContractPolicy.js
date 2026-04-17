@@ -28,8 +28,12 @@ class AssignContractPolicyHandler extends BaseActionHandler {
     this.contract = contract;
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async applyStateChanges() {
+    await this.writeComponent('ContractPolicy', {
+      entity: this.vars.target,
+      permission: this.permission,
+      address: this.contract
+    });
     return {};
   }
 

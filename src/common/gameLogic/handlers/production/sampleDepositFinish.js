@@ -1,4 +1,4 @@
-const { Deposit, Entity } = require('@influenceth/sdk');
+const { Asteroid, Deposit, Entity } = require('@influenceth/sdk');
 const { EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
@@ -28,7 +28,7 @@ class SampleDepositFinishHandler extends BaseActionHandler {
     this.deposit = await EntityService.getEntity({
       id: depositRef.id,
       label: Entity.IDS.DEPOSIT,
-      components: ['Deposit', 'Control'],
+      components: ['Deposit', 'Control', 'Location'],
       format: true
     });
     if (!this.deposit) throw new ValidationError('Deposit not found');
@@ -36,6 +36,18 @@ class SampleDepositFinishHandler extends BaseActionHandler {
 
     // 3. Sampling must be finished
     StateMachineValidator.assertFinished(this.deposit.Deposit, 'Deposit sampling');
+
+    // 4. Load asteroid to get real resource abundance
+    const locations = this.deposit.Location?.locations || [];
+    const asteroidLoc = locations.find((l) => l.label === Entity.IDS.ASTEROID);
+    if (asteroidLoc) {
+      this.asteroid = await EntityService.getEntity({
+        id: asteroidLoc.id,
+        label: Entity.IDS.ASTEROID,
+        components: ['Celestial'],
+        format: true
+      });
+    }
   }
 
   async applyStateChanges() {
@@ -65,14 +77,22 @@ class SampleDepositFinishHandler extends BaseActionHandler {
   }
 
   _generateYield() {
-    // Generate a pseudo-random yield using deposit ID as seed.
-    // Uses the SDK's getSampleBounds to stay within realistic ranges.
-    // abundance=0.5 and totalBonus=1 give a mid-range yield.
-    const bounds = Deposit.getSampleBounds(0.5, 0, 1);
+    // Get real abundance from the asteroid's Celestial component
+    let abundance = 0.5;
+    if (this.asteroid) {
+      const abundances = Asteroid.Entity.getAbundances(this.asteroid);
+      const resourceAbundance = abundances[this.deposit.Deposit.resource];
+      if (resourceAbundance !== undefined) abundance = resourceAbundance;
+    }
+
+    // getSampleBounds works in SDK scale (max 10B). Stored yields are 1000x smaller
+    // (the client passes storedYield * 1e3 when calling getSampleBounds).
+    const previousYield = (this.deposit.Deposit.initialYield || 0) * 1000;
+    const bounds = Deposit.getSampleBounds(abundance, previousYield, 1);
     const seed = (this.deposit.id * 2654435761) >>> 0;
     const ratio = (seed % 1000) / 1000;
     const range = Number(bounds.upper) - Number(bounds.lower);
-    return Math.floor(Number(bounds.lower) + ratio * range);
+    return Math.floor((Number(bounds.lower) + ratio * range) / 1000);
   }
 
   // eslint-disable-next-line class-methods-use-this

@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const { Building } = require('@influenceth/sdk');
 const {
   TOKEN, WRONG_TOKEN,
-  CREW_1, CREW_2, ASTEROID_1, WAREHOUSE, EMPTY_LOT,
+  CREW_1, CREW_2, ASTEROID_1, WAREHOUSE, EXTRACTOR, SHIPYARD, EMPTY_LOT,
   buildActionServer, postAction, applyStubs,
   resetSeedData, setBuildingStatus, setCrewBusy,
   createEmptyLot
@@ -196,6 +196,7 @@ describe('Actions – Construction lifecycle', function () {
 
       // Restore
       await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
+      await setCrewBusy(CREW_1.id, 0);
     });
 
     it('rejects when building is not in PLANNED status', async function () {
@@ -256,6 +257,39 @@ describe('Actions – Construction lifecycle', function () {
       expect(res.body.error).to.include('busy');
 
       await setCrewBusy(CREW_1.id, 0);
+      await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
+    });
+
+    it('rejects when site inventory lacks required materials', async function () {
+      await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.PLANNED);
+
+      // Clear site inventory contents
+      await mongoose.model('InventoryComponent').updateOne(
+        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1 },
+        { $set: { contents: [], mass: 0, volume: 0 } }
+      );
+
+      const res = await postAction(server, TOKEN, 'ConstructionStart', {
+        caller_crew: CREW_1,
+        building: WAREHOUSE
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('Insufficient');
+
+      // Restore site inventory contents
+      await mongoose.model('InventoryComponent').updateOne(
+        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1 },
+        { $set: {
+          contents: [
+            { product: 44, amount: 400000 },
+            { product: 69, amount: 350000 },
+            { product: 70, amount: 200000 }
+          ],
+          mass: 950000000,
+          volume: 867000000
+        }}
+      );
       await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
     });
   });
@@ -324,7 +358,93 @@ describe('Actions – Construction lifecycle', function () {
 
       await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
     });
-  });
+
+    it('creates warehouse inventory on slot 2', async function () {
+      const pastTime = Math.floor(Date.now() / 1000) - 100;
+      await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.UNDER_CONSTRUCTION, pastTime);
+
+      // Remove any existing operational inventory to verify it gets created on slot 2
+      await mongoose.model('InventoryComponent').deleteMany({
+        'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 2
+      });
+
+      const res = await postAction(server, TOKEN, 'ConstructionFinish', {
+        caller_crew: CREW_1,
+        building: WAREHOUSE
+      });
+
+      expect(res.status).to.equal(200);
+
+      // Verify inventory was created on slot 2
+      const inv = await mongoose.model('InventoryComponent').findOne({
+        'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 2
+      }).lean();
+      expect(inv).to.exist;
+      expect(inv.inventoryType).to.equal(10);
+      expect(inv.status).to.equal(1); // AVAILABLE
+    });
+
+    it('creates exactly 1 extractor for extractor building', async function () {
+      const pastTime = Math.floor(Date.now() / 1000) - 100;
+      await setBuildingStatus(EXTRACTOR.id, Building.CONSTRUCTION_STATUSES.UNDER_CONSTRUCTION, pastTime);
+
+      // Clear any existing extractors
+      await mongoose.model('ExtractorComponent').deleteMany({
+        'entity.id': EXTRACTOR.id, 'entity.label': 5
+      });
+
+      const res = await postAction(server, TOKEN, 'ConstructionFinish', {
+        caller_crew: CREW_1,
+        building: EXTRACTOR
+      });
+
+      expect(res.status).to.equal(200);
+
+      const extractors = await mongoose.model('ExtractorComponent').find({
+        'entity.id': EXTRACTOR.id, 'entity.label': 5
+      }).lean();
+      expect(extractors).to.have.lengthOf(1);
+      expect(extractors[0].slot).to.equal(1);
+
+      // Restore
+      await setBuildingStatus(EXTRACTOR.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
+    });
+
+    it('creates both Processor and DryDock for shipyard', async function () {
+      const pastTime = Math.floor(Date.now() / 1000) - 100;
+      await setBuildingStatus(SHIPYARD.id, Building.CONSTRUCTION_STATUSES.UNDER_CONSTRUCTION, pastTime);
+
+      // Clear any existing components
+      await mongoose.model('ProcessorComponent').deleteMany({
+        'entity.id': SHIPYARD.id, 'entity.label': 5
+      });
+      await mongoose.model('DryDockComponent').deleteMany({
+        'entity.id': SHIPYARD.id, 'entity.label': 5
+      });
+
+      const res = await postAction(server, TOKEN, 'ConstructionFinish', {
+        caller_crew: CREW_1,
+        building: SHIPYARD
+      });
+
+      expect(res.status).to.equal(200);
+
+      const processors = await mongoose.model('ProcessorComponent').find({
+        'entity.id': SHIPYARD.id, 'entity.label': 5
+      }).lean();
+      expect(processors).to.have.lengthOf(1);
+      expect(processors[0].processorType).to.equal(4); // SHIPYARD
+
+      const dryDocks = await mongoose.model('DryDockComponent').find({
+        'entity.id': SHIPYARD.id, 'entity.label': 5
+      }).lean();
+      expect(dryDocks).to.have.lengthOf(1);
+
+      // Restore
+      await setBuildingStatus(SHIPYARD.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
+    });
+
+});
 
   // ═══════════════════════════════════════════════════════════════
   //  ConstructionDeconstruct
@@ -349,6 +469,7 @@ describe('Actions – Construction lifecycle', function () {
 
       // Restore
       await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
+      await setCrewBusy(CREW_1.id, 0);
     });
 
     it('rejects when building is not OPERATIONAL', async function () {
@@ -389,6 +510,58 @@ describe('Actions – Construction lifecycle', function () {
 
       await setCrewBusy(CREW_1.id, 0);
     });
+
+    it('rejects when extractor is still running', async function () {
+      // Ensure extractor building is OPERATIONAL
+      await setBuildingStatus(EXTRACTOR.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
+
+      // Set an extractor component to RUNNING status
+      await mongoose.model('ExtractorComponent').findOneAndUpdate(
+        { 'entity.id': EXTRACTOR.id, 'entity.label': 5, slot: 1 },
+        {
+          entity: { id: EXTRACTOR.id, label: 5 },
+          slot: 1, status: 1, outputProduct: 1, yield: 100, finishTime: Math.floor(Date.now() / 1000) + 99999
+        },
+        { upsert: true, new: true }
+      );
+
+      const res = await postAction(server, TOKEN, 'ConstructionDeconstruct', {
+        caller_crew: CREW_1,
+        building: EXTRACTOR
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('running');
+
+      // Restore: set extractor back to IDLE
+      await mongoose.model('ExtractorComponent').updateOne(
+        { 'entity.id': EXTRACTOR.id, 'entity.label': 5, slot: 1 },
+        { $set: { status: 0, outputProduct: 0, yield: 0, finishTime: 0 } }
+      );
+      await setCrewBusy(CREW_1.id, 0);
+    });
+
+    it('sets crew busy after deconstruction', async function () {
+      await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
+
+      const res = await postAction(server, TOKEN, 'ConstructionDeconstruct', {
+        caller_crew: CREW_1,
+        building: WAREHOUSE
+      });
+
+      expect(res.status).to.equal(200);
+
+      // Verify crew readyAt is set to a future time
+      const crew = await mongoose.model('CrewComponent').findOne({
+        'entity.id': CREW_1.id, 'entity.label': 1
+      }).lean();
+      const now = Math.floor(Date.now() / 1000);
+      expect(crew.readyAt).to.be.greaterThan(now - 5);
+
+      // Restore
+      await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
+      await setCrewBusy(CREW_1.id, 0);
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -398,6 +571,15 @@ describe('Actions – Construction lifecycle', function () {
   describe('ConstructionAbandon', function () {
     it('abandons a PLANNED building → UNPLANNED', async function () {
       await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.PLANNED);
+
+      // Empty the site inventory so the abandon check passes
+      const origInv = await mongoose.model('InventoryComponent').findOne({
+        'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1
+      }).lean();
+      await mongoose.model('InventoryComponent').updateOne(
+        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1 },
+        { $set: { contents: [], mass: 0, volume: 0 } }
+      );
 
       const res = await postAction(server, TOKEN, 'ConstructionAbandon', {
         caller_crew: CREW_1,
@@ -413,7 +595,11 @@ describe('Actions – Construction lifecycle', function () {
       }).lean();
       expect(bldg.status).to.equal(Building.CONSTRUCTION_STATUSES.UNPLANNED);
 
-      // Restore
+      // Restore inventory and status
+      await mongoose.model('InventoryComponent').updateOne(
+        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1 },
+        { $set: { contents: origInv.contents, mass: origInv.mass, volume: origInv.volume } }
+      );
       await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
     });
 
@@ -439,6 +625,39 @@ describe('Actions – Construction lifecycle', function () {
       expect(res.status).to.equal(400);
       expect(res.body.error).to.include('Not authorized');
 
+      await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
+    });
+
+    it('rejects when site inventory is not empty', async function () {
+      await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.PLANNED);
+
+      // Ensure site inventory has items
+      await mongoose.model('InventoryComponent').updateOne(
+        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1 },
+        { $set: { contents: [{ product: 44, amount: 100 }], mass: 100000 } }
+      );
+
+      const res = await postAction(server, TOKEN, 'ConstructionAbandon', {
+        caller_crew: CREW_1,
+        building: WAREHOUSE
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('empty');
+
+      // Restore site inventory to original contents
+      await mongoose.model('InventoryComponent').updateOne(
+        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1 },
+        { $set: {
+          contents: [
+            { product: 44, amount: 400000 },
+            { product: 69, amount: 350000 },
+            { product: 70, amount: 200000 }
+          ],
+          mass: 950000000,
+          volume: 867000000
+        }}
+      );
       await setBuildingStatus(WAREHOUSE.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
     });
   });

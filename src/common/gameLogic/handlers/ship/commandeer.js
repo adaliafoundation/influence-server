@@ -1,6 +1,6 @@
-const { Entity } = require('@influenceth/sdk');
+const { Address, Entity } = require('@influenceth/sdk');
 const EntityLib = require('@common/lib/Entity');
-const { EntityService } = require('@common/services');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
@@ -33,11 +33,15 @@ class ShipCommandeerHandler extends BaseActionHandler {
     });
     if (!this.ship) throw new ValidationError('Ship not found');
 
-    // 3. Crew must be at the same location as the ship
-    const crewLocation = this.crew.Location?.location;
-    const shipLocation = this.ship.Location?.location;
-    if (!crewLocation || !shipLocation) {
-      throw new ValidationError('Cannot determine locations');
+    // 3. Caller must own the ship NFT
+    const shipNft = await ComponentService.findOneByEntity('Nft', {
+      id: this.ship.id,
+      label: Entity.IDS.SHIP
+    });
+    if (!shipNft) throw new ValidationError('Ship NFT not found');
+    const shipOwner = shipNft.owners?.starknet || shipNft.owners?.ethereum;
+    if (!shipOwner || Address.toStandard(shipOwner) !== Address.toStandard(this.address)) {
+      throw new ValidationError('Caller does not own this ship');
     }
   }
 

@@ -5,8 +5,9 @@ const {
   TOKEN, WRONG_TOKEN,
   CREW_1, CREW_2, WAREHOUSE, HABITAT,
   buildActionServer, postAction, applyStubs,
-  resetSeedData, setCrewBusy
+  resetSeedData, setCrewBusy, setBuildingStatus
 } = require('@test/helpers/actionTestHelper');
+const { Building } = require('@influenceth/sdk');
 
 describe('Actions – Crew operations', function () {
   let server;
@@ -103,6 +104,61 @@ describe('Actions – Crew operations', function () {
       expect(res.status).to.equal(400);
       expect(res.body.error).to.include('destination');
     });
+
+    it('rejects when destination building is not operational', async function () {
+      await setBuildingStatus(HABITAT.id, Building.CONSTRUCTION_STATUSES.PLANNED);
+
+      const res = await postAction(server, TOKEN, 'StationCrew', {
+        caller_crew: CREW_1,
+        destination: { id: HABITAT.id, label: HABITAT.label }
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('operational');
+
+      // Restore
+      await setBuildingStatus(HABITAT.id, Building.CONSTRUCTION_STATUSES.OPERATIONAL);
+    });
+
+    it('updates station population on destination', async function () {
+      // Reset station population to 0
+      await mongoose.model('StationComponent').updateOne(
+        { 'entity.id': HABITAT.id, 'entity.label': HABITAT.label },
+        { $set: { population: 0 } }
+      );
+
+      // Move crew 1 from habitat to warehouse first
+      await postAction(server, TOKEN, 'StationCrew', {
+        caller_crew: CREW_1,
+        destination: { id: WAREHOUSE.id, label: WAREHOUSE.label }
+      });
+
+      // Reset station population to 0 again (move away may have modified it)
+      await mongoose.model('StationComponent').updateOne(
+        { 'entity.id': HABITAT.id, 'entity.label': HABITAT.label },
+        { $set: { population: 0 } }
+      );
+
+      // Move crew 1 back to habitat
+      const res = await postAction(server, TOKEN, 'StationCrew', {
+        caller_crew: CREW_1,
+        destination: { id: HABITAT.id, label: HABITAT.label }
+      });
+
+      expect(res.status).to.equal(200);
+
+      // Verify station population increased
+      const station = await mongoose.model('StationComponent').findOne({
+        'entity.id': HABITAT.id, 'entity.label': HABITAT.label
+      }).lean();
+      expect(station.population).to.be.greaterThan(0);
+
+      // Cleanup: reset population
+      await mongoose.model('StationComponent').updateOne(
+        { 'entity.id': HABITAT.id, 'entity.label': HABITAT.label },
+        { $set: { population: 0 } }
+      );
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -126,7 +182,8 @@ describe('Actions – Crew operations', function () {
       }).lean();
       expect(loc.location.label).to.equal(3); // Asteroid
 
-      // Restore: station crew 2 back at habitat
+      // Restore: clear busy state (ejection now sets crew busy) then station crew 2 back at habitat
+      await setCrewBusy(CREW_2.id, 0);
       await postAction(server, TOKEN, 'StationCrew', {
         caller_crew: CREW_2,
         destination: { id: HABITAT.id, label: HABITAT.label }
@@ -174,6 +231,36 @@ describe('Actions – Crew operations', function () {
 
       expect(res.status).to.equal(400);
       expect(res.body.error).to.include('Not authorized');
+    });
+
+    it('sets ejected crew busy after ejection', async function () {
+      // Ensure crew 2 is at habitat
+      await mongoose.model('LocationComponent').updateOne(
+        { 'entity.id': CREW_2.id, 'entity.label': 1 },
+        { $set: { 'location.id': HABITAT.id, 'location.label': HABITAT.label } }
+      );
+      await setCrewBusy(CREW_2.id, 0);
+
+      const now = Math.floor(Date.now() / 1000);
+      const res = await postAction(server, TOKEN, 'EjectCrew', {
+        caller_crew: CREW_1,
+        ejected_crew: CREW_2
+      });
+
+      expect(res.status).to.equal(200);
+
+      // Verify the ejected crew's readyAt is in the future
+      const crew = await mongoose.model('CrewComponent').findOne({
+        'entity.id': CREW_2.id, 'entity.label': 1
+      }).lean();
+      expect(crew.readyAt).to.be.greaterThan(now);
+
+      // Restore: move crew 2 back to habitat and clear busy
+      await setCrewBusy(CREW_2.id, 0);
+      await postAction(server, TOKEN, 'StationCrew', {
+        caller_crew: CREW_2,
+        destination: { id: HABITAT.id, label: HABITAT.label }
+      });
     });
   });
 
@@ -233,6 +320,21 @@ describe('Actions – Crew operations', function () {
 
       expect(res.status).to.equal(400);
       expect(res.body.error).to.include('Not authorized');
+    });
+
+    it('rejects when crew is busy', async function () {
+      const futureTime = Math.floor(Date.now() / 1000) + 99999;
+      await setCrewBusy(CREW_1.id, futureTime);
+
+      const res = await postAction(server, TOKEN, 'ArrangeCrew', {
+        caller_crew: CREW_1,
+        composition: [3, 1, 2]
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('busy');
+
+      await setCrewBusy(CREW_1.id, 0);
     });
   });
 
@@ -323,6 +425,50 @@ describe('Actions – Crew operations', function () {
         { $set: { 'location.id': HABITAT.id, 'location.label': HABITAT.label } }
       );
     });
+
+    it('syncs readyAt to latest of both crews', async function () {
+      // Ensure both crews are at the same location (habitat)
+      await mongoose.model('LocationComponent').updateOne(
+        { 'entity.id': CREW_2.id, 'entity.label': 1 },
+        { $set: { 'location.id': HABITAT.id, 'location.label': HABITAT.label } }
+      );
+
+      // Set crew1 readyAt to a future time, crew2 readyAt to 0
+      const futureTime = Math.floor(Date.now() / 1000) + 5000;
+      await setCrewBusy(CREW_1.id, futureTime);
+      await setCrewBusy(CREW_2.id, 0);
+
+      const res = await postAction(server, TOKEN, 'ExchangeCrew', {
+        crew1: CREW_1,
+        comp1: [1, 4],
+        _crew2: CREW_2,
+        comp2: [2, 3, 5],
+        caller_crew: CREW_1
+      });
+
+      expect(res.status).to.equal(200);
+
+      // Verify both crews have the same (latest) readyAt
+      const c1 = await mongoose.model('CrewComponent').findOne({
+        'entity.id': CREW_1.id, 'entity.label': 1
+      }).lean();
+      const c2 = await mongoose.model('CrewComponent').findOne({
+        'entity.id': CREW_2.id, 'entity.label': 1
+      }).lean();
+      expect(c1.readyAt).to.equal(futureTime);
+      expect(c2.readyAt).to.equal(futureTime);
+
+      // Restore rosters and readyAt
+      await setCrewBusy(CREW_1.id, 0);
+      await setCrewBusy(CREW_2.id, 0);
+      await postAction(server, TOKEN, 'ExchangeCrew', {
+        crew1: CREW_1,
+        comp1: [1, 2, 3],
+        _crew2: CREW_2,
+        comp2: [4, 5],
+        caller_crew: CREW_1
+      });
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -334,7 +480,7 @@ describe('Actions – Crew operations', function () {
       const res = await postAction(server, TOKEN, 'ResupplyFood', {
         caller_crew: CREW_1,
         origin: { id: WAREHOUSE.id, label: WAREHOUSE.label },
-        origin_slot: 1,
+        origin_slot: 2,
         food: 100
       });
 
@@ -347,13 +493,16 @@ describe('Actions – Crew operations', function () {
         'entity.id': CREW_1.id, 'entity.label': 1
       }).lean();
       expect(crew.lastFed).to.be.greaterThan(0);
+
+      // Cleanup: reset readyAt (resupply now sets crew busy)
+      await setCrewBusy(CREW_1.id, 0);
     });
 
     it('rejects when food is zero or negative', async function () {
       const res = await postAction(server, TOKEN, 'ResupplyFood', {
         caller_crew: CREW_1,
         origin: { id: WAREHOUSE.id, label: WAREHOUSE.label },
-        origin_slot: 1,
+        origin_slot: 2,
         food: 0
       });
 
@@ -364,12 +513,69 @@ describe('Actions – Crew operations', function () {
     it('rejects when origin is missing', async function () {
       const res = await postAction(server, TOKEN, 'ResupplyFood', {
         caller_crew: CREW_1,
-        origin_slot: 1,
+        origin_slot: 2,
         food: 100
       });
 
       expect(res.status).to.equal(400);
       expect(res.body.error).to.include('origin');
+    });
+
+    it('removes food from origin inventory', async function () {
+      // Get the current food amount in warehouse slot 2
+      const invBefore = await mongoose.model('InventoryComponent').findOne({
+        'entity.id': WAREHOUSE.id, 'entity.label': WAREHOUSE.label, slot: 2
+      }).lean();
+      const foodBefore = (invBefore.contents || []).find((c) => c.product === 129);
+      const amountBefore = foodBefore ? foodBefore.amount : 0;
+
+      const foodToRemove = 50;
+      const res = await postAction(server, TOKEN, 'ResupplyFood', {
+        caller_crew: CREW_1,
+        origin: { id: WAREHOUSE.id, label: WAREHOUSE.label },
+        origin_slot: 2,
+        food: foodToRemove
+      });
+
+      expect(res.status).to.equal(200);
+
+      // Verify food amount decreased
+      const invAfter = await mongoose.model('InventoryComponent').findOne({
+        'entity.id': WAREHOUSE.id, 'entity.label': WAREHOUSE.label, slot: 2
+      }).lean();
+      const foodAfter = (invAfter.contents || []).find((c) => c.product === 129);
+      const amountAfter = foodAfter ? foodAfter.amount : 0;
+      expect(amountAfter).to.equal(amountBefore - foodToRemove);
+
+      // Cleanup: restore inventory food amount
+      await mongoose.model('InventoryComponent').updateOne(
+        { 'entity.id': WAREHOUSE.id, 'entity.label': WAREHOUSE.label, slot: 2 },
+        { $set: { contents: invBefore.contents, mass: invBefore.mass, volume: invBefore.volume } }
+      );
+      await setCrewBusy(CREW_1.id, 0);
+    });
+
+    it('sets crew busy after resupply', async function () {
+      await setCrewBusy(CREW_1.id, 0);
+
+      const now = Math.floor(Date.now() / 1000);
+      const res = await postAction(server, TOKEN, 'ResupplyFood', {
+        caller_crew: CREW_1,
+        origin: { id: WAREHOUSE.id, label: WAREHOUSE.label },
+        origin_slot: 2,
+        food: 10
+      });
+
+      expect(res.status).to.equal(200);
+
+      // Verify crew readyAt is in the future
+      const crew = await mongoose.model('CrewComponent').findOne({
+        'entity.id': CREW_1.id, 'entity.label': 1
+      }).lean();
+      expect(crew.readyAt).to.be.greaterThan(now);
+
+      // Cleanup
+      await setCrewBusy(CREW_1.id, 0);
     });
   });
 });

@@ -195,6 +195,21 @@ async function loadSeedData(walletAddress = WALLET_ADDRESS) {
     );
   }
 
+  // 14b. Exchange
+  for (const ex of (seedData.exchangeComponents || [])) {
+    await mongoose.model('ExchangeComponent').findOneAndUpdate(
+      { 'entity.id': ex.entity.id, 'entity.label': ex.entity.label }, ex, { upsert: true, new: true }
+    );
+  }
+
+  // 14c. Public policies
+  for (const pp of (seedData.publicPolicyComponents || [])) {
+    await mongoose.model('PublicPolicyComponent').findOneAndUpdate(
+      { 'entity.id': pp.entity.id, 'entity.label': pp.entity.label, permission: pp.permission },
+      pp, { upsert: true, new: true }
+    );
+  }
+
   // 15. Extractor
   for (const e of (seedData.extractorComponents || [])) {
     await mongoose.model('ExtractorComponent').findOneAndUpdate(
@@ -319,6 +334,13 @@ async function setBuildingStatus(buildingId, status, finishTime = 0) {
   await mongoose.model('BuildingComponent').updateOne(
     { 'entity.id': buildingId, 'entity.label': 5 },
     { $set: { status, finishTime } }
+  );
+}
+
+async function setInventoryStatus(entityId, entityLabel, slot, status) {
+  await mongoose.model('InventoryComponent').updateOne(
+    { 'entity.id': entityId, 'entity.label': entityLabel, slot },
+    { $set: { status } }
   );
 }
 
@@ -521,6 +543,7 @@ module.exports = {
 
   // Helpers
   setBuildingStatus,
+  setInventoryStatus,
   setCrewBusy,
   createEmptyLot,
   createUnscannedAsteroid,

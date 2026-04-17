@@ -1,5 +1,5 @@
-const { Delivery, Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { Delivery, Entity, Product } = require('@influenceth/sdk');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const StateMachineValidator = require('../../validators/stateMachine');
@@ -49,6 +49,42 @@ class ReceiveDeliveryHandler extends BaseActionHandler {
       contents: this.delivery.Delivery.contents,
       finishTime: this.delivery.Delivery.finishTime
     });
+
+    // Add delivered products to destination inventory
+    const { dest, destSlot, contents } = this.delivery.Delivery;
+    const destEntity = { id: dest.id, label: dest.label };
+    const destInventories = await ComponentService.findByEntity('Inventory', destEntity);
+    const destInv = destInventories.find((inv) => inv.slot === (destSlot || 1));
+    if (destInv) {
+      const updatedContents = [...(destInv.contents || [])];
+      for (const item of contents) {
+        const existing = updatedContents.find((c) => c.product === item.product);
+        if (existing) {
+          existing.amount += item.amount;
+        } else {
+          updatedContents.push({ product: item.product, amount: item.amount });
+        }
+      }
+
+      let newMass = 0;
+      let newVolume = 0;
+      for (const c of updatedContents) {
+        const pt = Product.TYPES[c.product];
+        if (pt) { newMass += c.amount * pt.massPerUnit; newVolume += c.amount * pt.volumePerUnit; }
+      }
+
+      await this.writeComponent('Inventory', {
+        entity: destEntity,
+        inventoryType: destInv.inventoryType,
+        slot: destInv.slot,
+        status: destInv.status,
+        mass: newMass,
+        volume: newVolume,
+        reservedMass: 0,
+        reservedVolume: 0,
+        contents: updatedContents
+      });
+    }
 
     return { deliveryId: this.delivery.id };
   }

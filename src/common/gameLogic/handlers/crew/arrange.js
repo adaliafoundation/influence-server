@@ -2,6 +2,7 @@ const { Entity } = require('@influenceth/sdk');
 const { EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
+const CrewValidator = require('../../validators/crew');
 const { ValidationError } = require('../../errors');
 
 class CrewArrangeHandler extends BaseActionHandler {
@@ -25,7 +26,10 @@ class CrewArrangeHandler extends BaseActionHandler {
     if (!this.crew) throw new ValidationError('Crew not found');
     await AccessValidator.assertControlledBy(this.crew, this.address);
 
-    // 2. New composition must contain the same crewmates as the current roster
+    // 2. Crew must be ready
+    CrewValidator.assertReady(this.crew);
+
+    // 3. New composition must contain the same crewmates as the current roster
     this.oldRoster = this.crew.Crew?.roster || [];
     const newSet = new Set(composition.map(Number));
     const oldSet = new Set(this.oldRoster.map(Number));

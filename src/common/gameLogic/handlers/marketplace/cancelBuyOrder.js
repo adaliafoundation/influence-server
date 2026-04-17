@@ -1,4 +1,4 @@
-const { Entity, Order } = require('@influenceth/sdk');
+const { Entity, Order, Product } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
@@ -36,6 +36,11 @@ class CancelBuyOrderHandler extends BaseActionHandler {
     this.amount = Number(amount) || 0;
     this.price = Number(price) || 0;
     this.storageSlot = Number(storageSlot) || 1;
+
+    // Load storage inventory for clearing reservation
+    const storageEntity = { id: storageRef.id, label: storageRef.label || Entity.IDS.BUILDING };
+    const inventories = await ComponentService.findByEntity('Inventory', storageEntity);
+    this.storageInv = inventories.find(i => i.slot === this.storageSlot);
   }
 
   async applyStateChanges() {
@@ -65,6 +70,27 @@ class CancelBuyOrderHandler extends BaseActionHandler {
         validTime: existingOrder.validTime,
         makerFee: existingOrder.makerFee
       });
+
+      // Clear destination reservation that was made during createBuyOrder
+      if (this.storageInv) {
+        const orderAmount = existingOrder.amount || 0;
+        const pt = Product.TYPES[this.product];
+        const reservedMass = pt ? orderAmount * pt.massPerUnit : 0;
+        const reservedVolume = pt ? orderAmount * pt.volumePerUnit : 0;
+
+        const storageEntity = { id: this.vars.storage.id, label: this.vars.storage.label || Entity.IDS.BUILDING };
+        await this.writeComponent('Inventory', {
+          entity: storageEntity,
+          inventoryType: this.storageInv.inventoryType,
+          slot: this.storageInv.slot,
+          status: this.storageInv.status,
+          mass: this.storageInv.mass,
+          volume: this.storageInv.volume,
+          reservedMass: Math.max(0, (this.storageInv.reservedMass || 0) - reservedMass),
+          reservedVolume: Math.max(0, (this.storageInv.reservedVolume || 0) - reservedVolume),
+          contents: this.storageInv.contents
+        });
+      }
     }
 
     return {};

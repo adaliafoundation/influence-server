@@ -1,4 +1,4 @@
-const { Entity, Order } = require('@influenceth/sdk');
+const { Entity, Order, Product } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
@@ -40,6 +40,16 @@ class FillSellOrderHandler extends BaseActionHandler {
     this.price = Number(price) || 0;
     this.storageSlot = Number(storageSlot) || 1;
     this.destSlot = Number(destSlot) || 1;
+
+    // Load seller's storage inventory (to clear reservation)
+    const sellerStorageEntity = { id: storageRef.id, label: storageRef.label || Entity.IDS.BUILDING };
+    const sellerInventories = await ComponentService.findByEntity('Inventory', sellerStorageEntity);
+    this.sellerStorageInv = sellerInventories.find(i => i.slot === this.storageSlot);
+
+    // Load buyer's destination inventory (to add products)
+    const destEntity = { id: destRef.id, label: destRef.label || Entity.IDS.BUILDING };
+    const destInventories = await ComponentService.findByEntity('Inventory', destEntity);
+    this.destInv = destInventories.find(i => i.slot === this.destSlot);
   }
 
   async applyStateChanges() {
@@ -69,6 +79,57 @@ class FillSellOrderHandler extends BaseActionHandler {
         status: newAmount <= 0 ? Order.STATUSES.FILLED : Order.STATUSES.OPEN,
         validTime: existingOrder.validTime,
         makerFee: existingOrder.makerFee
+      });
+    }
+
+    const pt = Product.TYPES[this.product];
+    const filledMass = pt ? this.amount * pt.massPerUnit : 0;
+    const filledVolume = pt ? this.amount * pt.volumePerUnit : 0;
+
+    // Unreserve seller's storage (reservation was made during createSellOrder)
+    if (this.sellerStorageInv) {
+      const sellerStorageEntity = { id: this.vars.storage.id, label: this.vars.storage.label || Entity.IDS.BUILDING };
+      await this.writeComponent('Inventory', {
+        entity: sellerStorageEntity,
+        inventoryType: this.sellerStorageInv.inventoryType,
+        slot: this.sellerStorageInv.slot,
+        status: this.sellerStorageInv.status,
+        mass: this.sellerStorageInv.mass,
+        volume: this.sellerStorageInv.volume,
+        reservedMass: Math.max(0, (this.sellerStorageInv.reservedMass || 0) - filledMass),
+        reservedVolume: Math.max(0, (this.sellerStorageInv.reservedVolume || 0) - filledVolume),
+        contents: this.sellerStorageInv.contents
+      });
+    }
+
+    // Add products directly to buyer's destination inventory
+    if (this.destInv) {
+      const updatedContents = [...(this.destInv.contents || [])];
+      const existing = updatedContents.find(c => c.product === this.product);
+      if (existing) {
+        existing.amount += this.amount;
+      } else {
+        updatedContents.push({ product: this.product, amount: this.amount });
+      }
+
+      let newMass = 0;
+      let newVolume = 0;
+      for (const c of updatedContents) {
+        const cpt = Product.TYPES[c.product];
+        if (cpt) { newMass += c.amount * cpt.massPerUnit; newVolume += c.amount * cpt.volumePerUnit; }
+      }
+
+      const destEntity = { id: this.vars.destination.id, label: this.vars.destination.label || Entity.IDS.BUILDING };
+      await this.writeComponent('Inventory', {
+        entity: destEntity,
+        inventoryType: this.destInv.inventoryType,
+        slot: this.destInv.slot,
+        status: this.destInv.status,
+        mass: newMass,
+        volume: newVolume,
+        reservedMass: this.destInv.reservedMass,
+        reservedVolume: this.destInv.reservedVolume,
+        contents: updatedContents
       });
     }
 

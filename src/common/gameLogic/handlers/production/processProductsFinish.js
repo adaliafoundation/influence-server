@@ -1,4 +1,4 @@
-const { Entity, Processor } = require('@influenceth/sdk');
+const { Entity, Process, Processor, Product } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
@@ -53,16 +53,58 @@ class ProcessProductsFinishHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
+    // Compute output products from the process
+    const { runningProcess, recipes, outputProduct, destination, destinationSlot } = this.processorComponent;
+    // getOutputs(processId, recipes, primaryOutputId) — 3rd arg is the user's primary output selection
+    const outputProducts = (Process.getOutputs(runningProcess, recipes, outputProduct || 0) || [])
+      .map((o) => ({ product: o.id, amount: o.amount }));
+
+    // Add output products to destination inventory
+    const destEntity = { id: destination.id, label: destination.label };
+    const destInventories = await ComponentService.findByEntity('Inventory', destEntity);
+    const destInv = destInventories.find((inv) => inv.slot === (destinationSlot || 1));
+    if (destInv) {
+      const updatedContents = [...(destInv.contents || [])];
+      for (const item of outputProducts) {
+        const existing = updatedContents.find((c) => c.product === item.product);
+        if (existing) {
+          existing.amount += item.amount;
+        } else {
+          updatedContents.push({ product: item.product, amount: item.amount });
+        }
+      }
+
+      let newMass = 0;
+      let newVolume = 0;
+      for (const c of updatedContents) {
+        const pt = Product.TYPES[c.product];
+        if (pt) { newMass += c.amount * pt.massPerUnit; newVolume += c.amount * pt.volumePerUnit; }
+      }
+
+      await this.writeComponent('Inventory', {
+        entity: destEntity,
+        inventoryType: destInv.inventoryType,
+        slot: destInv.slot,
+        status: destInv.status,
+        mass: newMass,
+        volume: newVolume,
+        reservedMass: 0,
+        reservedVolume: 0,
+        contents: updatedContents
+      });
+    }
+
     // Set processor back to IDLE
     await this.writeComponent('Processor', {
       entity: { id: this.processor.id, label: Entity.IDS.BUILDING },
       slot: this.processorSlot,
+      processorType: this.processorComponent?.processorType || 0,
       status: Processor.STATUSES.IDLE,
       runningProcess: 0,
       recipes: 0,
       outputProduct: 0,
-      destination: this.processorComponent.destination,
-      destinationSlot: this.processorComponent.destinationSlot,
+      destination,
+      destinationSlot,
       finishTime: 0
     });
 
@@ -73,6 +115,8 @@ class ProcessProductsFinishHandler extends BaseActionHandler {
     return {
       processor: { id: this.processor.id, label: Entity.IDS.BUILDING },
       processorSlot: this.processorSlot,
+      destination: this.processorComponent.destination,
+      destinationSlot: this.processorComponent.destinationSlot,
       callerCrew: this.vars.caller_crew,
       caller: this.address
     };

@@ -1,5 +1,6 @@
 const { Entity } = require('@influenceth/sdk');
 const { EntityService } = require('@common/services');
+const logger = require('@common/lib/logger');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
@@ -31,10 +32,17 @@ class AssignPrepaidPolicyHandler extends BaseActionHandler {
     this.rate = Number(rate) || 0;
     this.initialTerm = Number(initialTerm) || 0;
     this.noticePeriod = Number(noticePeriod) || 0;
+    logger.info(`AssignPrepaidPolicy: raw rate=${rate}, parsed rate=${this.rate}, initialTerm=${this.initialTerm}, noticePeriod=${this.noticePeriod}`);
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async applyStateChanges() {
+    await this.writeComponent('PrepaidPolicy', {
+      entity: this.vars.target,
+      permission: this.permission,
+      rate: this.rate,
+      initialTerm: this.initialTerm,
+      noticePeriod: this.noticePeriod
+    });
     return {};
   }
 

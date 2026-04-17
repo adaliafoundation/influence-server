@@ -1,6 +1,6 @@
-const { Delivery, Entity } = require('@influenceth/sdk');
+const { Asteroid, Building, Delivery, Entity, Inventory, Product } = require('@influenceth/sdk');
 const EntityLib = require('@common/lib/Entity');
-const { EntityService } = require('@common/services');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
@@ -46,11 +46,97 @@ class SendDeliveryHandler extends BaseActionHandler {
     this.originSlot = Number(originSlot) || 1;
     this.destSlot = Number(destSlot) || 1;
     this.products = products.map((p) => ({ product: Number(p.product), amount: Math.floor(Number(p.amount)) }));
+
+    // 3. Origin inventory must exist and be available
+    const originEntity = { id: originRef.id, label: originRef.label };
+    const originInventories = await ComponentService.findByEntity('Inventory', originEntity);
+    this.originInv = originInventories.find((inv) => inv.slot === this.originSlot);
+    if (!this.originInv) throw new ValidationError('Origin inventory not found');
+    if (this.originInv.status !== Inventory.STATUSES.AVAILABLE) {
+      throw new ValidationError('Origin inventory is not available');
+    }
+
+    // Origin must have enough of each product
+    for (const p of this.products) {
+      const available = (this.originInv.contents || []).find((c) => c.product === p.product);
+      if (!available || available.amount < p.amount) {
+        const name = Product.TYPES[p.product]?.name || p.product;
+        throw new ValidationError(`Insufficient ${name} in origin (have ${available?.amount || 0}, need ${p.amount})`);
+      }
+    }
+
+    // 4. Destination inventory must exist and be available
+    const destEntity = { id: destRef.id, label: destRef.label };
+    const destInventories = await ComponentService.findByEntity('Inventory', destEntity);
+    this.destInv = destInventories.find((inv) => inv.slot === this.destSlot);
+    if (!this.destInv) throw new ValidationError('Destination inventory not found');
+    if (this.destInv.status !== Inventory.STATUSES.AVAILABLE) {
+      throw new ValidationError('Destination inventory is not available');
+    }
+
+    // 5. If destination is a construction site, validate material types and amounts
+    const destInvType = Inventory.TYPES[this.destInv.inventoryType];
+    if (destInvType?.category === Inventory.CATEGORIES.SITE) {
+      // Look up the building to get its construction requirements
+      const destBuilding = await EntityService.getEntity({
+        id: destRef.id, label: destRef.label,
+        components: ['Building'], format: true
+      });
+      const requirements = destBuilding
+        ? Building.CONSTRUCTION_TYPES[destBuilding.Building?.buildingType]?.requirements || {}
+        : {};
+
+      for (const p of this.products) {
+        const required = requirements[p.product];
+        if (!required) {
+          const name = Product.TYPES[p.product]?.name || p.product;
+          throw new ValidationError(`${name} is not a required construction material for this building`);
+        }
+        const alreadyOnSite = (this.destInv.contents || []).find((c) => c.product === p.product)?.amount || 0;
+        if (alreadyOnSite + p.amount > required) {
+          const name = Product.TYPES[p.product]?.name || p.product;
+          throw new ValidationError(`Too much ${name}: site needs ${required}, already has ${alreadyOnSite}, sending ${p.amount}`);
+        }
+      }
+    }
+
+    // 6. Destination must have enough free mass and volume
+    const capacity = Inventory.getFilledCapacity(this.destInv.inventoryType);
+    const currentContents = this.destInv.contents || [];
+    let usedMass = 0;
+    let usedVolume = 0;
+    for (const c of currentContents) {
+      const pt = Product.TYPES[c.product];
+      if (pt) { usedMass += c.amount * pt.massPerUnit; usedVolume += c.amount * pt.volumePerUnit; }
+    }
+    let addedMass = 0;
+    let addedVolume = 0;
+    for (const p of this.products) {
+      const pt = Product.TYPES[p.product];
+      if (pt) { addedMass += p.amount * pt.massPerUnit; addedVolume += p.amount * pt.volumePerUnit; }
+    }
+    if (usedMass + addedMass > capacity.filledMass) {
+      throw new ValidationError('Destination inventory does not have enough free mass');
+    }
+    if (usedVolume + addedVolume > capacity.filledVolume) {
+      throw new ValidationError('Destination inventory does not have enough free volume');
+    }
   }
 
   async applyStateChanges() {
-    // Simple fixed delivery time for local mode
-    this.finishTime = this.now + this.capDuration(60);
+    // Compute delivery time based on lot distance (matching on-chain behaviour).
+    // When origin and dest are on the same asteroid the SDK returns 0 for adjacent lots.
+    let travelSeconds = 60; // fallback
+    const originLoc = this.origin.Location?.location;
+    const destLoc = this.dest.Location?.location;
+    if (originLoc?.label === Entity.IDS.LOT && destLoc?.label === Entity.IDS.LOT) {
+      const originLot = EntityLib.toEntity(originLoc).unpackLot();
+      const destLot = EntityLib.toEntity(destLoc).unpackLot();
+      if (originLot.asteroidId === destLot.asteroidId) {
+        travelSeconds = Asteroid.getLotTravelTime(originLot.asteroidId, originLot.lotIndex, destLot.lotIndex);
+      }
+    }
+    this.finishTime = this.now + this.capDuration(travelSeconds);
 
     this.deliveryId = await IdGenerator.next(Entity.IDS.DELIVERY);
 
@@ -77,6 +163,54 @@ class SendDeliveryHandler extends BaseActionHandler {
         }
       ]
     );
+
+    // Subtract delivered products from origin inventory
+    const originEntity = { id: this.vars.origin.id, label: this.vars.origin.label };
+    const updatedContents = (this.originInv.contents || []).map((c) => {
+      const sent = this.products.find((p) => p.product === c.product);
+      if (!sent) return c;
+      return { product: c.product, amount: c.amount - sent.amount };
+    }).filter((c) => c.amount > 0);
+
+    let newMass = 0;
+    let newVolume = 0;
+    for (const c of updatedContents) {
+      const pt = Product.TYPES[c.product];
+      if (pt) { newMass += c.amount * pt.massPerUnit; newVolume += c.amount * pt.volumePerUnit; }
+    }
+
+    await this.writeComponent('Inventory', {
+      entity: originEntity,
+      inventoryType: this.originInv.inventoryType,
+      slot: this.originInv.slot,
+      status: this.originInv.status,
+      mass: newMass,
+      volume: newVolume,
+      reservedMass: this.originInv.reservedMass,
+      reservedVolume: this.originInv.reservedVolume,
+      contents: updatedContents
+    });
+
+    // Reserve space at the destination inventory
+    let deliveryMass = 0;
+    let deliveryVolume = 0;
+    for (const p of this.products) {
+      const pt = Product.TYPES[p.product];
+      if (pt) { deliveryMass += p.amount * pt.massPerUnit; deliveryVolume += p.amount * pt.volumePerUnit; }
+    }
+
+    const destEntity = { id: this.vars.dest.id, label: this.vars.dest.label };
+    await this.writeComponent('Inventory', {
+      entity: destEntity,
+      inventoryType: this.destInv.inventoryType,
+      slot: this.destInv.slot,
+      status: this.destInv.status,
+      mass: this.destInv.mass,
+      volume: this.destInv.volume,
+      reservedMass: (this.destInv.reservedMass || 0) + deliveryMass,
+      reservedVolume: (this.destInv.reservedVolume || 0) + deliveryVolume,
+      contents: this.destInv.contents
+    });
 
     return { deliveryId: this.deliveryId };
   }

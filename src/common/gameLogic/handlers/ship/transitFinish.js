@@ -1,5 +1,6 @@
 const { Entity } = require('@influenceth/sdk');
-const { ComponentService, EntityService } = require('@common/services');
+const EntityLib = require('@common/lib/Entity');
+const { ComponentService, EntityService, LocationComponentService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
@@ -41,17 +42,31 @@ class TransitFinishHandler extends BaseActionHandler {
       throw new ValidationError('Ship is not in transit');
     }
 
-    // 4. Transit must be finished
+    // 4. Transit must be finished (readyAt is IRL Unix time set by transitStart)
     const now = Math.floor(Date.now() / 1000);
-    if (this.ship.Ship.transitArrival > now) {
+    if (this.ship.Ship.readyAt > now) {
       throw new ValidationError('Transit not finished yet');
     }
   }
 
   async applyStateChanges() {
+    const shipEntity = { id: this.ship.id, label: Entity.IDS.SHIP };
+
+    // Place ship in orbit around the destination asteroid
+    const dest = this.ship.Ship.transitDestination;
+    if (dest?.id) {
+      const destEntity = EntityLib.toEntity(dest);
+      const fullLocation = await LocationComponentService.getFullLocation(destEntity);
+      await this.writeComponent('Location', {
+        entity: shipEntity,
+        location: destEntity.toObject(),
+        locations: fullLocation
+      });
+    }
+
     // Clear transit data
     await this.writeComponent('Ship', {
-      entity: { id: this.ship.id, label: Entity.IDS.SHIP },
+      entity: shipEntity,
       shipType: this.ship.Ship.shipType,
       status: this.ship.Ship.status,
       variant: this.ship.Ship.variant,
@@ -59,8 +74,8 @@ class TransitFinishHandler extends BaseActionHandler {
       emergencyAt: this.ship.Ship.emergencyAt,
       transitDeparture: 0,
       transitArrival: 0,
-      transitOrigin: this.ship.Ship.transitDestination,
-      transitDestination: this.ship.Ship.transitDestination
+      transitOrigin: null,
+      transitDestination: null
     });
 
     return { shipId: this.ship.id };
