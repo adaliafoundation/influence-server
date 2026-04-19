@@ -1,5 +1,5 @@
 const { Address } = require('@influenceth/sdk');
-const { ActivityService } = require('@common/services');
+const { ActivityService, LocationComponentService } = require('@common/services');
 const StarknetBaseHandler = require('../../Handler');
 
 class Handler extends StarknetBaseHandler {
@@ -19,7 +19,12 @@ class Handler extends StarknetBaseHandler {
 
     if (activityResult?.created === 0) return;
 
+    // Same fan-out as PrepaidPolicyAssigned: owner crew + asteroid room so
+    // other crews' lot-browser views refresh without a manual reload.
     this.messages.push({ to: `Crew::${callerCrew.id}` });
+    const targetLocation = await LocationComponentService.findOneByEntity(entity);
+    const asteroidEntity = targetLocation?.getAsteroidLocation?.();
+    if (asteroidEntity) this.messages.push({ to: `Asteroid::${asteroidEntity.id}` });
   }
 
   static transformEventData(event) {

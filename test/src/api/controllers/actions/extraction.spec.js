@@ -49,8 +49,12 @@ describe('Actions – Extraction', function () {
         extractor: EXTRACTOR,
         extractor_slot: 1,
         deposit,
+        // Slot 2 is the operational Warehouse Storage (no productConstraints).
+        // Slot 1 is the site inventory, which only accepts build materials
+        // — since the server now enforces productConstraints, route Water
+        // into the storage slot.
         destination: { id: WAREHOUSE.id, label: WAREHOUSE.label },
-        destination_slot: 1,
+        destination_slot: 2,
         yield: 1000
       });
 
@@ -242,14 +246,23 @@ describe('Actions – Extraction', function () {
           outputProduct: 1,
           yield: 500,
           finishTime: pastTime,
+          // Slot 2 is the operational storage (no productConstraints).
+          // The server enforces productConstraints on deposit, so Water
+          // (product 1) can't land in a Warehouse Site (slot 1).
           destination: { id: WAREHOUSE.id, label: WAREHOUSE.label },
-          destinationSlot: 1
+          destinationSlot: 2
         }}
       );
-      // Set some phantom reservations on the destination inventory
+      // Pretend we reserved space on slot 2 when the extract started —
+      // unreserveAndDeposit will subtract the filled amount from it.
+      const prevInv = await mongoose.model('InventoryComponent').findOne({
+        'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 2
+      }).lean();
+      const reservedMassBefore = (prevInv?.reservedMass || 0) + 500 * 1000;
+      const reservedVolumeBefore = (prevInv?.reservedVolume || 0) + 500 * 971;
       await mongoose.model('InventoryComponent').updateOne(
-        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1 },
-        { $set: { reservedMass: 9999, reservedVolume: 9999 } }
+        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 2 },
+        { $set: { reservedMass: reservedMassBefore, reservedVolume: reservedVolumeBefore } }
       );
 
       const res = await postAction(server, TOKEN, 'ExtractResourceFinish', {
@@ -267,12 +280,12 @@ describe('Actions – Extraction', function () {
       expect(ext.status).to.equal(Extractor.STATUSES.IDLE);
       expect(ext.finishTime).to.equal(0);
 
-      // Verify: phantom reservations cleared
+      // Verify: reservation decremented by this extract's footprint
       const inv = await mongoose.model('InventoryComponent').findOne({
-        'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1
+        'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 2
       }).lean();
-      expect(inv.reservedMass).to.equal(0);
-      expect(inv.reservedVolume).to.equal(0);
+      expect(inv.reservedMass).to.equal(reservedMassBefore - 500 * 1000);
+      expect(inv.reservedVolume).to.equal(reservedVolumeBefore - 500 * 971);
     });
 
     it('rejects when extractor is not RUNNING', async function () {

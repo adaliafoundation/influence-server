@@ -441,7 +441,11 @@ async function createSampledDeposit(id, {
   return { id, label: 7 };
 }
 
-async function createDeliveryEntity(id, { status, origin, dest, contents, finishTime = 0, controllerCrew = CREW_1 } = {}) {
+async function createDeliveryEntity(id, {
+  status, origin, originSlot = 1,
+  dest, destSlot = 1,
+  contents, finishTime = 0, controllerCrew = CREW_1
+} = {}) {
   const uuid = EntityLib.toUuid(id, 9); // 9 = DELIVERY
   await mongoose.model('Entity').updateOne({ uuid }, { $setOnInsert: { id, label: 9, uuid } }, { upsert: true });
   await mongoose.model('DeliveryComponent').findOneAndUpdate(
@@ -450,9 +454,9 @@ async function createDeliveryEntity(id, { status, origin, dest, contents, finish
       entity: { id, label: 9 },
       status,
       origin: origin || { id: WAREHOUSE.id, label: WAREHOUSE.label },
-      originSlot: 1,
+      originSlot,
       dest: dest || { id: EXTRACTOR.id, label: EXTRACTOR.label },
-      destSlot: 1,
+      destSlot,
       contents: contents || [{ product: 1, amount: 100 }],
       finishTime
     },

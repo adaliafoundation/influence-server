@@ -440,10 +440,13 @@ describe('Actions – Marketplace', function () {
   // ═══════════════════════════════════════════════════════════════
 
   describe('FillBuyOrder', function () {
+    // Warehouse slot 1 is the site inventory (type 1) with constraints for
+    // Cement/Steel Beam/Steel Sheet only. Use slot 2 (Warehouse Storage,
+    // no constraints) for the buyer's storage. Origin can be slot 2 too.
     it('partially fills a buy order', async function () {
       await createOrder(MARKETPLACE_BLDG.id, {
         crew: CREW_1, orderType: Order.IDS.LIMIT_BUY, product: 2, amount: 100, price: 50,
-        storage: WAREHOUSE, storageSlot: 1, status: Order.STATUSES.OPEN
+        storage: WAREHOUSE, storageSlot: 2, status: Order.STATUSES.OPEN
       });
 
       const res = await postAction(server, TOKEN, 'FillBuyOrder', {
@@ -455,17 +458,21 @@ describe('Actions – Marketplace', function () {
         product: 2,
         amount: 50,
         price: 50,
-        storage_slot: 1,
-        origin_slot: 1
+        storage_slot: 2,
+        origin_slot: 2
       });
 
       expect(res.status).to.equal(200);
     });
 
     it('completely fills a buy order', async function () {
+      // Use product 44 (Cement) — warehouse slot 2 holds 15M in the seed,
+      // so the seller can cover the 100-unit fill. FillBuyOrder now
+      // validates origin stock, so product 3 (Ammonia, not in the seed)
+      // would be rejected.
       await createOrder(MARKETPLACE_BLDG.id, {
-        crew: CREW_1, orderType: Order.IDS.LIMIT_BUY, product: 3, amount: 100, price: 50,
-        storage: WAREHOUSE, storageSlot: 1, status: Order.STATUSES.OPEN
+        crew: CREW_1, orderType: Order.IDS.LIMIT_BUY, product: 44, amount: 100, price: 50,
+        storage: WAREHOUSE, storageSlot: 2, status: Order.STATUSES.OPEN
       });
 
       const res = await postAction(server, TOKEN, 'FillBuyOrder', {
@@ -474,11 +481,11 @@ describe('Actions – Marketplace', function () {
         exchange: MARKETPLACE_BLDG,
         storage: WAREHOUSE,
         origin: WAREHOUSE,
-        product: 3,
+        product: 44,
         amount: 100,
         price: 50,
-        storage_slot: 1,
-        origin_slot: 1
+        storage_slot: 2,
+        origin_slot: 2
       });
 
       expect(res.status).to.equal(200);
@@ -633,10 +640,12 @@ describe('Actions – Marketplace', function () {
   // ═══════════════════════════════════════════════════════════════
 
   describe('FillSellOrder', function () {
+    // Warehouse slot 2 has no product constraints — drop product 4 there
+    // rather than slot 1 (Warehouse Site) which only accepts build mats.
     it('partially fills a sell order', async function () {
       await createOrder(MARKETPLACE_BLDG.id, {
         crew: CREW_1, orderType: Order.IDS.LIMIT_SELL, product: 4, amount: 100, price: 25,
-        storage: WAREHOUSE, storageSlot: 1, status: Order.STATUSES.OPEN
+        storage: WAREHOUSE, storageSlot: 2, status: Order.STATUSES.OPEN
       });
 
       const res = await postAction(server, TOKEN, 'FillSellOrder', {
@@ -648,8 +657,8 @@ describe('Actions – Marketplace', function () {
         product: 4,
         amount: 50,
         price: 25,
-        storage_slot: 1,
-        dest_slot: 1
+        storage_slot: 2,
+        destination_slot: 2
       });
 
       expect(res.status).to.equal(200);
@@ -666,11 +675,94 @@ describe('Actions – Marketplace', function () {
         amount: 0,
         price: 25,
         storage_slot: 1,
-        dest_slot: 1
+        destination_slot: 1
       });
 
       expect(res.status).to.equal(400);
       expect(res.body.error).to.include('positive');
+    });
+
+    it('routes maker + taker fees to the exchange controller', async function () {
+      // Set a 2% maker fee and 1% taker fee on the marketplace exchange.
+      // MARKETPLACE_BLDG is controlled by CREW_1 in the seed; the fees will
+      // credit CREW_1's owner wallet, which is the same wallet as the
+      // caller in this single-wallet test — so we verify the _accounting_
+      // is balanced (seller + market = buyer payment) rather than which
+      // wallet ends up with the money.
+      await mongoose.model('ExchangeComponent').updateOne(
+        { 'entity.id': MARKETPLACE_BLDG.id, 'entity.label': 5 },
+        { $set: { makerFee: 200, takerFee: 100 } }
+      );
+      await createOrder(MARKETPLACE_BLDG.id, {
+        crew: CREW_1, orderType: Order.IDS.LIMIT_SELL,
+        product: 1, amount: 100, price: 25,
+        storage: WAREHOUSE, storageSlot: 2, status: Order.STATUSES.OPEN,
+        makerFee: 200
+      });
+
+      const before = await mongoose.model('User').findOne({ address: { $exists: true } }).sort({ _id: 1 });
+      const beforeBalance = BigInt(before.swayBalance);
+
+      const res = await postAction(server, TOKEN, 'FillSellOrder', {
+        caller_crew: CREW_1,
+        seller_crew: CREW_1,
+        exchange: MARKETPLACE_BLDG,
+        storage: WAREHOUSE,
+        destination: WAREHOUSE,
+        product: 1,
+        amount: 50,
+        price: 25,
+        storage_slot: 2,
+        destination_slot: 2
+      });
+      expect(res.status).to.equal(200);
+
+      // Expected movements in wei:
+      //   value      = 50 × 25 × 1e12
+      //   takerFee   = 1%  × value
+      //   makerFee   = 2%  × value
+      // Same wallet is buyer + seller + market controller, so the net
+      // balance delta is: −(value + takerFee) + (value − makerFee) + (makerFee + takerFee) = 0
+      const after = await mongoose.model('User').findOne({ address: { $exists: true } }).sort({ _id: 1 });
+      const afterBalance = BigInt(after.swayBalance);
+      expect(afterBalance).to.equal(beforeBalance);
+
+      await resetSeedData();
+    });
+
+    it('rejects when the buyer has insufficient SWAY', async function () {
+      await createOrder(MARKETPLACE_BLDG.id, {
+        crew: CREW_1, orderType: Order.IDS.LIMIT_SELL,
+        product: 1, amount: 100, price: 25,
+        storage: WAREHOUSE, storageSlot: 1, status: Order.STATUSES.OPEN
+      });
+
+      // Knock the buyer's SWAY balance down to almost-zero so `price × amount
+      // × 1e12` exceeds it. The call should throw "Insufficient SWAY".
+      await mongoose.model('User').findOneAndUpdate(
+        { address: { $exists: true } },
+        { $set: { swayBalance: '1' } },
+        { sort: { _id: 1 } }
+      );
+
+      const res = await postAction(server, TOKEN, 'FillSellOrder', {
+        caller_crew: CREW_1,
+        seller_crew: CREW_1,
+        exchange: MARKETPLACE_BLDG,
+        storage: WAREHOUSE,
+        destination: WAREHOUSE,
+        product: 1,
+        amount: 50,
+        price: 25,
+        storage_slot: 1,
+        destination_slot: 1
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('Insufficient SWAY');
+
+      // Restore the balance so later tests don't fail.
+      await resetSeedData();
     });
 
     it('rejects when caller does not control crew', async function () {

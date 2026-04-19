@@ -1,13 +1,11 @@
-const { Entity, Order, Product } = require('@influenceth/sdk');
+const { Address, Entity, Order, Product } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
+const logger = require('@common/lib/logger');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
+const Sway = require('../../helpers/sway');
 
-// NOTE: Hybrid mode treats SWAY as infinite (plan §7.8, Option B). No buyer
-// → seller payment or maker/taker fee collection happens here. Product flow
-// is complete — seller escrow → buyer inventory. When the hybrid server
-// grows real SWAY bookkeeping, this handler is the first place to wire it.
 class FillSellOrderHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
   getEventName() { return 'SellOrderFilled'; }
@@ -57,7 +55,13 @@ class FillSellOrderHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
-    // Find and update the existing sell order
+    // SWAY, with marketplace fees. Cairo splits a LIMIT_SELL fill
+    // (orders.cairo `required_payments`) into:
+    //   buyer  pays    value + takerFee
+    //   seller gets    value - makerFee
+    //   market gets    makerFee + takerFee
+    // makerFee is frozen on the order at creation, takerFee comes from the
+    // exchange config at fill time.
     const orderFilter = {
       'entity.id': this.vars.exchange.id,
       'crew.id': this.vars.seller_crew.id,
@@ -67,8 +71,28 @@ class FillSellOrderHandler extends BaseActionHandler {
       'storage.id': this.vars.storage.id,
       storageSlot: this.storageSlot
     };
+    const existingOrderForFees = await ComponentService.findOne('Order', orderFilter);
+    const exchangeComponent = await ComponentService.findOneByEntity('Exchange', this.vars.exchange);
+    const makerFee = existingOrderForFees?.makerFee || 0;
+    const takerFee = exchangeComponent?.takerFee || 0;
 
-    const existingOrder = await ComponentService.findOne('Order', orderFilter);
+    const { valueWei, makerFeeWei, takerFeeWei, feesWei } = Sway.computeFees({
+      price: this.price, amount: this.amount, makerFee, takerFee
+    });
+    const sellerAddress = await Sway.addressOfCrew(this.vars.seller_crew);
+    if (!sellerAddress) throw new ValidationError('Seller wallet not found');
+    const marketAddress = await Sway.addressOfExchangeController(this.vars.exchange);
+
+    // Debit the buyer (caller) for value + takerFee. One debit keeps the
+    // "insufficient SWAY" error clean.
+    await Sway.debit(Address.toStandard(this.address), valueWei + takerFeeWei);
+    // Credit the seller (value - makerFee) and the exchange (both fees).
+    await Sway.credit(sellerAddress, valueWei - makerFeeWei);
+    if (marketAddress && feesWei > 0n) await Sway.credit(marketAddress, feesWei);
+    else if (feesWei > 0n) logger.warn('FillSellOrder: exchange has no controller, fees burned');
+
+    // Find and update the existing sell order
+    const existingOrder = existingOrderForFees;
     if (existingOrder) {
       const newAmount = (existingOrder.amount || 0) - this.amount;
       await this.writeComponent('Order', {
@@ -106,8 +130,12 @@ class FillSellOrderHandler extends BaseActionHandler {
       });
     }
 
-    // Add products directly to buyer's destination inventory
+    // Add products directly to buyer's destination inventory. We reject
+    // product-type mismatches here (tank farm won't accept Steel, etc.)
+    // instead of trusting the client to have filtered the destination.
     if (this.destInv) {
+      this._assertInventoryAccepts(this.destInv, [{ product: this.product, amount: this.amount }]);
+
       const updatedContents = [...(this.destInv.contents || [])];
       const existing = updatedContents.find(c => c.product === this.product);
       if (existing) {

@@ -423,7 +423,15 @@ describe('Actions – Delivery operations', function () {
     });
 
     it('accepts a PACKAGED delivery and transitions to SENT', async function () {
-      await createDeliveryEntity(200, { status: 3, contents: [{ product: 44, amount: 100 }] });
+      // Deliver to WAREHOUSE slot 2 (Warehouse Storage, no product
+      // constraints). Default Extractor slot 1 is a site already at cap
+      // in the seed, so Accept now rejects it via reserveInventory.
+      await createDeliveryEntity(200, {
+        status: 3,
+        contents: [{ product: 44, amount: 100 }],
+        dest: { id: WAREHOUSE.id, label: WAREHOUSE.label },
+        destSlot: 2
+      });
 
       const res = await postAction(server, TOKEN, 'AcceptDelivery', {
         caller_crew: CREW_1,
@@ -475,18 +483,21 @@ describe('Actions – Delivery operations', function () {
 
     it('receives a delivery and adds products to destination inventory', async function () {
       const pastTime = Math.floor(Date.now() / 1000) - 120;
+      // Land the delivery at WAREHOUSE slot 2 (Warehouse Storage, type 10,
+      // no productConstraints) — EXTRACTOR slot 1 is a site at cap for
+      // Cement, and the server now rejects over-cap deposits.
       await createDeliveryEntity(200, {
         status: 4,
         finishTime: pastTime,
         contents: [{ product: 44, amount: 5000 }],
-        dest: { id: EXTRACTOR.id, label: EXTRACTOR.label }
+        dest: { id: WAREHOUSE.id, label: WAREHOUSE.label },
+        destSlot: 2
       });
 
-      // Record extractor inventory before
       const before = await mongoose.model('InventoryComponent').findOne({
-        'entity.id': EXTRACTOR.id, 'entity.label': EXTRACTOR.label, slot: 1
+        'entity.id': WAREHOUSE.id, 'entity.label': WAREHOUSE.label, slot: 2
       }).lean();
-      const cementBefore = before.contents.find((c) => c.product === 44).amount;
+      const cementBefore = before.contents.find((c) => c.product === 44)?.amount || 0;
 
       const res = await postAction(server, TOKEN, 'ReceiveDelivery', {
         caller_crew: CREW_1,
@@ -499,22 +510,24 @@ describe('Actions – Delivery operations', function () {
       const updated = await mongoose.model('DeliveryComponent').findOne({ 'entity.id': 200 });
       expect(updated.status).to.equal(2); // COMPLETE
 
-      // Destination inventory should have received the products
       const after = await mongoose.model('InventoryComponent').findOne({
-        'entity.id': EXTRACTOR.id, 'entity.label': EXTRACTOR.label, slot: 1
+        'entity.id': WAREHOUSE.id, 'entity.label': WAREHOUSE.label, slot: 2
       }).lean();
-      const cementAfter = after.contents.find((c) => c.product === 44).amount;
+      const cementAfter = after.contents.find((c) => c.product === 44)?.amount || 0;
       expect(cementAfter).to.equal(cementBefore + 5000);
     });
 
     it('adds a new product to destination if it did not exist before', async function () {
       const pastTime = Math.floor(Date.now() / 1000) - 120;
-      // Product 1 (Water) is not in extractor slot 1
+      // Pick a product the destination doesn't currently hold. Warehouse
+      // slot 2 has no Hydrogen Propellant (product 170 is in the tank
+      // farm) — deposit 100 units and verify a new entry appears.
       await createDeliveryEntity(200, {
         status: 4,
         finishTime: pastTime,
-        contents: [{ product: 1, amount: 200 }],
-        dest: { id: EXTRACTOR.id, label: EXTRACTOR.label }
+        contents: [{ product: 170, amount: 100 }],
+        dest: { id: WAREHOUSE.id, label: WAREHOUSE.label },
+        destSlot: 2
       });
 
       const res = await postAction(server, TOKEN, 'ReceiveDelivery', {
@@ -525,27 +538,39 @@ describe('Actions – Delivery operations', function () {
       expect(res.status).to.equal(200);
 
       const after = await mongoose.model('InventoryComponent').findOne({
-        'entity.id': EXTRACTOR.id, 'entity.label': EXTRACTOR.label, slot: 1
+        'entity.id': WAREHOUSE.id, 'entity.label': WAREHOUSE.label, slot: 2
       }).lean();
-      const water = after.contents.find((c) => c.product === 1);
-      expect(water).to.not.be.undefined;
-      expect(water.amount).to.equal(200);
+      const hydrogen = after.contents.find((c) => c.product === 170);
+      expect(hydrogen).to.not.be.undefined;
+      expect(hydrogen.amount).to.equal(100);
     });
 
-    it('clears destination reservations after receive', async function () {
+    it('decrements destination reservations after receive', async function () {
       const pastTime = Math.floor(Date.now() / 1000) - 120;
-
-      // First, set some reservations on the destination inventory
+      // Pretend something reserved 5000 Cement worth of mass/volume on
+      // WAREHOUSE slot 2. After receive, that reservation should be
+      // released — but other reservations (if any) must survive.
+      const before = await mongoose.model('InventoryComponent').findOne({
+        'entity.id': WAREHOUSE.id, 'entity.label': WAREHOUSE.label, slot: 2
+      }).lean();
+      const phantomMass = 7000000; // unrelated reservation we must preserve
+      const phantomVolume = 3000000;
+      const deliveryMass = 5000 * 1000; // 5000 Cement × 1000 mass
+      const deliveryVolume = 5000 * 1130;
       await mongoose.model('InventoryComponent').updateOne(
-        { 'entity.id': EXTRACTOR.id, 'entity.label': EXTRACTOR.label, slot: 1 },
-        { $set: { reservedMass: 5000000, reservedVolume: 5650000 } }
+        { 'entity.id': WAREHOUSE.id, 'entity.label': WAREHOUSE.label, slot: 2 },
+        { $set: {
+          reservedMass: (before?.reservedMass || 0) + phantomMass + deliveryMass,
+          reservedVolume: (before?.reservedVolume || 0) + phantomVolume + deliveryVolume
+        } }
       );
 
       await createDeliveryEntity(200, {
         status: 4,
         finishTime: pastTime,
         contents: [{ product: 44, amount: 5000 }],
-        dest: { id: EXTRACTOR.id, label: EXTRACTOR.label }
+        dest: { id: WAREHOUSE.id, label: WAREHOUSE.label },
+        destSlot: 2
       });
 
       const res = await postAction(server, TOKEN, 'ReceiveDelivery', {
@@ -555,12 +580,11 @@ describe('Actions – Delivery operations', function () {
 
       expect(res.status).to.equal(200);
 
-      // Destination inventory should have reservedMass and reservedVolume cleared to 0
       const destInv = await mongoose.model('InventoryComponent').findOne({
-        'entity.id': EXTRACTOR.id, 'entity.label': EXTRACTOR.label, slot: 1
+        'entity.id': WAREHOUSE.id, 'entity.label': WAREHOUSE.label, slot: 2
       }).lean();
-      expect(destInv.reservedMass).to.equal(0);
-      expect(destInv.reservedVolume).to.equal(0);
+      expect(destInv.reservedMass).to.equal((before?.reservedMass || 0) + phantomMass);
+      expect(destInv.reservedVolume).to.equal((before?.reservedVolume || 0) + phantomVolume);
     });
 
     it('rejects when delivery is not SENT', async function () {
@@ -665,7 +689,9 @@ describe('Actions – Delivery operations', function () {
       expect(cementAfterCancel.amount).to.equal(15000000);
     });
 
-    it('rejects when delivery is not PACKAGED', async function () {
+    it('rejects when a SENT delivery has not yet arrived', async function () {
+      // SENT delivery with future finishTime: Cairo forbids cancelling
+      // before arrival (cancel.cairo:79), so the server should too.
       await createDeliveryEntity(201, { status: 4, finishTime: Math.floor(Date.now() / 1000) + 600 });
 
       const res = await postAction(server, TOKEN, 'CancelDelivery', {
@@ -674,7 +700,7 @@ describe('Actions – Delivery operations', function () {
       });
 
       expect(res.status).to.equal(400);
-      expect(res.body.error).to.include('status');
+      expect(res.body.error).to.match(/not arrived|not finished/);
     });
 
     it('rejects when caller does not control crew', async function () {

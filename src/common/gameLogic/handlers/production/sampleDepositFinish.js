@@ -1,5 +1,5 @@
-const { Asteroid, Deposit, Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { Asteroid, Crew, Crewmate, Deposit, Entity } = require('@influenceth/sdk');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const StateMachineValidator = require('../../validators/stateMachine');
@@ -48,6 +48,19 @@ class SampleDepositFinishHandler extends BaseActionHandler {
         format: true
       });
     }
+
+    // 5. Load crewmate docs so we can compute the real CORE_SAMPLE_QUALITY
+    // bonus (Cairo applies a 0.5× penalty when the crew has no Miner). The
+    // SDK's Crew.getAbilityBonus needs the crewmate docs as input.
+    const roster = this.crew.Crew?.roster || [];
+    if (roster.length) {
+      this.crewmates = await Promise.all(roster.map(
+        (cmId) => ComponentService.findOne('Crewmate', { 'entity.id': cmId, 'entity.label': Entity.IDS.CREWMATE })
+      ));
+      this.crewmates = this.crewmates.filter(Boolean);
+    } else {
+      this.crewmates = [];
+    }
   }
 
   async applyStateChanges() {
@@ -85,10 +98,17 @@ class SampleDepositFinishHandler extends BaseActionHandler {
       if (resourceAbundance !== undefined) abundance = resourceAbundance;
     }
 
+    // CORE_SAMPLE_QUALITY bonus from the crew — 0.5× penalty when no miner
+    // (matches Cairo sample_finish which applies the crew_sample ability).
+    const qualityBonus = Crew.getAbilityBonus(
+      Crewmate.ABILITY_IDS.CORE_SAMPLE_QUALITY,
+      this.crewmates || []
+    ).totalBonus || 1;
+
     // getSampleBounds works in SDK scale (max 10B). Stored yields are 1000x smaller
     // (the client passes storedYield * 1e3 when calling getSampleBounds).
     const previousYield = (this.deposit.Deposit.initialYield || 0) * 1000;
-    const bounds = Deposit.getSampleBounds(abundance, previousYield, 1);
+    const bounds = Deposit.getSampleBounds(abundance, previousYield, qualityBonus);
     const seed = (this.deposit.id * 2654435761) >>> 0;
     const ratio = (seed % 1000) / 1000;
     const range = Number(bounds.upper) - Number(bounds.lower);

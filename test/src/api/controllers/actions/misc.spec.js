@@ -292,12 +292,34 @@ describe('Actions – Miscellaneous', function () {
 
   describe('PurchaseAsteroid', function () {
     it('accepts a valid purchase asteroid request', async function () {
+      // Primary-sale semantics: seed an UNOWNED asteroid (has Celestial
+      // but no Nft yet). Seeded asteroids 1–2 are owned in resetSeedData
+      // so the handler's "already owned" check would reject them.
+      const freshId = 777;
+      const freshRef = { id: freshId, label: 3 };
+      await mongoose.model('Entity').updateOne(
+        { uuid: require('@common/lib/Entity').toUuid(freshId, 3) },
+        { $setOnInsert: { id: freshId, label: 3, uuid: require('@common/lib/Entity').toUuid(freshId, 3) } },
+        { upsert: true }
+      );
+      await mongoose.model('CelestialComponent').findOneAndUpdate(
+        { 'entity.id': freshId, 'entity.label': 3 },
+        { entity: freshRef, celestialType: 1, mass: 1e9, radius: 100, scanStatus: 0 },
+        { upsert: true, new: true }
+      );
+
       const res = await postAction(server, TOKEN, 'PurchaseAsteroid', {
         caller_crew: CREW_1,
-        asteroid: { id: ASTEROID_1.id }
+        asteroid: freshRef
       });
 
       expect(res.status).to.equal(200);
+
+      // Cleanup so later tests don't see the minted asteroid.
+      await mongoose.model('NftComponent').deleteOne({ 'entity.id': freshId, 'entity.label': 3 });
+      await mongoose.model('CelestialComponent').deleteOne({ 'entity.id': freshId, 'entity.label': 3 });
+      await mongoose.model('ControlComponent').deleteOne({ 'entity.id': freshId, 'entity.label': 3 });
+      await mongoose.model('Entity').deleteOne({ id: freshId, label: 3 });
     });
 
     it('rejects when caller does not control crew', async function () {
@@ -405,16 +427,20 @@ describe('Actions – Miscellaneous', function () {
 
   describe('PurchaseDeposit', function () {
     it('purchases a listed deposit and clears PrivateSaleComponent', async function () {
-      const deposit = await createSampledDeposit(920, { resource: 1, remainingYield: 5000 });
+      // Seller = CREW_2, buyer = CREW_1. You can't purchase your own
+      // deposit, so they must be distinct crews.
+      const deposit = await createSampledDeposit(920, {
+        resource: 1, remainingYield: 5000, controllerCrew: CREW_2
+      });
 
-      // List the deposit first
+      // CREW_2 lists it for sale
       await postAction(server, TOKEN, 'ListDepositForSale', {
-        caller_crew: CREW_1,
+        caller_crew: CREW_2,
         deposit: { id: deposit.id },
         price: 3000
       });
 
-      // Purchase it
+      // CREW_1 purchases it
       const res = await postAction(server, TOKEN, 'PurchaseDeposit', {
         caller_crew: CREW_1,
         deposit: { id: deposit.id }

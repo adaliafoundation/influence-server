@@ -56,7 +56,11 @@ const userSchema = new mongoose.Schema({
     TASK: { type: Boolean, default: true }
   },
   referredBy: { type: String, set: Address.toStandard },
-  watchlist: [watchlistSchema]
+  watchlist: [watchlistSchema],
+  // Hybrid-mode SWAY balance (wei units, 18 decimals). Stored as a string
+  // because the value can exceed Number.MAX_SAFE_INTEGER. Never used in
+  // chain mode — there, SWAY is read directly from the on-chain contract.
+  swayBalance: { type: String, default: '50000000000000000000000' }
 });
 
 userSchema.virtual('hasSeed').get(function () {

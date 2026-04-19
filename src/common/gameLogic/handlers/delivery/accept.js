@@ -75,7 +75,9 @@ class AcceptDeliveryHandler extends BaseActionHandler {
       if (pt) { deliveryMass += p.amount * pt.massPerUnit; deliveryVolume += p.amount * pt.volumePerUnit; }
     }
 
-    // Clear origin reservation (set to 0)
+    // Release the origin reservation for THIS delivery's footprint (not
+    // all reservations on the slot — that would clobber any other
+    // in-flight deliveries from the same origin).
     const { origin, originSlot, dest, destSlot } = this.delivery.Delivery;
     const originEntity = { id: origin.id, label: origin.label };
     const originInventories = await ComponentService.findByEntity('Inventory', originEntity);
@@ -88,28 +90,19 @@ class AcceptDeliveryHandler extends BaseActionHandler {
         status: originInv.status,
         mass: originInv.mass,
         volume: originInv.volume,
-        reservedMass: 0,
-        reservedVolume: 0,
+        reservedMass: Math.max(0, (originInv.reservedMass || 0) - deliveryMass),
+        reservedVolume: Math.max(0, (originInv.reservedVolume || 0) - deliveryVolume),
         contents: originInv.contents
       });
     }
 
-    // Reserve space at destination inventory
+    // Reserve space at destination inventory (via the helper so product
+    // constraints + mass/volume caps are enforced).
     const destEntity = { id: dest.id, label: dest.label };
     const destInventories = await ComponentService.findByEntity('Inventory', destEntity);
     const destInv = destInventories.find((inv) => inv.slot === (destSlot || 1));
     if (destInv) {
-      await this.writeComponent('Inventory', {
-        entity: destEntity,
-        inventoryType: destInv.inventoryType,
-        slot: destInv.slot,
-        status: destInv.status,
-        mass: destInv.mass,
-        volume: destInv.volume,
-        reservedMass: (destInv.reservedMass || 0) + deliveryMass,
-        reservedVolume: (destInv.reservedVolume || 0) + deliveryVolume,
-        contents: destInv.contents
-      });
+      await this.reserveInventory(destEntity, destInv, this.delivery.Delivery.contents);
     }
 
     return { deliveryId: this.delivery.id };

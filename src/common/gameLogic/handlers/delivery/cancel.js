@@ -1,8 +1,7 @@
-const { Delivery, Entity, Product } = require('@influenceth/sdk');
+const { Delivery, Entity, Permission, Product } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
-const StateMachineValidator = require('../../validators/stateMachine');
 const { ValidationError } = require('../../errors');
 
 class CancelDeliveryHandler extends BaseActionHandler {
@@ -13,6 +12,7 @@ class CancelDeliveryHandler extends BaseActionHandler {
     const { delivery: deliveryRef, caller_crew: callerCrewRef } = this.vars || {};
     if (!callerCrewRef?.id) throw new ValidationError('vars.caller_crew with id is required');
     if (!deliveryRef?.id) throw new ValidationError('vars.delivery with id is required');
+    this.now = Math.floor(Date.now() / 1000);
 
     // 1. Crew must exist and be controlled by this address
     this.crew = await EntityService.getEntity({
@@ -24,7 +24,12 @@ class CancelDeliveryHandler extends BaseActionHandler {
     if (!this.crew) throw new ValidationError('Crew not found');
     await AccessValidator.assertControlledBy(this.crew, this.address);
 
-    // 2. Delivery must exist and be PACKAGED (can only cancel proposals)
+    // 2. Delivery must exist and be either PACKAGED (cancel before dispatch)
+    //    or SENT with finish_time <= now (cancel after arrival but before
+    //    receive). Matches Cairo cancel.cairo: PACKAGED needs no perm
+    //    checks (tenant cancelled a proposal); SENT-after-finish requires
+    //    REMOVE_PRODUCTS on dest AND ADD_PRODUCTS on origin to reverse
+    //    the flow.
     this.delivery = await EntityService.getEntity({
       id: deliveryRef.id,
       label: Entity.IDS.DELIVERY,
@@ -32,7 +37,32 @@ class CancelDeliveryHandler extends BaseActionHandler {
       format: true
     });
     if (!this.delivery) throw new ValidationError('Delivery not found');
-    StateMachineValidator.assertStatus(this.delivery.Delivery, Delivery.STATUSES.PACKAGED, 'Delivery');
+
+    const status = this.delivery.Delivery.status;
+    if (status === Delivery.STATUSES.PACKAGED) {
+      // Proposal cancellation — no permission checks needed; Cairo
+      // (cancel.cairo line ~66) relies on the tenant controlling the
+      // delivery entity which we already enforce via assertControlledBy.
+    } else if (status === Delivery.STATUSES.SENT) {
+      // In-flight cancellation is only valid after the delivery would
+      // have landed (Cairo cancel.cairo:79). No early-aborts.
+      if ((this.delivery.Delivery.finishTime || 0) > this.now) {
+        throw new ValidationError('Cannot cancel a delivery that has not arrived');
+      }
+      // Reverse-flow permission checks (Cairo cancel.cairo:81-82).
+      const { origin, dest } = this.delivery.Delivery;
+      const originEntity = await EntityService.getEntity({
+        id: origin.id, label: origin.label, components: ['Location'], format: true
+      });
+      const destEntity = await EntityService.getEntity({
+        id: dest.id, label: dest.label, components: ['Location'], format: true
+      });
+      if (!originEntity || !destEntity) throw new ValidationError('Delivery origin/dest no longer exists');
+      await AccessValidator.assertPermission(this.crew, destEntity, Permission.IDS.REMOVE_PRODUCTS);
+      await AccessValidator.assertPermission(this.crew, originEntity, Permission.IDS.ADD_PRODUCTS);
+    } else {
+      throw new ValidationError(`Delivery cannot be cancelled from status ${status}`);
+    }
   }
 
   async applyStateChanges() {

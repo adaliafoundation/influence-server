@@ -1,8 +1,9 @@
-const { Entity, Order, Product } = require('@influenceth/sdk');
+const { Address, Entity, Order, Product } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
+const Sway = require('../../helpers/sway');
 
 class CreateBuyOrderHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -56,12 +57,23 @@ class CreateBuyOrderHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
+    // Escrow: debit the buyer for `value × (10000 + makerFee) / 10000`.
+    // Cairo pre-collects the maker fee with the order (fill_buy.cairo:127),
+    // so the escrow can cover both seller payout AND market cut regardless
+    // of who fills the order later.
+    const escrowWei = Sway.buyOrderEscrowWei({
+      price: this.price, amount: this.amount, makerFee: this.makerFee
+    });
+    await Sway.debit(Address.toStandard(this.address), escrowWei);
+
     await this.writeComponent('Order', {
       entity: { id: this.exchange.id, label: this.exchange.label || Entity.IDS.BUILDING },
       crew: this.vars.caller_crew,
       orderType: Order.IDS.LIMIT_BUY,
       product: this.product,
       amount: this.amount,
+      initialAmount: this.amount,
+      initialCaller: this.address,
       price: this.price,
       storage: this.vars.storage,
       storageSlot: this.storageSlot,

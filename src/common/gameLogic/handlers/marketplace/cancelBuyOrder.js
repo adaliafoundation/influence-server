@@ -3,6 +3,7 @@ const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
+const Sway = require('../../helpers/sway');
 
 class CancelBuyOrderHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -57,6 +58,22 @@ class CancelBuyOrderHandler extends BaseActionHandler {
 
     const existingOrder = await ComponentService.findOne('Order', orderFilter);
     if (existingOrder) {
+      // SWAY: refund the remaining escrow to whoever funded the order. The
+      // escrow was `value × (10000 + makerFee) / 10000`, so the refund for
+      // the unfilled remainder uses the same scale. The order's stored
+      // `makerFee` is the fee rate in effect at create time (frozen).
+      const remainingAmount = existingOrder.amount || 0;
+      if (remainingAmount > 0) {
+        const refundWei = Sway.buyOrderEscrowWei({
+          price: this.price,
+          amount: remainingAmount,
+          makerFee: existingOrder.makerFee || 0
+        });
+        const refundTo = existingOrder.initialCaller
+          || await Sway.addressOfCrew(this.vars.buyer_crew);
+        if (refundTo) await Sway.credit(refundTo, refundWei);
+      }
+
       await this.writeComponent('Order', {
         entity: this.vars.exchange,
         crew: this.vars.buyer_crew,

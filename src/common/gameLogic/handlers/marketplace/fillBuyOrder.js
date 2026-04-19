@@ -1,8 +1,10 @@
 const { Entity, Order, Product } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
+const logger = require('@common/lib/logger');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
+const Sway = require('../../helpers/sway');
 
 class FillBuyOrderHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -41,10 +43,31 @@ class FillBuyOrderHandler extends BaseActionHandler {
     this.storageSlot = Number(storageSlot) || 1;
     this.originSlot = Number(originSlot) || 1;
 
+    // Seller (caller) must have REMOVE_PRODUCTS on the origin inventory's
+    // host entity — can't fulfill a buy order from a warehouse you can't
+    // pull from.
+    const originHostEntity = await EntityService.getEntity({
+      id: originRef.id, label: originRef.label || Entity.IDS.BUILDING,
+      components: ['Location', 'Control'], format: true
+    });
+    if (!originHostEntity) throw new ValidationError('Origin entity not found');
+    await AccessValidator.assertPermission(
+      this.crew, originHostEntity, require('@influenceth/sdk').Permission.IDS.REMOVE_PRODUCTS
+    );
+
     // Load seller's origin inventory (to deduct products)
     const originEntity = { id: originRef.id, label: originRef.label || Entity.IDS.BUILDING };
     const originInventories = await ComponentService.findByEntity('Inventory', originEntity);
     this.originInv = originInventories.find(i => i.slot === this.originSlot);
+    if (!this.originInv) throw new ValidationError('Origin inventory slot not found');
+
+    // Origin must actually contain enough of the product. Cairo checks
+    // this in fill_buy.cairo; without it a seller could commit to a fill
+    // they can't deliver.
+    const originStock = (this.originInv.contents || []).find(c => c.product === this.product)?.amount || 0;
+    if (originStock < this.amount) {
+      throw new ValidationError(`Insufficient product at origin (have ${originStock}, need ${this.amount})`);
+    }
 
     // Load buyer's storage inventory (to add products and clear reservation)
     const buyerStorageEntity = { id: storageRef.id, label: storageRef.label || Entity.IDS.BUILDING };
@@ -53,7 +76,12 @@ class FillBuyOrderHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
-    // Find and update the existing order - reduce amount or mark as filled
+    // SWAY: buyer's escrow (value + makerFee) now splits — per Cairo
+    // `required_withdrawals` (orders.cairo:53):
+    //   seller (caller/taker) receives  value - takerFee
+    //   exchange receives               makerFee + takerFee
+    // The remaining balance in escrow after both payouts is zero (the
+    // buyer's extra makerFee-worth pre-payment covers the shortfall).
     const orderFilter = {
       'entity.id': this.vars.exchange.id,
       'crew.id': this.vars.buyer_crew.id,
@@ -63,8 +91,23 @@ class FillBuyOrderHandler extends BaseActionHandler {
       'storage.id': this.vars.storage.id,
       storageSlot: this.storageSlot
     };
+    const existingOrderForFees = await ComponentService.findOne('Order', orderFilter);
+    const exchangeComponent = await ComponentService.findOneByEntity('Exchange', this.vars.exchange);
+    const makerFee = existingOrderForFees?.makerFee || 0;
+    const takerFee = exchangeComponent?.takerFee || 0;
 
-    const existingOrder = await ComponentService.findOne('Order', orderFilter);
+    const { valueWei, takerFeeWei, feesWei } = Sway.computeFees({
+      price: this.price, amount: this.amount, makerFee, takerFee
+    });
+    const sellerAddress = await Sway.addressOfCrew(this.vars.caller_crew);
+    if (!sellerAddress) throw new ValidationError('Seller wallet not found');
+    const marketAddress = await Sway.addressOfExchangeController(this.vars.exchange);
+
+    await Sway.credit(sellerAddress, valueWei - takerFeeWei);
+    if (marketAddress && feesWei > 0n) await Sway.credit(marketAddress, feesWei);
+    else if (feesWei > 0n) logger.warn('FillBuyOrder: exchange has no controller, fees burned');
+
+    const existingOrder = existingOrderForFees;
     if (existingOrder) {
       const newAmount = (existingOrder.amount || 0) - this.amount;
       await this.writeComponent('Order', {
@@ -116,8 +159,11 @@ class FillBuyOrderHandler extends BaseActionHandler {
       });
     }
 
-    // Add products to buyer's storage inventory and clear reservation
+    // Add products to buyer's storage inventory and clear reservation.
+    // Buyer's storage type must accept the product (e.g. you can't land
+    // Steel Sheets in a Propellant Tank). Bounces with 400 otherwise.
     if (this.buyerStorageInv) {
+      this._assertInventoryAccepts(this.buyerStorageInv, [{ product: this.product, amount: this.amount }]);
       const updatedContents = [...(this.buyerStorageInv.contents || [])];
       const existing = updatedContents.find(c => c.product === this.product);
       if (existing) {
