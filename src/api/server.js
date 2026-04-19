@@ -25,9 +25,25 @@ server.use(serveStatic(`${__dirname}/../common/assets`));
 
 // Middleware
 server.use(cors());
+
+// Rate-limit backing store: a Map that sweeps expired entries on every
+// write, so long-lived processes don't leak memory as distinct IPs come
+// and go. (koa-ratelimit stores entries as `{ counter, end }` where
+// `end` is an epoch-ms expiry; anything older than `now` is stale.)
+class TtlMap extends Map {
+  set(key, value) {
+    const now = Date.now();
+    // Sweep opportunistically; scanning ~every set is cheap at these sizes.
+    for (const [k, v] of this.entries()) {
+      if (typeof v?.end === 'number' && v.end < now) super.delete(k);
+    }
+    return super.set(key, value);
+  }
+}
+
 server.use(ratelimit({
   driver: 'memory',
-  db: new Map(),
+  db: new TtlMap(),
   duration: 10000,
   errorMessage: `API is rate-limited to ${isHybrid() ? 20 : 5} requests per second`,
   id: (ctx) => ((ctx.state.user && ctx.state.user.sub) ? ctx.state.user.sub : ctx.ip),

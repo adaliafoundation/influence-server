@@ -51,14 +51,26 @@ class ConstructionAbandonHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
+    const buildingEntity = { id: this.building.id, label: Entity.IDS.BUILDING };
+
     // Update building status to UNPLANNED
     await this.writeComponent('Building', {
-      entity: { id: this.building.id, label: Entity.IDS.BUILDING },
+      entity: buildingEntity,
       buildingType: this.building.Building.buildingType,
       status: Building.CONSTRUCTION_STATUSES.UNPLANNED,
       plannedAt: this.building.Building.plannedAt,
       finishTime: 0
     });
+
+    // Reset the building Name so the name uniqueness constraint is released
+    // (Cairo construction_abandon.cairo:69 — change_name(building, '')).
+    await this.writeComponent('Name', { entity: buildingEntity, name: '' });
+
+    // Clear the LotUse link so the lot can host a new building. Cairo clears
+    // the `LotUse` Unique row; in the hybrid data model "lot is occupied" is
+    // derived from `Building.status !== UNPLANNED` at the lot's Location,
+    // so the status flip above already frees the lot for ConstructionPlan's
+    // "Lot already has a building" check. Nothing else to clear.
 
     return { buildingId: this.building.id };
   }

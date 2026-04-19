@@ -247,6 +247,11 @@ async function enrichWithMeta(entities) {
   });
 }
 
+// Hard cap on rows materialized in-process per request. Lot label (4) on a
+// fully-forked asteroid has ~1.7M docs; a pure in-memory search on that would
+// blow RSS and stall the event loop. This bounds every request.
+const HYBRID_SEARCH_HARD_LIMIT = 10000;
+
 const hybridSearch = async function (ctx) {
   const { params: { index }, request: { body } } = ctx;
   if (!index) ctx.throw(404, 'Missing or invalid index');
@@ -260,7 +265,17 @@ const hybridSearch = async function (ctx) {
       ctx.body = { hits: { hits: [], total: { value: 0 } } };
       return;
     }
+    // Refuse unfiltered label-only queries that would load everything.
+    if (!body?.query && label === INDEX_TO_LABEL.lot) {
+      ctx.status = 400;
+      ctx.body = { error: 'lot searches require a query filter' };
+      return;
+    }
     results = await EntityService.getEntities({ label, format: true });
+    if ((results || []).length > HYBRID_SEARCH_HARD_LIMIT) {
+      logger.warn(`hybridSearch [${index}]: truncating ${results.length} → ${HYBRID_SEARCH_HARD_LIMIT} rows`);
+      results = results.slice(0, HYBRID_SEARCH_HARD_LIMIT);
+    }
     // Enrich entities with meta fields (names of related entities) that the
     // ES formatters normally provide. Without these, list views crash.
     results = await enrichWithMeta(results);

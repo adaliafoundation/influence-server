@@ -61,7 +61,7 @@ class ComponentService {
    *
    * @returns MongoUpdateResult
    */
-  static async updateOrCreateFromEvent({ event, component, filter, model, data, replace = true }) {
+  static async updateOrCreateFromEvent({ event, component, filter, model, data, replace = true, session = null }) {
     if (!model && !component) throw new Error('Either model or component must be provided');
     if ((!event?._id && !event?.id) || !event?.timestamp) throw new Error('Missing or invalid event');
 
@@ -78,7 +78,9 @@ class ComponentService {
     if (!doc.uniquePath && !filter) throw new Error('Missing filter or doc.uniquePath()');
     const _filter = filter || doc.uniquePath();
 
-    const existing = await _model.findOne(_filter).populate({ path: 'virtuals.event', strictPopulate: false });
+    const existingQuery = _model.findOne(_filter).populate({ path: 'virtuals.event', strictPopulate: false });
+    if (session) existingQuery.session(session);
+    const existing = await existingQuery;
     let updated = false;
     let created = false;
     const oldDoc = (existing) ? existing.toObject() : null;
@@ -115,15 +117,17 @@ class ComponentService {
     // if we have an existing document and the event is newer, update it
     updated = true;
 
+    const saveOpts = session ? { session } : undefined;
+
     if (existing && replace) {
       existing.overwrite({ ...data, event: { id: (event._id || event.id), timestamp: event.timestamp } });
-      await existing.save();
+      await existing.save(saveOpts);
     } else if (existing) { // just update with passed in data
       existing.set('event', { id: (event._id || event.id), timestamp: event.timestamp });
       existing.set(data);
-      await existing.save();
+      await existing.save(saveOpts);
     } else {
-      await doc.save();
+      await doc.save(saveOpts);
       created = true;
     }
 

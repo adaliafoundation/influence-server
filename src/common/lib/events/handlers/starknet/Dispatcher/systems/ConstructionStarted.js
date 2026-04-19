@@ -8,6 +8,7 @@ const {
   LocationComponentService,
   PackedLotDataService,
   ResolvableEventNotificationService } = require('@common/services');
+const { isHybrid } = require('@common/lib/gameMode');
 const StarknetBaseHandler = require('../../Handler');
 
 class Handler extends StarknetBaseHandler {
@@ -46,14 +47,15 @@ class Handler extends StarknetBaseHandler {
 
     if (activityResult?.created === 0) return;
 
-    // TODO: This runs in both chain and hybrid mode. Deleting the Planned
-    // activity cleans up the feed so construction doesn't appear twice, but
-    // it changes the activity history in chain mode too. Decide during code
-    // review whether this should be gated behind isHybrid().
-    await mongoose.model('Activity').deleteMany({
-      'event.name': 'ConstructionPlanned',
-      'event.returnValues.building.id': building.id
-    });
+    // Hybrid only: collapse the Planned activity so the feed doesn't show
+    // both Planned and Started for the same construction. Chain mode keeps
+    // the full activity history.
+    if (isHybrid()) {
+      await mongoose.model('Activity').deleteMany({
+        'event.name': 'ConstructionPlanned',
+        'event.returnValues.building.id': building.id
+      });
+    }
 
     await ResolvableEventNotificationService.createOrUpdate({
       type: 'Construction',

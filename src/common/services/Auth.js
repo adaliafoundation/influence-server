@@ -84,11 +84,26 @@ class AuthService {
     // Nonce has now been used, so remove from cache to avoid replay attacks
     await AuthCache.deleteLoginMessage(_address);
 
-    // In hybrid + development mode, skip on-chain deployment check and signature
-    // verification. In production hybrid mode, we still verify signatures since
-    // the server is exposed and we need to prove wallet ownership.
-    if (isHybrid() && process.env.NODE_ENV === 'development') {
-      logger.info(`Hybrid dev mode: skipping signature verification for ${_address}`);
+    // Insecure dev login shortcut. Disabled by default — the server still
+    // verifies the Starknet signature even in hybrid + development mode.
+    // To opt in (e.g. when running without a wallet for iterative UI work),
+    // set `HYBRID_INSECURE_LOGIN=1`. It intentionally requires BOTH hybrid
+    // mode AND NODE_ENV=development AND the explicit env var, so the door
+    // stays closed on a production server that happened to be started with
+    // GAME_MODE=hybrid.
+    //
+    // Security note: any host that is reachable from outside localhost with
+    // these three conditions set is effectively open — ANYONE can mint a
+    // JWT for ANY wallet. Don't enable this unless the server is bound to
+    // a loopback address or behind authenticated network controls.
+    const insecureLoginEnabled = isHybrid()
+      && process.env.NODE_ENV === 'development'
+      && process.env.HYBRID_INSECURE_LOGIN === '1';
+    if (insecureLoginEnabled) {
+      logger.warn(
+        `INSECURE_LOGIN: minting JWT for ${_address} without signature check.`
+        + ' This must only be used on loopback/development hosts.'
+      );
       return UserService.findOrCreateByAddress({ address: _address, isDeployed: true, referredBy });
     }
 

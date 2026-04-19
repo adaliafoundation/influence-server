@@ -150,4 +150,77 @@ describe('Actions endpoint – auth & validation', function () {
     expect(res.status).to.equal(400);
     expect(res.body.error).to.include('Not authorized');
   });
+
+  // ── Idempotency ────────────────────────────────────────────────
+
+  describe('X-Idempotency-Key', function () {
+    it('replays the cached event when the same key + body is sent twice', async function () {
+      // Pick an action with no external state dependencies. ChangeName is simple.
+      const idem = `idem-${Date.now()}`;
+      const vars = { caller_crew: CREW_1, entity: CREW_1, name: 'TestCrewName' };
+
+      const first = await server
+        .post('/v2/actions/ChangeName')
+        .set('Authorization', `Bearer ${TOKEN}`)
+        .set('X-Idempotency-Key', idem)
+        .send({ callerCrew: CREW_1, vars });
+      expect(first.status).to.equal(200);
+      const firstTx = first.body.event.transactionHash;
+
+      const second = await server
+        .post('/v2/actions/ChangeName')
+        .set('Authorization', `Bearer ${TOKEN}`)
+        .set('X-Idempotency-Key', idem)
+        .send({ callerCrew: CREW_1, vars });
+      expect(second.status).to.equal(200);
+      expect(second.body.replayed).to.equal(true);
+      expect(second.body.event.transactionHash).to.equal(firstTx);
+    });
+
+    it('does NOT replay when the same key is reused with a different body', async function () {
+      // Controller binds the key to a sha256 of action + payload, so the
+      // second call goes through as a fresh action instead of being treated
+      // as a replay of the first.
+      const idem = `idem-diff-${Date.now()}`;
+
+      const first = await server
+        .post('/v2/actions/ChangeName')
+        .set('Authorization', `Bearer ${TOKEN}`)
+        .set('X-Idempotency-Key', idem)
+        .send({ callerCrew: CREW_1, vars: { caller_crew: CREW_1, entity: CREW_1, name: 'NameA' } });
+      expect(first.status).to.equal(200);
+
+      const second = await server
+        .post('/v2/actions/ChangeName')
+        .set('Authorization', `Bearer ${TOKEN}`)
+        .set('X-Idempotency-Key', idem)
+        .send({ callerCrew: CREW_1, vars: { caller_crew: CREW_1, entity: CREW_1, name: 'NameB' } });
+      expect(second.status).to.equal(200);
+      expect(second.body.replayed).to.not.equal(true);
+      expect(second.body.event.transactionHash).to.not.equal(first.body.event.transactionHash);
+    });
+  });
+
+  // ── Shape fuzzing ──────────────────────────────────────────────
+
+  it('does not accept `$`-prefixed keys that would inject into mongo filters', async function () {
+    // caller_crew shape check + handler's targeted id extraction rejects
+    // anything except a plain `{id, label}` ref, so a filter-injection
+    // payload just 400s.
+    const res = await postAction(server, TOKEN, 'ConstructionPlan', {
+      caller_crew: { $gt: {} },
+      building_type: 1,
+      lot: { id: 99999 }
+    });
+    expect(res.status).to.equal(400);
+  });
+
+  it('ignores __proto__ keys inside vars without polluting prototype', async function () {
+    const poison = JSON.parse('{"caller_crew":{"__proto__":{"polluted":true}}}');
+    await postAction(server, TOKEN, 'ConstructionPlan', poison);
+    // Object prototype should be clean regardless of the handler's response.
+    // eslint-disable-next-line no-proto
+    expect(({}).polluted).to.be.undefined;
+    expect(Object.prototype.polluted).to.be.undefined;
+  });
 });

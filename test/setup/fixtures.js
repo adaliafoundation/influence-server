@@ -3,7 +3,7 @@ require('dotenv').config({ silent: true });
 const sinon = require('sinon');
 const appConfig = require('config');
 const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
+const { MongoMemoryServer, MongoMemoryReplSet } = require('mongodb-memory-server');
 const jwt = require('jsonwebtoken');
 const http = require('http');
 const request = require('supertest');
@@ -24,7 +24,14 @@ mongoose.set('strictQuery', true);
 exports.mochaHooks = {
   async beforeAll() {
     logger.info('Setting up test mongodb server...');
-    mongoServer = await MongoMemoryServer.create({ binary: { version: '6.0.14' } });
+    // Replica set (even single-node) is required for session transactions,
+    // which our GameEngine + SyntheticEvent rely on. Without replSet, any
+    // `session.startTransaction()` throws "Transaction numbers are only
+    // allowed on a replica set member or mongos".
+    mongoServer = await MongoMemoryReplSet.create({
+      replSet: { count: 1, storageEngine: 'wiredTiger' },
+      binary: { version: '6.0.14' }
+    });
     this.mongoUri = mongoServer.getUri();
 
     // Set the mongo uri in the app config

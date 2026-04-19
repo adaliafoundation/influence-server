@@ -1,10 +1,11 @@
-const { Building, Entity, Inventory, Process } = require('@influenceth/sdk');
+const { Building, Entity, Inventory, Lot, Process } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
 const StateMachineValidator = require('../../validators/stateMachine');
 const { ValidationError } = require('../../errors');
+const { crewToLotTravelTime } = require('../../helpers/travel');
 
 class ConstructionStartHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -108,8 +109,14 @@ class ConstructionStartHandler extends BaseActionHandler {
       });
     }
 
-    // Mark crew as busy for a fraction of the build time (Cairo: 2*travelTime + buildTime/8)
-    const crewBusyUntil = this.now + Math.ceil(constructionTime / 8);
+    // Cairo formula: busy = now + 2*hopperTravel(crew→lot) + buildTime/8.
+    // Travel time is in game-seconds; convert with the same TIME_ACCELERATION.
+    const buildingLocation = this.building.Location?.location;
+    const travelGameSeconds = buildingLocation
+      ? crewToLotTravelTime(this.crew, { id: buildingLocation.id, label: Entity.IDS.LOT })
+      : 0;
+    const travelRealSeconds = await this.gameSecondsToReal(travelGameSeconds);
+    const crewBusyUntil = this.now + (travelRealSeconds * 2) + Math.ceil(constructionTime / 8);
     await this.setCrewBusy(this.crew, crewBusyUntil);
 
     return { finishTime: this.finishTime };
