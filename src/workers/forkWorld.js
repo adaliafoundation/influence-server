@@ -26,10 +26,15 @@ const args = yargs(hideBin(process.argv))
     description: 'Human-readable label for this universe',
     default: null
   })
+  .option('empty', {
+    type: 'boolean',
+    description: 'Create an empty world fork without syncing chain state (for local hybrid dev)',
+    default: false
+  })
   .help()
   .parse();
 
-const main = async function ({ block, label }) {
+const main = async function ({ block, label, empty }) {
   const WorldFork = mongoose.model('WorldFork');
 
   // Check if already forked
@@ -39,6 +44,21 @@ const main = async function ({ block, label }) {
       `World already forked at block ${existing.blockNumber} (${existing.forkedAt.toISOString()}).`
       + ' Drop the database to re-fork.'
     );
+    return;
+  }
+
+  if (empty) {
+    // Create an empty world fork for local hybrid development
+    const forkBlock = block || 0;
+    const forkLabel = label || `empty-fork-${forkBlock}`;
+    await WorldFork.create({
+      blockNumber: forkBlock,
+      blockHash: '0x0',
+      blockTimestamp: new Date(),
+      forkedAt: new Date(),
+      label: forkLabel
+    });
+    logger.info(`Empty world fork created (block: ${forkBlock}, label: ${forkLabel})`);
     return;
   }
 

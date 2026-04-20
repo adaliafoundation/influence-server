@@ -6,7 +6,7 @@ const ALLOWED_ORIGINS = [
   new RegExp(`${appConfig.get('App.bridgeClientUrl')}/?$`, 'i')
 ];
 
-const allowedEnvs = ['goerli', 'staging', 'development', 'prerelease'];
+const allowedEnvs = ['goerli', 'staging', 'development', 'docker', 'prerelease'];
 if (allowedEnvs.includes(appConfig.util.getEnv('NODE_ENV'))) ALLOWED_ORIGINS.push(/(.*):\/\/localhost:[0-9]*/i);
 
 const allowedOrigin = ({ request: { headers: { origin } } }) => (

@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env*
+data
+tmp
+test/src
+test/helpers
+test/*.js
+.DS_Store
+*.md
+.eslintrc*
+.vscode
