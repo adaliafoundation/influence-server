@@ -41,6 +41,13 @@ const loadHandlers = () => {
     DockShip: require('./handlers/ship/dock'),
     UndockShip: require('./handlers/ship/undock'),
     CommandeerShip: require('./handlers/ship/commandeer'),
+    // Delivery
+    SendDelivery: require('./handlers/delivery/send'),
+    PackageDelivery: require('./handlers/delivery/package'),
+    AcceptDelivery: require('./handlers/delivery/accept'),
+    CancelDelivery: require('./handlers/delivery/cancel'),
+    ReceiveDelivery: require('./handlers/delivery/receive'),
+    DumpDelivery: require('./handlers/delivery/dump'),
     // TODO: Add remaining handlers as they are implemented
   };
 
