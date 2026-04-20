@@ -38,8 +38,8 @@ if (isHybrid()) {
       if (callerCrew !== undefined && (typeof callerCrew !== 'object' || callerCrew === null || Array.isArray(callerCrew))) {
         ctx.throw(400, 'callerCrew must be an object');
       }
-      if (vars !== undefined && (typeof vars !== 'object' || vars === null || Array.isArray(vars))) {
-        ctx.throw(400, 'vars must be an object');
+      if (vars !== undefined && typeof vars !== 'object' && !Array.isArray(vars)) {
+        ctx.throw(400, 'vars must be an object or array');
       }
       if (meta !== undefined && (typeof meta !== 'object' || meta === null || Array.isArray(meta))) {
         ctx.throw(400, 'meta must be an object');
