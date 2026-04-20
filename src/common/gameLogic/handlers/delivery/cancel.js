@@ -1,5 +1,5 @@
-const { Delivery, Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { Delivery, Entity, Product } = require('@influenceth/sdk');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const StateMachineValidator = require('../../validators/stateMachine');
@@ -46,6 +46,42 @@ class CancelDeliveryHandler extends BaseActionHandler {
       contents: this.delivery.Delivery.contents,
       finishTime: 0
     });
+
+    // Return products to origin inventory
+    const { origin, originSlot, contents } = this.delivery.Delivery;
+    const originEntity = { id: origin.id, label: origin.label };
+    const originInventories = await ComponentService.findByEntity('Inventory', originEntity);
+    const originInv = originInventories.find((inv) => inv.slot === (originSlot || 1));
+    if (originInv) {
+      const updatedContents = [...(originInv.contents || [])];
+      for (const item of contents) {
+        const existing = updatedContents.find((c) => c.product === item.product);
+        if (existing) {
+          existing.amount += item.amount;
+        } else {
+          updatedContents.push({ product: item.product, amount: item.amount });
+        }
+      }
+
+      let newMass = 0;
+      let newVolume = 0;
+      for (const c of updatedContents) {
+        const pt = Product.TYPES[c.product];
+        if (pt) { newMass += c.amount * pt.massPerUnit; newVolume += c.amount * pt.volumePerUnit; }
+      }
+
+      await this.writeComponent('Inventory', {
+        entity: originEntity,
+        inventoryType: originInv.inventoryType,
+        slot: originInv.slot,
+        status: originInv.status,
+        mass: newMass,
+        volume: newVolume,
+        reservedMass: originInv.reservedMass,
+        reservedVolume: originInv.reservedVolume,
+        contents: updatedContents
+      });
+    }
 
     return { deliveryId: this.delivery.id };
   }

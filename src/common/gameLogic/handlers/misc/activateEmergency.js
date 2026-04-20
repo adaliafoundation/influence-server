@@ -1,5 +1,5 @@
 const { Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { EntityService, ComponentService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
@@ -29,8 +29,23 @@ class ActivateEmergencyHandler extends BaseActionHandler {
     this.ship = { id: crewLocation.id, label: Entity.IDS.SHIP };
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async applyStateChanges() {
+    this.now = Math.floor(Date.now() / 1000);
+
+    // Read the current Ship component so we can preserve fields and set emergencyAt
+    const shipDoc = await ComponentService.findOneByEntity('Ship', this.ship);
+    if (!shipDoc) throw new ValidationError('Ship component not found');
+
+    await this.writeComponent('Ship', {
+      entity: this.ship,
+      emergencyAt: this.now,
+      shipType: shipDoc.shipType,
+      status: shipDoc.status,
+      variant: shipDoc.variant,
+      readyAt: shipDoc.readyAt || 0,
+      transitArrival: shipDoc.transitArrival || 0,
+      transitDeparture: shipDoc.transitDeparture || 0
+    });
     return {};
   }
 

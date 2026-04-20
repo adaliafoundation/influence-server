@@ -55,6 +55,9 @@ describe('Actions – Scanning', function () {
       }).lean();
       expect(celestial.scanStatus).to.equal(Asteroid.SCAN_STATUSES.SURFACE_SCANNING);
       expect(celestial.scanFinishTime).to.be.greaterThan(0);
+
+      // Cleanup: reset crew readyAt
+      await setCrewBusy(CREW_1.id, 0);
     });
 
     it('rejects when asteroid is already scanned', async function () {
@@ -93,6 +96,23 @@ describe('Actions – Scanning', function () {
 
       expect(res.status).to.equal(400);
       expect(res.body.error).to.include('Not authorized');
+    });
+
+    it('rejects when crew does not control asteroid', async function () {
+      await createUnscannedAsteroid(103);
+      // Set asteroid controller to a different crew (id=99)
+      await mongoose.model('ControlComponent').updateOne(
+        { 'entity.id': 103, 'entity.label': 3 },
+        { $set: { controller: { id: 99, label: 1 } } }
+      );
+
+      const res = await postAction(server, TOKEN, 'ScanSurfaceStart', {
+        caller_crew: CREW_1,
+        asteroid: { id: 103 }
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('control');
     });
   });
 
@@ -168,6 +188,28 @@ describe('Actions – Scanning', function () {
       expect(res.status).to.equal(400);
       expect(res.body.error).to.include('Not authorized');
     });
+
+    it('rejects when crew does not control asteroid', async function () {
+      const pastTime = Math.floor(Date.now() / 1000) - 100;
+      await createUnscannedAsteroid(202);
+      await mongoose.model('CelestialComponent').updateOne(
+        { 'entity.id': 202, 'entity.label': 3 },
+        { $set: { scanStatus: Asteroid.SCAN_STATUSES.SURFACE_SCANNING, scanFinishTime: pastTime } }
+      );
+      // Set asteroid controller to a different crew
+      await mongoose.model('ControlComponent').updateOne(
+        { 'entity.id': 202, 'entity.label': 3 },
+        { $set: { controller: { id: 99, label: 1 } } }
+      );
+
+      const res = await postAction(server, TOKEN, 'ScanSurfaceFinish', {
+        caller_crew: CREW_1,
+        asteroid: { id: 202 }
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('control');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -198,6 +240,9 @@ describe('Actions – Scanning', function () {
         'entity.id': 300, 'entity.label': 3
       }).lean();
       expect(celestial.scanStatus).to.equal(Asteroid.SCAN_STATUSES.RESOURCE_SCANNING);
+
+      // Cleanup: reset crew readyAt
+      await setCrewBusy(CREW_1.id, 0);
     });
 
     it('rejects when asteroid is not SURFACE_SCANNED', async function () {
@@ -230,6 +275,27 @@ describe('Actions – Scanning', function () {
       expect(res.body.error).to.include('busy');
 
       await setCrewBusy(CREW_1.id, 0);
+    });
+
+    it('rejects when crew does not control asteroid', async function () {
+      await createUnscannedAsteroid(302);
+      await mongoose.model('CelestialComponent').updateOne(
+        { 'entity.id': 302, 'entity.label': 3 },
+        { $set: { scanStatus: Asteroid.SCAN_STATUSES.SURFACE_SCANNED } }
+      );
+      // Set asteroid controller to a different crew
+      await mongoose.model('ControlComponent').updateOne(
+        { 'entity.id': 302, 'entity.label': 3 },
+        { $set: { controller: { id: 99, label: 1 } } }
+      );
+
+      const res = await postAction(server, TOKEN, 'ScanResourcesStart', {
+        caller_crew: CREW_1,
+        asteroid: { id: 302 }
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('control');
     });
   });
 
@@ -294,6 +360,32 @@ describe('Actions – Scanning', function () {
 
       expect(res.status).to.equal(400);
       expect(res.body.error).to.include('not finished yet');
+    });
+
+    it('rejects when crew does not control asteroid', async function () {
+      const pastTime = Math.floor(Date.now() / 1000) - 100;
+      await createUnscannedAsteroid(402);
+      await mongoose.model('CelestialComponent').updateOne(
+        { 'entity.id': 402, 'entity.label': 3 },
+        { $set: {
+          scanStatus: Asteroid.SCAN_STATUSES.RESOURCE_SCANNING,
+          scanFinishTime: pastTime,
+          bonuses: 42
+        }}
+      );
+      // Set asteroid controller to a different crew
+      await mongoose.model('ControlComponent').updateOne(
+        { 'entity.id': 402, 'entity.label': 3 },
+        { $set: { controller: { id: 99, label: 1 } } }
+      );
+
+      const res = await postAction(server, TOKEN, 'ScanResourcesFinish', {
+        caller_crew: CREW_1,
+        asteroid: { id: 402 }
+      });
+
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.include('control');
     });
   });
 });

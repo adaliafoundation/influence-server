@@ -46,6 +46,21 @@ class ConstructionDeconstructHandler extends BaseActionHandler {
 
     // 4. Caller must control the building
     await AccessValidator.assertControlledBy(this.building, this.address);
+
+    // 5. Operational modules must be idle
+    const buildingEntity = { id: this.building.id, label: Entity.IDS.BUILDING };
+    const extractors = await ComponentService.findByEntity('Extractor', buildingEntity);
+    if (extractors.some((e) => e.status !== 0)) {
+      throw new ValidationError('Extractor is still running');
+    }
+    const processors = await ComponentService.findByEntity('Processor', buildingEntity);
+    if (processors.some((p) => p.status !== 0)) {
+      throw new ValidationError('Processor is still running');
+    }
+    const dryDocks = await ComponentService.findByEntity('DryDock', buildingEntity);
+    if (dryDocks.some((d) => d.status !== 0)) {
+      throw new ValidationError('DryDock is still running');
+    }
   }
 
   async applyStateChanges() {
@@ -59,6 +74,9 @@ class ConstructionDeconstructHandler extends BaseActionHandler {
       plannedAt: this.now,
       finishTime: 0
     });
+
+    // Mark crew as busy for a short time (Cairo: 2 * travel_time)
+    await this.setCrewBusy(this.crew, this.now + this.capDuration(60));
 
     // Flip inventory statuses: site inventory → AVAILABLE, operational → UNAVAILABLE
     const inventories = await ComponentService.findByEntity('Inventory', buildingEntity);

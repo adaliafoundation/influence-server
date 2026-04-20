@@ -7,6 +7,7 @@ const {
   LocationComponentService,
   ResolvableEventNotificationService } = require('@common/services');
 const Logger = require('@common/lib/logger');
+const { isHybrid } = require('@common/lib/gameMode');
 const StarknetBaseHandler = require('../../Handler');
 
 class Handler extends StarknetBaseHandler {
@@ -48,6 +49,12 @@ class Handler extends StarknetBaseHandler {
       hashKeys: Handler.hashKeys,
       unresolvedFor: [callerCrew]
     });
+
+    // In hybrid mode, the game engine writes Location components but the
+    // derived crew-location chain may not be fully resolved by component events.
+    if (isHybrid()) {
+      await LocationComponentService.refreshCrewLocationsAtLocation(ship);
+    }
 
     if (activityResult?.created === 0) return;
 

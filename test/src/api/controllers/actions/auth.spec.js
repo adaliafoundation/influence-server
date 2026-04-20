@@ -108,6 +108,15 @@ describe('Actions endpoint – auth & validation', function () {
       { $set: { status: 1 } } // PLANNED
     );
 
+    // Empty site inventory so abandon check passes
+    const origInv = await mongoose.model('InventoryComponent').findOne({
+      'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1
+    }).lean();
+    await mongoose.model('InventoryComponent').updateOne(
+      { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1 },
+      { $set: { contents: [], mass: 0, volume: 0 } }
+    );
+
     const res = await postAction(server, TOKEN, 'ConstructionAbandon', {
       caller_crew: CREW_1,
       building: WAREHOUSE
@@ -116,7 +125,13 @@ describe('Actions endpoint – auth & validation', function () {
     expect(res.status).to.equal(200);
     expect(res.body).to.have.property('event');
 
-    // Restore
+    // Restore inventory and status
+    if (origInv) {
+      await mongoose.model('InventoryComponent').updateOne(
+        { 'entity.id': WAREHOUSE.id, 'entity.label': 5, slot: 1 },
+        { $set: { contents: origInv.contents, mass: origInv.mass, volume: origInv.volume } }
+      );
+    }
     await mongoose.model('BuildingComponent').updateOne(
       { 'entity.id': WAREHOUSE.id, 'entity.label': 5 },
       { $set: { status: 3 } } // OPERATIONAL

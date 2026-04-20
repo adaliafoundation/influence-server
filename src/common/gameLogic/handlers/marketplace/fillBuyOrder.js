@@ -1,4 +1,4 @@
-const { Entity, Order } = require('@influenceth/sdk');
+const { Entity, Order, Product } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
@@ -40,6 +40,16 @@ class FillBuyOrderHandler extends BaseActionHandler {
     this.price = Number(price) || 0;
     this.storageSlot = Number(storageSlot) || 1;
     this.originSlot = Number(originSlot) || 1;
+
+    // Load seller's origin inventory (to deduct products)
+    const originEntity = { id: originRef.id, label: originRef.label || Entity.IDS.BUILDING };
+    const originInventories = await ComponentService.findByEntity('Inventory', originEntity);
+    this.originInv = originInventories.find(i => i.slot === this.originSlot);
+
+    // Load buyer's storage inventory (to add products and clear reservation)
+    const buyerStorageEntity = { id: storageRef.id, label: storageRef.label || Entity.IDS.BUILDING };
+    const buyerInventories = await ComponentService.findByEntity('Inventory', buyerStorageEntity);
+    this.buyerStorageInv = buyerInventories.find(i => i.slot === this.storageSlot);
   }
 
   async applyStateChanges() {
@@ -69,6 +79,71 @@ class FillBuyOrderHandler extends BaseActionHandler {
         status: newAmount <= 0 ? Order.STATUSES.FILLED : Order.STATUSES.OPEN,
         validTime: existingOrder.validTime,
         makerFee: existingOrder.makerFee
+      });
+    }
+
+    const pt = Product.TYPES[this.product];
+    const filledMass = pt ? this.amount * pt.massPerUnit : 0;
+    const filledVolume = pt ? this.amount * pt.volumePerUnit : 0;
+
+    // Remove products from seller's origin inventory
+    if (this.originInv) {
+      const updatedContents = (this.originInv.contents || []).map(c => {
+        if (c.product === this.product) {
+          return { product: c.product, amount: c.amount - this.amount };
+        }
+        return c;
+      }).filter(c => c.amount > 0);
+
+      let newMass = 0;
+      let newVolume = 0;
+      for (const c of updatedContents) {
+        const cpt = Product.TYPES[c.product];
+        if (cpt) { newMass += c.amount * cpt.massPerUnit; newVolume += c.amount * cpt.volumePerUnit; }
+      }
+
+      const originEntity = { id: this.vars.origin.id, label: this.vars.origin.label || Entity.IDS.BUILDING };
+      await this.writeComponent('Inventory', {
+        entity: originEntity,
+        inventoryType: this.originInv.inventoryType,
+        slot: this.originInv.slot,
+        status: this.originInv.status,
+        mass: newMass,
+        volume: newVolume,
+        reservedMass: this.originInv.reservedMass,
+        reservedVolume: this.originInv.reservedVolume,
+        contents: updatedContents
+      });
+    }
+
+    // Add products to buyer's storage inventory and clear reservation
+    if (this.buyerStorageInv) {
+      const updatedContents = [...(this.buyerStorageInv.contents || [])];
+      const existing = updatedContents.find(c => c.product === this.product);
+      if (existing) {
+        existing.amount += this.amount;
+      } else {
+        updatedContents.push({ product: this.product, amount: this.amount });
+      }
+
+      let newMass = 0;
+      let newVolume = 0;
+      for (const c of updatedContents) {
+        const cpt = Product.TYPES[c.product];
+        if (cpt) { newMass += c.amount * cpt.massPerUnit; newVolume += c.amount * cpt.volumePerUnit; }
+      }
+
+      const buyerStorageEntity = { id: this.vars.storage.id, label: this.vars.storage.label || Entity.IDS.BUILDING };
+      await this.writeComponent('Inventory', {
+        entity: buyerStorageEntity,
+        inventoryType: this.buyerStorageInv.inventoryType,
+        slot: this.buyerStorageInv.slot,
+        status: this.buyerStorageInv.status,
+        mass: newMass,
+        volume: newVolume,
+        reservedMass: Math.max(0, (this.buyerStorageInv.reservedMass || 0) - filledMass),
+        reservedVolume: Math.max(0, (this.buyerStorageInv.reservedVolume || 0) - filledVolume),
+        contents: updatedContents
       });
     }
 

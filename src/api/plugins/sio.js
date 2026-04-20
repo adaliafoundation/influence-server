@@ -11,24 +11,26 @@ const AsteroidChatRoom = require('./sio/AsteroidChatRoom');
 
 class SocketIoServer {
   constructor(httpServer) {
-    const NODE_ENV = appConfig.util.getEnv('NODE_ENV');
-    const REDIS_URL = appConfig.get('Redis.uri');
-    const options = { url: REDIS_URL, pingInterval: 60000 };
-    if (!['development', 'docker'].includes(NODE_ENV)) Object.assign(options, { socket: { tls: true, rejectUnauthorized: false } });
-    this.pubClient = createClient(options);
-    this.subClient = this.pubClient.duplicate();
-
-    this.pubClient.on('error', (error) => {
-      logger.error(error.message || error);
-    });
-
-    this.subClient.on('error', (error) => {
-      logger.error(error.message || error);
-    });
-
     this.initSocketIoServer(httpServer);
     this.initPlugins();
     this.initListeners();
+
+    const redisUri = appConfig.has('Redis.uri') ? appConfig.get('Redis.uri') : '';
+    if (redisUri) {
+      const NODE_ENV = appConfig.util.getEnv('NODE_ENV');
+      const options = { url: redisUri, pingInterval: 60000 };
+      if (!['development', 'docker'].includes(NODE_ENV)) Object.assign(options, { socket: { tls: true, rejectUnauthorized: false } });
+      this.pubClient = createClient(options);
+      this.subClient = this.pubClient.duplicate();
+
+      this.pubClient.on('error', (error) => {
+        logger.error(error.message || error);
+      });
+
+      this.subClient.on('error', (error) => {
+        logger.error(error.message || error);
+      });
+    }
   }
 
   initSocketIoServer(httpServer) {
@@ -111,6 +113,11 @@ class SocketIoServer {
   }
 
   async connect() {
+    if (!this.pubClient) {
+      // No Redis configured — emit directly on the socket.io server
+      eventEmitter.setServer(this.sioServer);
+      return;
+    }
     await Promise.all([this.pubClient.connect(), this.subClient.connect()]);
     this.sioServer.adapter(createAdapter(this.pubClient, this.subClient));
   }

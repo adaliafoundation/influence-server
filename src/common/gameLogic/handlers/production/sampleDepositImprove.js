@@ -1,10 +1,12 @@
-const { Deposit, Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { Asteroid, Deposit, Entity, Inventory, Lot, Product } = require('@influenceth/sdk');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
 const StateMachineValidator = require('../../validators/stateMachine');
 const { ValidationError } = require('../../errors');
+
+const CORE_DRILL_PRODUCT = 175;
 
 class SampleDepositImproveHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -49,6 +51,30 @@ class SampleDepositImproveHandler extends BaseActionHandler {
       format: true
     });
     if (!this.lot) throw new ValidationError('Lot not found');
+
+    // 3b. Asteroid must be resource-scanned
+    const lotPosition = Lot.toPosition(lotRef.id);
+    const asteroidCelestial = await ComponentService.findOne('Celestial', {
+      'entity.id': lotPosition.asteroidId,
+      'entity.label': Entity.IDS.ASTEROID
+    });
+    if (!asteroidCelestial || asteroidCelestial.scanStatus !== Asteroid.SCAN_STATUSES.RESOURCE_SCANNED) {
+      throw new ValidationError('Asteroid must be resource-scanned before sampling');
+    }
+
+    // 4. Origin inventory must contain at least 1 Core Drill
+    this.originSlotNum = Number(originSlot) || 1;
+    const originEntity = { id: originRef.id, label: originRef.label };
+    const originInventories = await ComponentService.findByEntity('Inventory', originEntity);
+    this.originInv = originInventories.find((inv) => inv.slot === this.originSlotNum);
+    if (!this.originInv) throw new ValidationError('Origin inventory not found');
+    if (this.originInv.status !== Inventory.STATUSES.AVAILABLE) {
+      throw new ValidationError('Origin inventory is not available');
+    }
+    const coreDrill = (this.originInv.contents || []).find((c) => c.product === CORE_DRILL_PRODUCT);
+    if (!coreDrill || coreDrill.amount < 1) {
+      throw new ValidationError('Origin inventory does not contain a Core Drill');
+    }
   }
 
   async applyStateChanges() {
@@ -65,6 +91,34 @@ class SampleDepositImproveHandler extends BaseActionHandler {
       yieldEff: this.deposit.Deposit.yieldEff,
       finishTime: this.finishTime
     });
+
+    // Deduct 1 Core Drill from origin inventory
+    const updatedContents = (this.originInv.contents || []).map((c) => {
+      if (c.product === CORE_DRILL_PRODUCT) return { product: c.product, amount: c.amount - 1 };
+      return c;
+    }).filter((c) => c.amount > 0);
+
+    let newMass = 0;
+    let newVolume = 0;
+    for (const c of updatedContents) {
+      const pt = Product.TYPES[c.product];
+      if (pt) { newMass += c.amount * pt.massPerUnit; newVolume += c.amount * pt.volumePerUnit; }
+    }
+
+    const originEntity = { id: this.vars.origin.id, label: this.vars.origin.label };
+    await this.writeComponent('Inventory', {
+      entity: originEntity,
+      inventoryType: this.originInv.inventoryType,
+      slot: this.originInv.slot,
+      status: this.originInv.status,
+      mass: newMass,
+      volume: newVolume,
+      reservedMass: this.originInv.reservedMass || 0,
+      reservedVolume: this.originInv.reservedVolume || 0,
+      contents: updatedContents
+    });
+
+    await this.setCrewBusy(this.crew, this.finishTime);
 
     return { depositId: this.deposit.id, finishTime: this.finishTime };
   }

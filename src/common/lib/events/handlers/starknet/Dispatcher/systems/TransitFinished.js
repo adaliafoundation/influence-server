@@ -1,6 +1,7 @@
 const { Address } = require('@influenceth/sdk');
 const Entity = require('@common/lib/Entity');
-const { ActivityService } = require('@common/services');
+const { ActivityService, LocationComponentService } = require('@common/services');
+const { isHybrid } = require('@common/lib/gameMode');
 const CrewEjectedHandler = require('./CrewEjected');
 const StarknetBaseHandler = require('../../Handler');
 
@@ -29,6 +30,12 @@ class Handler extends StarknetBaseHandler {
       entities: [callerCrew, destination, origin, ship],
       event: this.eventDoc
     });
+
+    // In hybrid mode, the game engine writes Location components but the
+    // derived crew-location chain may not be fully resolved by component events.
+    if (isHybrid()) {
+      await LocationComponentService.refreshCrewLocationsAtLocation(ship);
+    }
 
     if (activityResult?.created === 0) return;
 

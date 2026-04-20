@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const logger = require('@common/lib/logger');
+const { isHybrid } = require('@common/lib/gameMode');
 const SyntheticEvent = require('./helpers/syntheticEvent');
 const { ValidationError } = require('./errors');
 
@@ -294,11 +295,14 @@ class GameEngine {
       logger.error(error.stack);
     }
 
-    // 3. Emit Socket.IO events
-    try {
-      await handler.emitEvents();
-    } catch (error) {
-      logger.error(`Socket event emission failed for ${action}:`, error);
+    // 3. Emit Socket.IO events (skip in hybrid mode — the client handles
+    //    query invalidation directly after the POST response returns)
+    if (!isHybrid()) {
+      try {
+        await handler.emitEvents();
+      } catch (error) {
+        logger.error(`Socket event emission failed for ${action}:`, error);
+      }
     }
 
     return result;

@@ -1,5 +1,5 @@
-const { Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { Entity, Exchange } = require('@influenceth/sdk');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
@@ -41,6 +41,38 @@ class ConfigureExchangeHandler extends BaseActionHandler {
     this.makerFee = Number(makerFee) || 0;
     this.takerFee = Number(takerFee) || 0;
     this.allowedProducts = Array.isArray(allowedProducts) ? allowedProducts.map(Number) : [];
+
+    // 3. Validate fee bounds (0–25%, stored as basis points × 100)
+    if (this.makerFee < 0 || this.makerFee > 2500) {
+      throw new ValidationError('Maker fee must be between 0 and 2500 (0–25%)');
+    }
+    if (this.takerFee < 0 || this.takerFee > 2500) {
+      throw new ValidationError('Taker fee must be between 0 and 2500 (0–25%)');
+    }
+
+    // 4. Validate product cap
+    const exchangeType = this.exchange.Exchange?.exchangeType || 1;
+    const exchangeConfig = Exchange.TYPES[exchangeType];
+    if (exchangeConfig && this.allowedProducts.length > exchangeConfig.productCap) {
+      throw new ValidationError(`Too many products (max ${exchangeConfig.productCap})`);
+    }
+
+    // 5. Cannot remove a product that has open orders
+    const currentProducts = this.exchange.Exchange?.allowedProducts || [];
+    const removedProducts = currentProducts.filter((p) => !this.allowedProducts.includes(p));
+    if (removedProducts.length > 0) {
+      const exchangeEntity = { id: this.exchange.id, label: Entity.IDS.BUILDING };
+      const openOrders = await ComponentService.model('Order').find({
+        'entity.id': exchangeEntity.id,
+        'entity.label': exchangeEntity.label,
+        product: { $in: removedProducts },
+        amount: { $gt: 0 }
+      }).lean();
+      if (openOrders.length > 0) {
+        const products = [...new Set(openOrders.map((o) => o.product))];
+        throw new ValidationError(`Cannot remove products with open orders: ${products.join(', ')}`);
+      }
+    }
   }
 
   async applyStateChanges() {

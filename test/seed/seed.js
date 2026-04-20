@@ -55,6 +55,8 @@ const COLLECTIONS = [
   'ExtractorComponent',
   'ProcessorComponent',
   'DryDockComponent',
+  'ExchangeComponent',
+  'OrderComponent',
   'User',
   'WorldFork',
   'Activity'
@@ -265,7 +267,18 @@ const main = async () => {
   }
   logger.info(`StationComponents: ${seedData.stationComponents.length}`);
 
-  // 14. Dock
+  // 14. Exchange
+  const ExchangeComponent = mongoose.model('ExchangeComponent');
+  for (const ex of (seedData.exchangeComponents || [])) {
+    await ExchangeComponent.findOneAndUpdate(
+      { 'entity.id': ex.entity.id, 'entity.label': ex.entity.label },
+      ex,
+      { upsert: true, new: true }
+    );
+  }
+  logger.info(`ExchangeComponents: ${(seedData.exchangeComponents || []).length}`);
+
+  // 15. Dock
   const DockComponent = mongoose.model('DockComponent');
   for (const d of (seedData.dockComponents || [])) {
     await DockComponent.findOneAndUpdate(

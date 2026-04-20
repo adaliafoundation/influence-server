@@ -1,4 +1,4 @@
-const { Entity } = require('@influenceth/sdk');
+const { Entity, Ship } = require('@influenceth/sdk');
 const { EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
@@ -57,6 +57,8 @@ class CrewEjectHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
+    this.now = Math.floor(Date.now() / 1000);
+
     // Eject moves the crew to the asteroid (up one level in the location chain)
     const ejectedLocation = this.ejectedCrew.Location?.locations || [];
     const asteroid = ejectedLocation.find((l) => l.label === Entity.IDS.ASTEROID);
@@ -68,6 +70,22 @@ class CrewEjectHandler extends BaseActionHandler {
       locations: [asteroid]
     });
 
+    // Activate the escape module (Ship component on the crew entity)
+    await this.writeComponent('Ship', {
+      entity: { id: this.ejectedCrew.id, label: Entity.IDS.CREW },
+      emergencyAt: this.now,
+      shipType: Ship.IDS.ESCAPE_MODULE,
+      status: Ship.STATUSES.AVAILABLE,
+      variant: Ship.VARIANTS.STANDARD,
+      readyAt: 0,
+      transitArrival: 0,
+      transitDeparture: 0
+    });
+
+    // Set ejected crew busy for transit to orbit (120 seconds)
+    this.finishTime = this.now + this.capDuration(120);
+    await this.setCrewBusy(this.ejectedCrew, this.finishTime);
+
     return { ejectedCrewId: this.ejectedCrew.id };
   }
 
@@ -75,7 +93,7 @@ class CrewEjectHandler extends BaseActionHandler {
     return {
       station: this.station,
       ejectedCrew: this.vars.ejected_crew,
-      finishTime: 0,
+      finishTime: this.finishTime,
       callerCrew: this.vars.caller_crew,
       caller: this.address
     };

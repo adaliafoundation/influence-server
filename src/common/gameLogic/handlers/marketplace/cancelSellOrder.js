@@ -1,4 +1,4 @@
-const { Entity, Order } = require('@influenceth/sdk');
+const { Entity, Order, Product } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
@@ -48,22 +48,65 @@ class CancelSellOrderHandler extends BaseActionHandler {
     this.product = Number(product);
     this.price = Number(price) || 0;
     this.storageSlot = Number(storageSlot) || 1;
+
+    // Load storage inventory for returning products
+    const storageEntity = { id: storageRef.id, label: storageRef.label || Entity.IDS.BUILDING };
+    const inventories = await ComponentService.findByEntity('Inventory', storageEntity);
+    this.storageInv = inventories.find(i => i.slot === this.storageSlot);
   }
 
   async applyStateChanges() {
+    const remainingAmount = this.existingOrder ? (this.existingOrder.amount || 0) : 0;
+
     if (this.existingOrder) {
       await this.writeComponent('Order', {
         entity: this.vars.exchange,
         crew: this.vars.seller_crew,
         orderType: Order.IDS.LIMIT_SELL,
         product: this.product,
-        amount: this.existingOrder.amount || 0,
+        amount: remainingAmount,
         price: this.price,
         storage: this.vars.storage,
         storageSlot: this.storageSlot,
         status: Order.STATUSES.CANCELLED,
         validTime: this.existingOrder.validTime,
         makerFee: this.existingOrder.makerFee
+      });
+    }
+
+    // Return remaining products to storage and clear reservations
+    if (this.storageInv && remainingAmount > 0) {
+      const updatedContents = [...(this.storageInv.contents || [])];
+      const existing = updatedContents.find(c => c.product === this.product);
+      if (existing) {
+        existing.amount += remainingAmount;
+      } else {
+        updatedContents.push({ product: this.product, amount: remainingAmount });
+      }
+
+      let newMass = 0;
+      let newVolume = 0;
+      for (const c of updatedContents) {
+        const pt = Product.TYPES[c.product];
+        if (pt) { newMass += c.amount * pt.massPerUnit; newVolume += c.amount * pt.volumePerUnit; }
+      }
+
+      // Clear reservation for the returned products
+      const pt = Product.TYPES[this.product];
+      const returnMass = pt ? remainingAmount * pt.massPerUnit : 0;
+      const returnVolume = pt ? remainingAmount * pt.volumePerUnit : 0;
+
+      const storageEntity = { id: this.vars.storage.id, label: this.vars.storage.label || Entity.IDS.BUILDING };
+      await this.writeComponent('Inventory', {
+        entity: storageEntity,
+        inventoryType: this.storageInv.inventoryType,
+        slot: this.storageInv.slot,
+        status: this.storageInv.status,
+        mass: newMass,
+        volume: newVolume,
+        reservedMass: Math.max(0, (this.storageInv.reservedMass || 0) - returnMass),
+        reservedVolume: Math.max(0, (this.storageInv.reservedVolume || 0) - returnVolume),
+        contents: updatedContents
       });
     }
 

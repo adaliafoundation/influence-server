@@ -1,6 +1,6 @@
-const { Entity, Permission, Ship, Process } = require('@influenceth/sdk');
+const { DryDock, Entity, Permission, Product, Ship, Process } = require('@influenceth/sdk');
 const EntityLib = require('@common/lib/Entity');
-const { EntityService, LocationComponentService } = require('@common/services');
+const { ComponentService, EntityService, LocationComponentService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
@@ -67,6 +67,48 @@ class AssembleShipStartHandler extends BaseActionHandler {
     const assemblyTime = (processConfig?.setupTime || 0) + (processConfig?.recipeTime || 0);
     this.finishTime = this.now + await this.gameSecondsToReal(assemblyTime);
 
+    // Consume materials from origin inventory
+    const originEntity = this.originRef || { id: this.dryDock.id, label: Entity.IDS.BUILDING };
+    const originSlotNum = this.originSlot;
+    const originInv = await ComponentService.findOne('Inventory', {
+      'entity.id': originEntity.id, 'entity.label': originEntity.label, slot: originSlotNum
+    });
+    if (originInv) {
+      const constructionType = Ship.CONSTRUCTION_TYPES[this.shipType];
+      const requirements = constructionType?.requirements || {};
+      let updatedContents = [...(originInv.contents || [])];
+      for (const [productIdStr, requiredAmount] of Object.entries(requirements)) {
+        const productId = Number(productIdStr);
+        const idx = updatedContents.findIndex((c) => c.product === productId);
+        if (idx >= 0) {
+          updatedContents[idx] = {
+            ...updatedContents[idx],
+            amount: updatedContents[idx].amount - requiredAmount
+          };
+        }
+      }
+      updatedContents = updatedContents.filter((c) => c.amount > 0);
+
+      let newMass = 0;
+      let newVolume = 0;
+      for (const c of updatedContents) {
+        const pt = Product.TYPES[c.product];
+        if (pt) { newMass += c.amount * pt.massPerUnit; newVolume += c.amount * pt.volumePerUnit; }
+      }
+
+      await this.writeComponent('Inventory', {
+        entity: { id: originEntity.id, label: originEntity.label },
+        inventoryType: originInv.inventoryType,
+        slot: originSlotNum,
+        status: originInv.status,
+        mass: newMass,
+        volume: newVolume,
+        reservedMass: originInv.reservedMass || 0,
+        reservedVolume: originInv.reservedVolume || 0,
+        contents: updatedContents
+      });
+    }
+
     // Generate a new ship ID
     this.shipId = await IdGenerator.next(Entity.IDS.SHIP);
 
@@ -105,6 +147,17 @@ class AssembleShipStartHandler extends BaseActionHandler {
         }
       ]
     );
+
+    // Update DryDock component to RUNNING
+    await this.writeComponent('DryDock', {
+      entity: { id: this.dryDock.id, label: Entity.IDS.BUILDING },
+      slot: this.dryDockSlot,
+      status: DryDock.STATUSES.RUNNING,
+      outputShip: { id: this.shipId, label: Entity.IDS.SHIP },
+      finishTime: this.finishTime
+    });
+
+    await this.setCrewBusy(this.crew, this.finishTime);
 
     return { shipId: this.shipId, finishTime: this.finishTime };
   }

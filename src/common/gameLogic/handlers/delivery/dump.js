@@ -1,5 +1,5 @@
-const { Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { Entity, Product } = require('@influenceth/sdk');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
@@ -26,11 +26,49 @@ class DumpDeliveryHandler extends BaseActionHandler {
 
     this.originSlot = Number(originSlot) || 1;
     this.products = products.map((p) => ({ product: Number(p.product), amount: Math.floor(Number(p.amount)) }));
+
+    // Validate origin inventory has enough of each product
+    const originEntity = { id: originRef.id, label: originRef.label };
+    const originInventories = await ComponentService.findByEntity('Inventory', originEntity);
+    this.originInv = originInventories.find((inv) => inv.slot === this.originSlot);
+    if (!this.originInv) throw new ValidationError('Origin inventory not found');
+    for (const p of this.products) {
+      const available = (this.originInv.contents || []).find((c) => c.product === p.product);
+      if (!available || available.amount < p.amount) {
+        const name = Product.TYPES[p.product]?.name || p.product;
+        throw new ValidationError(`Insufficient ${name} in origin (have ${available?.amount || 0}, need ${p.amount})`);
+      }
+    }
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async applyStateChanges() {
-    // Dump just destroys the cargo - no entity to create or update
+    // Subtract dumped products from origin inventory
+    const originEntity = { id: this.vars.origin.id, label: this.vars.origin.label };
+    const updatedContents = (this.originInv.contents || []).map((c) => {
+      const dumped = this.products.find((p) => p.product === c.product);
+      if (!dumped) return c;
+      return { product: c.product, amount: c.amount - dumped.amount };
+    }).filter((c) => c.amount > 0);
+
+    let newMass = 0;
+    let newVolume = 0;
+    for (const c of updatedContents) {
+      const pt = Product.TYPES[c.product];
+      if (pt) { newMass += c.amount * pt.massPerUnit; newVolume += c.amount * pt.volumePerUnit; }
+    }
+
+    await this.writeComponent('Inventory', {
+      entity: originEntity,
+      inventoryType: this.originInv.inventoryType,
+      slot: this.originInv.slot,
+      status: this.originInv.status,
+      mass: newMass,
+      volume: newVolume,
+      reservedMass: this.originInv.reservedMass,
+      reservedVolume: this.originInv.reservedVolume,
+      contents: updatedContents
+    });
+
     return {};
   }
 

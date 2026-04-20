@@ -27,8 +27,13 @@ class WhitelistHandler extends BaseActionHandler {
     this.permission = Number(permission);
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async applyStateChanges() {
+    await this.writeComponent('WhitelistAgreement', {
+      entity: this.vars.target,
+      permission: this.permission,
+      permitted: this.vars.permitted,
+      whitelisted: true
+    });
     return {};
   }
 

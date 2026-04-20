@@ -55,11 +55,14 @@ class CrewExchangeHandler extends BaseActionHandler {
     const newRoster1 = this.vars.comp1.map(Number);
     const newRoster2 = this.vars.comp2.map(Number);
 
+    // Sync readyAt to the latest of both crews
+    const latestReadyAt = Math.max(this.crew1.Crew.readyAt || 0, this.crew2.Crew.readyAt || 0);
+
     await this.writeComponent('Crew', {
       entity: { id: this.crew1.id, label: Entity.IDS.CREW },
       roster: newRoster1,
       lastFed: this.crew1.Crew.lastFed,
-      readyAt: this.crew1.Crew.readyAt,
+      readyAt: latestReadyAt,
       delegatedTo: this.crew1.Crew.delegatedTo
     });
 
@@ -67,7 +70,7 @@ class CrewExchangeHandler extends BaseActionHandler {
       entity: { id: this.crew2.id, label: Entity.IDS.CREW },
       roster: newRoster2,
       lastFed: this.crew2.Crew.lastFed,
-      readyAt: this.crew2.Crew.readyAt,
+      readyAt: latestReadyAt,
       delegatedTo: this.crew2.Crew.delegatedTo
     });
 

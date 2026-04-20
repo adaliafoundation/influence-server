@@ -1,5 +1,6 @@
-const { Delivery, Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { Asteroid, Delivery, Entity, Product } = require('@influenceth/sdk');
+const EntityLib = require('@common/lib/Entity');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const StateMachineValidator = require('../../validators/stateMachine');
@@ -35,10 +36,25 @@ class AcceptDeliveryHandler extends BaseActionHandler {
     });
     if (!this.delivery) throw new ValidationError('Delivery not found');
     StateMachineValidator.assertStatus(this.delivery.Delivery, Delivery.STATUSES.PACKAGED, 'Delivery');
+
+    // Load origin/dest locations so we can compute lot-based travel time
+    const { origin, dest } = this.delivery.Delivery;
+    this.originEntity = await EntityService.getEntity({ id: origin.id, label: origin.label, components: ['Location'], format: true });
+    this.destEntity = await EntityService.getEntity({ id: dest.id, label: dest.label, components: ['Location'], format: true });
   }
 
   async applyStateChanges() {
-    this.finishTime = this.now + this.capDuration(60);
+    let travelSeconds = 60;
+    const originLoc = this.originEntity?.Location?.location;
+    const destLoc = this.destEntity?.Location?.location;
+    if (originLoc?.label === Entity.IDS.LOT && destLoc?.label === Entity.IDS.LOT) {
+      const originLot = EntityLib.toEntity(originLoc).unpackLot();
+      const destLot = EntityLib.toEntity(destLoc).unpackLot();
+      if (originLot.asteroidId === destLot.asteroidId) {
+        travelSeconds = Asteroid.getLotTravelTime(originLot.asteroidId, originLot.lotIndex, destLot.lotIndex);
+      }
+    }
+    this.finishTime = this.now + this.capDuration(travelSeconds);
 
     await this.writeComponent('Delivery', {
       entity: { id: this.delivery.id, label: Entity.IDS.DELIVERY },
@@ -50,6 +66,51 @@ class AcceptDeliveryHandler extends BaseActionHandler {
       contents: this.delivery.Delivery.contents,
       finishTime: this.finishTime
     });
+
+    // Compute delivery mass/volume
+    let deliveryMass = 0;
+    let deliveryVolume = 0;
+    for (const p of this.delivery.Delivery.contents) {
+      const pt = Product.TYPES[p.product];
+      if (pt) { deliveryMass += p.amount * pt.massPerUnit; deliveryVolume += p.amount * pt.volumePerUnit; }
+    }
+
+    // Clear origin reservation (set to 0)
+    const { origin, originSlot, dest, destSlot } = this.delivery.Delivery;
+    const originEntity = { id: origin.id, label: origin.label };
+    const originInventories = await ComponentService.findByEntity('Inventory', originEntity);
+    const originInv = originInventories.find((inv) => inv.slot === (originSlot || 1));
+    if (originInv) {
+      await this.writeComponent('Inventory', {
+        entity: originEntity,
+        inventoryType: originInv.inventoryType,
+        slot: originInv.slot,
+        status: originInv.status,
+        mass: originInv.mass,
+        volume: originInv.volume,
+        reservedMass: 0,
+        reservedVolume: 0,
+        contents: originInv.contents
+      });
+    }
+
+    // Reserve space at destination inventory
+    const destEntity = { id: dest.id, label: dest.label };
+    const destInventories = await ComponentService.findByEntity('Inventory', destEntity);
+    const destInv = destInventories.find((inv) => inv.slot === (destSlot || 1));
+    if (destInv) {
+      await this.writeComponent('Inventory', {
+        entity: destEntity,
+        inventoryType: destInv.inventoryType,
+        slot: destInv.slot,
+        status: destInv.status,
+        mass: destInv.mass,
+        volume: destInv.volume,
+        reservedMass: (destInv.reservedMass || 0) + deliveryMass,
+        reservedVolume: (destInv.reservedVolume || 0) + deliveryVolume,
+        contents: destInv.contents
+      });
+    }
 
     return { deliveryId: this.delivery.id };
   }

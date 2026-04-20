@@ -130,6 +130,25 @@ class BaseActionHandler {
     }
   }
 
+  // ── Crew busy helper ─────────────────────────────────────────────────
+
+  /**
+   * Mark a crew as busy until finishTime by updating the Crew component's
+   * readyAt field. Uses merge mode (replace: false) so other fields
+   * (roster, lastFed, delegatedTo, etc.) are preserved.
+   *
+   * In the real game the smart contract emits a ComponentUpdated_Crew
+   * event; in hybrid mode the handler must call this explicitly.
+   */
+  async setCrewBusy(crew, finishTime) {
+    const { Entity: EntityIds } = require('@influenceth/sdk');
+    await this.writeComponent('Crew', {
+      entity: { id: crew.id, label: EntityIds.IDS.CREW },
+      readyAt: finishTime,
+      lastReadyAt: crew.Crew?.readyAt || 0
+    }, { replace: false });
+  }
+
   // ── Component write helpers ──────────────────────────────────────────
 
   /**

@@ -26,9 +26,12 @@ class AssignPublicPolicyHandler extends BaseActionHandler {
     this.permission = Number(permission);
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async applyStateChanges() {
-    // Policy assignment is tracked via component events in the side-effect phase
+    await this.writeComponent('PublicPolicy', {
+      entity: this.vars.target,
+      permission: this.permission,
+      public: true
+    });
     return {};
   }
 

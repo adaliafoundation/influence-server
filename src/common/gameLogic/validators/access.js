@@ -69,11 +69,24 @@ class AccessValidator {
       });
       if (publicPolicy) return;
 
-      // 2. Check if crew is the controller
+      // 2. Check if crew is the controller (or same-wallet owner as controller)
       const control = await ComponentService.findOneByEntity('Control', checkEntity);
       if (control?.controller) {
         const controllerEntity = Entity.toEntity(control.controller);
         if (controllerEntity.uuid === crewEntity.uuid) return;
+
+        // Also grant access if the requesting crew is owned by the same wallet
+        // as the entity's controller crew (all crews under one wallet share access)
+        const controllerNft = await ComponentService.findOneByEntity('Nft', controllerEntity);
+        const crewNft = await ComponentService.findOneByEntity('Nft', crewEntity);
+        if (controllerNft && crewNft) {
+          const controllerOwner = controllerNft.owners?.starknet || controllerNft.owners?.ethereum;
+          const crewOwner = crewNft.owners?.starknet || crewNft.owners?.ethereum;
+          if (controllerOwner && crewOwner
+            && Address.toStandard(controllerOwner) === Address.toStandard(crewOwner)) {
+            return;
+          }
+        }
       }
 
       // 3. Check whitelist

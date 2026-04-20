@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const { Address } = require('@influenceth/sdk');
 const {
   ActivityService,
@@ -44,6 +45,15 @@ class Handler extends StarknetBaseHandler {
     });
 
     if (activityResult?.created === 0) return;
+
+    // TODO: This runs in both chain and hybrid mode. Deleting the Planned
+    // activity cleans up the feed so construction doesn't appear twice, but
+    // it changes the activity history in chain mode too. Decide during code
+    // review whether this should be gated behind isHybrid().
+    await mongoose.model('Activity').deleteMany({
+      'event.name': 'ConstructionPlanned',
+      'event.returnValues.building.id': building.id
+    });
 
     await ResolvableEventNotificationService.createOrUpdate({
       type: 'Construction',
