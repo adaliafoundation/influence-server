@@ -10,6 +10,11 @@ const loadHandlers = () => ({
   ConstructionFinish: require('./handlers/construction/finish'),
   ConstructionDeconstruct: require('./handlers/construction/deconstruct'),
   ConstructionAbandon: require('./handlers/construction/abandon'),
+  StationCrew: require('./handlers/crew/station'),
+  EjectCrew: require('./handlers/crew/eject'),
+  ArrangeCrew: require('./handlers/crew/arrange'),
+  ExchangeCrew: require('./handlers/crew/exchange'),
+  ResupplyFood: require('./handlers/crew/resupplyFood'),
   // TODO: Add remaining handlers as they are implemented
 });
 
