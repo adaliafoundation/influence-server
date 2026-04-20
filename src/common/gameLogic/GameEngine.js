@@ -56,6 +56,22 @@ const loadHandlers = () => {
     FillSellOrder: require('./handlers/marketplace/fillSellOrder'),
     CancelSellOrder: require('./handlers/marketplace/cancelSellOrder'),
     ConfigureExchange: require('./handlers/marketplace/configureExchange'),
+    // Agreements & Permissions
+    AssignPublicPolicy: require('./handlers/agreements/assignPublicPolicy'),
+    RemovePublicPolicy: require('./handlers/agreements/removePublicPolicy'),
+    AssignPrepaidPolicy: require('./handlers/agreements/assignPrepaidPolicy'),
+    RemovePrepaidPolicy: require('./handlers/agreements/removePrepaidPolicy'),
+    AssignContractPolicy: require('./handlers/agreements/assignContractPolicy'),
+    Whitelist: require('./handlers/agreements/whitelist'),
+    RemoveFromWhitelist: require('./handlers/agreements/removeFromWhitelist'),
+    WhitelistAccount: require('./handlers/agreements/whitelistAccount'),
+    RemoveAccountFromWhitelist: require('./handlers/agreements/removeAccountFromWhitelist'),
+    AcceptPrepaidAgreement: require('./handlers/agreements/acceptPrepaidAgreement'),
+    ExtendPrepaidAgreement: require('./handlers/agreements/extendPrepaidAgreement'),
+    CancelPrepaidAgreement: require('./handlers/agreements/cancelPrepaidAgreement'),
+    TransferPrepaidAgreement: require('./handlers/agreements/transferPrepaidAgreement'),
+    AcceptContractAgreement: require('./handlers/agreements/acceptContractAgreement'),
+    ReclaimLot: require('./handlers/agreements/reclaimLot'),
     // TODO: Add remaining handlers as they are implemented
   };
 
@@ -84,6 +100,29 @@ const BATCH_ACTIONS = {
     handler: 'FillBuyOrder',
     cancelHandler: 'CancelBuyOrder',
     getCancelFlag: (meta) => meta?.isCancellation
+  },
+  // UpdatePolicy decomposes into [remove old policy, add new policy].
+  // The client passes { add: 'AssignPrepaidPolicy', remove: 'RemovePublicPolicy', ...vars }.
+  UpdatePolicy: {
+    decompose: (vars) => {
+      const { add, remove, ...baseVars } = vars;
+      const calls = [];
+      if (remove) calls.push({ action: remove, vars: baseVars });
+      if (add) calls.push({ action: add, vars: baseVars });
+      return calls;
+    }
+  },
+  // UpdateAllowlists decomposes into individual add/remove whitelist operations.
+  UpdateAllowlists: {
+    decompose: (vars) => {
+      const { additions = [], removals = [], accountAdditions = [], accountRemovals = [], ...baseVars } = vars;
+      return [
+        ...removals.map((r) => ({ action: 'RemoveFromWhitelist', vars: { ...baseVars, permitted: r } })),
+        ...additions.map((a) => ({ action: 'Whitelist', vars: { ...baseVars, permitted: a } })),
+        ...accountAdditions.map((a) => ({ action: 'WhitelistAccount', vars: { ...baseVars, permitted: a } })),
+        ...accountRemovals.map((r) => ({ action: 'RemoveAccountFromWhitelist', vars: { ...baseVars, permitted: r } }))
+      ];
+    }
   }
 };
 
@@ -117,23 +156,32 @@ class GameEngine {
    * @returns {object} Action result
    */
   static async execute({ action, address, callerCrew, vars, meta, idempotencyKey }) {
-    // ── Batch action unwrap ──────────────────────────────────────────
+    // ── Batch / virtual action unwrap ───────────────────────────────
     const batchConfig = BATCH_ACTIONS[action];
     if (batchConfig) {
-      const varSets = Array.isArray(vars) ? vars : [vars];
-      const isCancellation = batchConfig.getCancelFlag?.(meta);
-      const targetAction = isCancellation && batchConfig.cancelHandler
-        ? batchConfig.cancelHandler
-        : batchConfig.handler;
+      let calls;
+
+      if (batchConfig.decompose) {
+        // Virtual action with custom decomposition (e.g. UpdatePolicy, UpdateAllowlists)
+        calls = batchConfig.decompose(vars);
+      } else {
+        // Batch action: same handler for each element in the vars array
+        const varSets = Array.isArray(vars) ? vars : [vars];
+        const isCancellation = batchConfig.getCancelFlag?.(meta);
+        const targetAction = isCancellation && batchConfig.cancelHandler
+          ? batchConfig.cancelHandler
+          : batchConfig.handler;
+        calls = varSets.map((varSet) => ({ action: targetAction, vars: varSet }));
+      }
 
       const results = [];
-      for (const varSet of varSets) {
+      for (const call of calls) {
         // eslint-disable-next-line no-await-in-loop
         const result = await this.execute({
-          action: targetAction,
+          action: call.action,
           address,
-          callerCrew: callerCrew || varSet.caller_crew,
-          vars: varSet,
+          callerCrew: callerCrew || call.vars.caller_crew,
+          vars: call.vars,
           meta,
           idempotencyKey: idempotencyKey
             ? `${idempotencyKey}-${results.length}`

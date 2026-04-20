@@ -50,7 +50,7 @@ class CancelBuyOrderHandler extends BaseActionHandler {
       storageSlot: this.storageSlot
     };
 
-    const existingOrder = await ComponentService.findOne({ component: 'Order', filter: orderFilter });
+    const existingOrder = await ComponentService.findOne('Order', orderFilter);
     if (existingOrder) {
       await this.writeComponent('Order', {
         entity: this.vars.exchange,
