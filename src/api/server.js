@@ -54,7 +54,21 @@ if (Number(appConfig.get('App.isApiServer')) === 1) {
 if (Number(appConfig.get('App.isImagesServer')) === 1) server.use(controllers.images.routes());
 
 socketIoServer.connect()
-  .then(() => {
+  .then(async () => {
     httpServer.listen(port);
     logger.info(`API and SocketIO Server listing on ${port}`);
+
+    // In hybrid mode, check that the world has been forked
+    if (isHybrid()) {
+      const mongoose = require('mongoose'); // eslint-disable-line global-require
+      const fork = await mongoose.model('WorldFork').findOne({}).lean();
+      if (!fork) {
+        logger.warn(
+          'No world fork found. Run the fork tool first:\n'
+          + '  node src/workers/forkWorld.js'
+        );
+      } else {
+        logger.info(`Hybrid mode: world forked from block ${fork.blockNumber} (${fork.label})`);
+      }
+    }
   });
