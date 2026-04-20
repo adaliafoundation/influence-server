@@ -259,12 +259,13 @@ async function resetSeedData(walletAddress = WALLET_ADDRESS) {
  * Call in before() or beforeEach() — the caller's sandbox.restore() cleans up.
  */
 function applyStubs(sandbox) {
-  // Stub mongoose sessions (MongoMemoryServer has no replica set by default).
-  // We create a fake session that GameEngine can call start/commit/abort on,
-  // but that evaluates to falsy when used as `{ session }` option in Mongoose
-  // operations (save, updateOne). The trick: BaseActionHandler stores
-  // `this.session = session` and passes it as `{ session: this.session }`.
-  // We intercept setSession so it stores null instead.
+  // Real sessions work via MongoMemoryReplSet in test/setup/fixtures.js, but
+  // the integration tests are written around a plain single-node DB and
+  // don't need transaction semantics — each action is tested standalone.
+  // Stubbing the session out here keeps the integration suite fast and
+  // deterministic; the session-aware code paths have dedicated unit tests
+  // in test/src/common/gameLogic/helpers/syntheticEvent.spec.js that use
+  // real sessions.
   const fakeSession = {
     startTransaction: () => {},
     commitTransaction: async () => {},
@@ -275,8 +276,6 @@ function applyStubs(sandbox) {
   };
   sandbox.stub(mongoose, 'startSession').resolves(fakeSession);
 
-  // Prevent the session from being passed to Mongoose operations.
-  // BaseActionHandler.setSession stores the session — we override it to store null.
   const BaseActionHandler = require('@common/gameLogic/handlers/BaseActionHandler'); // eslint-disable-line global-require
   const origSetSession = BaseActionHandler.prototype.setSession;
   if (!origSetSession._stubbed) {
@@ -393,7 +392,9 @@ async function createUnscannedAsteroid(id) {
   return { id, label: 3 };
 }
 
-async function createSampledDeposit(id, { resource = 1, remainingYield = 5000, lotId, asteroidId = 1 } = {}) {
+async function createSampledDeposit(id, {
+  resource = 1, remainingYield = 5000, lotId, asteroidId = 1, controllerCrew = CREW_1
+} = {}) {
   const uuid = EntityLib.toUuid(id, 7); // 7 = DEPOSIT
   await mongoose.model('Entity').updateOne({ uuid }, { $setOnInsert: { id, label: 7, uuid } }, { upsert: true });
 
@@ -408,6 +409,15 @@ async function createSampledDeposit(id, { resource = 1, remainingYield = 5000, l
       yieldEff: 1,
       finishTime: 0
     },
+    { upsert: true, new: true }
+  );
+
+  // The real SampleDepositStart handler sets Control on the deposit to the
+  // sampling crew; mirror that so AccessValidator's USE_DEPOSIT check passes
+  // via the "caller is the deposit's controller" clause.
+  await mongoose.model('ControlComponent').findOneAndUpdate(
+    { 'entity.id': id, 'entity.label': 7 },
+    { entity: { id, label: 7 }, controller: { id: controllerCrew.id, label: controllerCrew.label } },
     { upsert: true, new: true }
   );
 

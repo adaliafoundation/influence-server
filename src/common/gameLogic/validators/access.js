@@ -117,6 +117,73 @@ class AccessValidator {
 
     throw new ValidationError(`Permission denied: missing permission ${permissionId} on entity`);
   }
+
+  /**
+   * Like `assertPermission`, but additionally verifies the permission will
+   * still be valid at `untilTime` (Unix seconds). Mirrors Cairo's
+   * `assert_can_until` — used for long-running actions (extract, process,
+   * transit, assemble) so an agreement that expires mid-action is rejected
+   * up-front.
+   *
+   * Controller and public policy always grant permanent access. Whitelist
+   * is also permanent. Only PrepaidPolicy carries an `endTime`, so the
+   * additional check is whether the prepaid term covers `untilTime`.
+   *
+   * Contract policy is treated as permanent (matches Cairo: contract
+   * policies are off-chain agreements with no on-chain expiry).
+   */
+  static async assertPermissionUntil(crew, target, permissionId, untilTime) {
+    await this.assertPermission(crew, target, permissionId);
+
+    // If the current-time check passed, re-check whether a
+    // time-sensitive prepaid policy covers untilTime. Controller /
+    // public / whitelist / contract paths already passed without
+    // time constraint so nothing more to verify.
+    const targetEntity = Entity.toEntity(target);
+    const crewEntity = Entity.toEntity(crew);
+
+    const entitiesToCheck = [targetEntity];
+    if (targetEntity.isLot()) {
+      const { asteroidEntity } = targetEntity.unpackLot();
+      entitiesToCheck.push(asteroidEntity);
+    }
+
+    for (const checkEntity of entitiesToCheck) {
+      // A cheaper re-check of the non-time-bounded grants: if any of them
+      // applied, we're fine.
+      const publicPolicy = await ComponentService.findOne('PublicPolicy', {
+        'entity.uuid': checkEntity.uuid, permission: permissionId
+      });
+      if (publicPolicy) return;
+
+      const control = await ComponentService.findOneByEntity('Control', checkEntity);
+      if (control?.controller && Entity.toEntity(control.controller).uuid === crewEntity.uuid) return;
+
+      const whitelist = await ComponentService.findOne('WhitelistAgreement', {
+        'entity.uuid': checkEntity.uuid,
+        'target.uuid': crewEntity.uuid,
+        permission: permissionId
+      });
+      if (whitelist) return;
+
+      const contractPolicy = await ComponentService.findOne('ContractPolicy', {
+        'entity.uuid': checkEntity.uuid, permission: permissionId
+      });
+      if (contractPolicy) return;
+
+      // The only mechanism that can fail the time check is PrepaidPolicy.
+      const prepaid = await ComponentService.findOne('PrepaidPolicy', {
+        'entity.uuid': checkEntity.uuid,
+        'target.uuid': crewEntity.uuid,
+        permission: permissionId
+      });
+      if (prepaid && (!prepaid.endTime || prepaid.endTime >= untilTime)) return;
+    }
+
+    throw new ValidationError(
+      `Permission ${permissionId} would expire before ${untilTime}`
+    );
+  }
 }
 
 module.exports = AccessValidator;

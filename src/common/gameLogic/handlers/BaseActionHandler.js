@@ -193,7 +193,8 @@ class BaseActionHandler {
         component,
         event: componentEvent,
         data: { ...data, entity: entity.toObject() },
-        replace: options?.replace !== false
+        replace: options?.replace !== false,
+        session: this.session
       });
 
       if (result.updated) {
@@ -224,7 +225,8 @@ class BaseActionHandler {
       component: componentName,
       event: componentEvent,
       data,
-      replace: options.replace !== false
+      replace: options.replace !== false,
+      session: this.session
     });
 
     if (result.updated && data.entity) {
@@ -240,6 +242,124 @@ class BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
   async deleteComponent(componentName, data, filter) {
     return ComponentService.deleteOne({ component: componentName, data, filter });
+  }
+
+  // ── Inventory reservation helpers ─────────────────────────────────────
+  //
+  // Cairo keeps reservedMass/reservedVolume on Inventory components as
+  // the "promised" capacity usage of in-flight operations (pending
+  // deliveries, extract yields, process outputs, sell-order escrow).
+  // The same fields exist on InventoryComponent; these helpers do the
+  // bookkeeping so individual handlers don't each reimplement it.
+
+  /**
+   * Compute mass + volume for a list of `{product, amount}` items using SDK
+   * product constants. Returned as integers — SDK per-unit values are
+   * already whole numbers.
+   */
+  // eslint-disable-next-line class-methods-use-this
+  _sizeOfItems(items) {
+    const { Product } = require('@influenceth/sdk'); // eslint-disable-line global-require
+    let mass = 0;
+    let volume = 0;
+    for (const it of (items || [])) {
+      const pt = Product.TYPES[it.product];
+      if (pt) {
+        mass += (pt.massPerUnit || 0) * (it.amount || 0);
+        volume += (pt.volumePerUnit || 0) * (it.amount || 0);
+      }
+    }
+    return { mass, volume };
+  }
+
+  /**
+   * Reserve capacity in a destination inventory. Writes the component
+   * back with reservedMass/reservedVolume incremented by the items' size.
+   * Throws if the reservation would exceed the inventory's constraint.
+   */
+  async reserveInventory(entity, inventory, items) {
+    const { Inventory } = require('@influenceth/sdk'); // eslint-disable-line global-require
+    const invType = Inventory.TYPES[inventory.inventoryType];
+    if (!invType) throw new Error(`Unknown inventory type: ${inventory.inventoryType}`);
+    const { mass, volume } = this._sizeOfItems(items);
+
+    const currentMass = inventory.mass || 0;
+    const currentVolume = inventory.volume || 0;
+    const resMass = (inventory.reservedMass || 0) + mass;
+    const resVolume = (inventory.reservedVolume || 0) + volume;
+
+    if (currentMass + resMass > invType.massConstraint) {
+      throw new Error('Insufficient reserved mass capacity at destination');
+    }
+    if (currentVolume + resVolume > invType.volumeConstraint) {
+      throw new Error('Insufficient reserved volume capacity at destination');
+    }
+
+    await this.writeComponent('Inventory', {
+      entity,
+      inventoryType: inventory.inventoryType,
+      slot: inventory.slot,
+      status: inventory.status,
+      mass: currentMass,
+      volume: currentVolume,
+      reservedMass: resMass,
+      reservedVolume: resVolume,
+      contents: inventory.contents || []
+    });
+    return { reservedMass: mass, reservedVolume: volume };
+  }
+
+  /**
+   * Release a prior reservation and add the items to contents. Used when
+   * the in-flight operation completes (extract/process finish, delivery
+   * receive).
+   */
+  async unreserveAndDeposit(entity, inventory, items) {
+    const { mass, volume } = this._sizeOfItems(items);
+    const contents = [...(inventory.contents || [])];
+    for (const it of items) {
+      const existing = contents.find((c) => c.product === it.product);
+      if (existing) existing.amount += it.amount;
+      else contents.push({ product: it.product, amount: it.amount });
+    }
+    const newMass = (inventory.mass || 0) + mass;
+    const newVolume = (inventory.volume || 0) + volume;
+    const resMass = Math.max(0, (inventory.reservedMass || 0) - mass);
+    const resVolume = Math.max(0, (inventory.reservedVolume || 0) - volume);
+
+    await this.writeComponent('Inventory', {
+      entity,
+      inventoryType: inventory.inventoryType,
+      slot: inventory.slot,
+      status: inventory.status,
+      mass: newMass,
+      volume: newVolume,
+      reservedMass: resMass,
+      reservedVolume: resVolume,
+      contents: contents.filter((c) => c.amount > 0)
+    });
+  }
+
+  /**
+   * Release a reservation without depositing contents (used when an action
+   * is cancelled mid-flight, e.g. CancelDelivery).
+   */
+  async unreserveInventory(entity, inventory, items) {
+    const { mass, volume } = this._sizeOfItems(items);
+    const resMass = Math.max(0, (inventory.reservedMass || 0) - mass);
+    const resVolume = Math.max(0, (inventory.reservedVolume || 0) - volume);
+
+    await this.writeComponent('Inventory', {
+      entity,
+      inventoryType: inventory.inventoryType,
+      slot: inventory.slot,
+      status: inventory.status,
+      mass: inventory.mass || 0,
+      volume: inventory.volume || 0,
+      reservedMass: resMass,
+      reservedVolume: resVolume,
+      contents: inventory.contents || []
+    });
   }
 }
 

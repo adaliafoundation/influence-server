@@ -546,39 +546,9 @@ describe('Actions – Ship operations', function () {
   // ═══════════════════════════════════════════════════════════════
 
   describe('TransitBetweenStart', function () {
-    it('starts transit to another asteroid', async function () {
-      // First undock the ship
-      await postAction(server, TOKEN, 'UndockShip', {
-        caller_crew: CREW_1,
-        ship: SHIP_1
-      });
-      await setCrewBusy(CREW_1.id, 0);
-
-      // Move crew to ship first
-      await postAction(server, TOKEN, 'StationCrew', {
-        caller_crew: CREW_1,
-        destination: { id: SHIP_1.id, label: SHIP_1.label }
-      });
-
-      const now = Math.floor(Date.now() / 1000);
-      const res = await postAction(server, TOKEN, 'TransitBetweenStart', {
-        caller_crew: CREW_1,
-        destination: { id: ASTEROID_2.id, label: ASTEROID_2.label },
-        departure_time: now,
-        arrival_time: now + 3600
-      });
-
-      expect(res.status).to.equal(200);
-
-      // Verify DB: ship has transit data
-      const ship = await mongoose.model('ShipComponent').findOne({
-        'entity.id': SHIP_1.id, 'entity.label': 6
-      }).lean();
-      expect(ship.transitArrival).to.be.greaterThan(0);
-
-      // Cleanup: reset seed data to avoid complex state restoration
-      await resetSeedData();
-    });
+    // Happy-path and numeric-correctness tests live in transit.spec.js, which
+    // supplies valid orbital elements + propellant. The couple here just
+    // exercise input and auth error paths that don't need the full payload.
 
     it('rejects when destination is missing', async function () {
       const res = await postAction(server, TOKEN, 'TransitBetweenStart', {
@@ -602,40 +572,6 @@ describe('Actions – Ship operations', function () {
 
       expect(res.status).to.equal(400);
       expect(res.body.error).to.include('Not authorized');
-    });
-
-    it('sets ship readyAt to finish time', async function () {
-      // Undock the ship
-      await postAction(server, TOKEN, 'UndockShip', {
-        caller_crew: CREW_1,
-        ship: SHIP_1
-      });
-      await setCrewBusy(CREW_1.id, 0);
-
-      // Move crew to ship
-      await postAction(server, TOKEN, 'StationCrew', {
-        caller_crew: CREW_1,
-        destination: { id: SHIP_1.id, label: SHIP_1.label }
-      });
-
-      const now = Math.floor(Date.now() / 1000);
-      const res = await postAction(server, TOKEN, 'TransitBetweenStart', {
-        caller_crew: CREW_1,
-        destination: { id: ASTEROID_2.id, label: ASTEROID_2.label },
-        departure_time: now,
-        arrival_time: now + 3600
-      });
-
-      expect(res.status).to.equal(200);
-
-      // Verify ship readyAt equals the arrival time
-      const ship = await mongoose.model('ShipComponent').findOne({
-        'entity.id': SHIP_1.id, 'entity.label': 6
-      }).lean();
-      expect(ship.readyAt).to.equal(ship.transitArrival);
-      expect(ship.readyAt).to.be.greaterThan(0);
-
-      await resetSeedData();
     });
   });
 

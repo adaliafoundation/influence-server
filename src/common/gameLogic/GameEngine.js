@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const logger = require('@common/lib/logger');
-const { isHybrid } = require('@common/lib/gameMode');
 const SyntheticEvent = require('./helpers/syntheticEvent');
 const { ValidationError } = require('./errors');
 
@@ -229,20 +228,33 @@ class GameEngine {
         calls = varSets.map((varSet) => ({ action: targetAction, vars: varSet }));
       }
 
+      // Each leg runs its own transaction; if leg N fails, legs <N are
+      // already committed. This matches how the client already retries —
+      // the suffixed idempotency keys let a retry replay earlier legs
+      // safely while re-attempting the failed one. If the client never
+      // retries, the caller gets a partial-success error from the failing
+      // leg and the earlier effects are visible. Fully-atomic multi-leg
+      // would require nested-session support in the handler interface;
+      // tracked as a known limitation in IMPLEMENTATION_PLAN.
       const results = [];
-      for (const call of calls) {
-        // eslint-disable-next-line no-await-in-loop
-        const result = await this.execute({
-          action: call.action,
-          address,
-          callerCrew: callerCrew || call.vars.caller_crew,
-          vars: call.vars,
-          meta,
-          idempotencyKey: idempotencyKey
-            ? `${idempotencyKey}-${results.length}`
-            : undefined
-        });
-        results.push(result);
+      try {
+        for (const call of calls) {
+          // eslint-disable-next-line no-await-in-loop
+          const result = await this.execute({
+            action: call.action,
+            address,
+            callerCrew: callerCrew || call.vars.caller_crew,
+            vars: call.vars,
+            meta,
+            idempotencyKey: idempotencyKey
+              ? `${idempotencyKey}-${results.length}`
+              : undefined
+          });
+          results.push(result);
+        }
+      } catch (err) {
+        err.batchPartialResults = results;
+        throw err;
       }
       return results.length === 1 ? results[0] : results;
     }
@@ -295,15 +307,18 @@ class GameEngine {
       logger.error(error.stack);
     }
 
-    // 3. Emit Socket.IO events (skip in hybrid mode — the client handles
-    //    query invalidation directly after the POST response returns)
-    if (!isHybrid()) {
-      try {
-        await handler.emitEvents();
-      } catch (error) {
-        logger.error(`Socket event emission failed for ${action}:`, error);
-      }
+    // Emit Socket.IO events so other connected clients (another tab, another
+    // crew in the same asteroid room) invalidate their caches. The original
+    // client's POST already returns the committed state, but co-players and
+    // counterparties rely on socket fan-out.
+    try {
+      await handler.emitEvents();
+    } catch (error) {
+      logger.error(`Socket event emission failed for ${action}:`, error);
     }
+
+    // Release the per-action logIndex counter (bounded-growth hygiene).
+    SyntheticEvent.releaseLogCounter(handler.systemEvent);
 
     return result;
   }

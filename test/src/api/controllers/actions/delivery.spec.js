@@ -150,15 +150,15 @@ describe('Actions – Delivery operations', function () {
     });
 
     it('rejects when destination inventory would exceed mass capacity', async function () {
-      // Ship cargo (type 15) has 50M mass capacity, currently at 45M (90%).
-      // Sending 6000 units (6M mass) overflows.
+      // Ship cargo (type 16, Medium Cargo Hold) has 2B mass capacity, currently
+      // at 45M. Sending 2M Cement units (2B mass) overflows by 45M.
       const res = await postAction(server, TOKEN, 'SendDelivery', {
         caller_crew: CREW_1,
         origin: { id: WAREHOUSE.id, label: WAREHOUSE.label },
         origin_slot: 2,
         dest: { id: SHIP_1.id, label: SHIP_1.label },
         dest_slot: 2,
-        products: [{ product: 44, amount: 6000 }]
+        products: [{ product: 44, amount: 2000000 }]
       });
 
       expect(res.status).to.equal(400);

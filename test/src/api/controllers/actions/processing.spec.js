@@ -97,13 +97,17 @@ describe('Actions – Processing', function () {
     });
 
     it('rejects when destination would exceed mass capacity', async function () {
-      // Ship cargo (type 15) has 50M mass capacity, currently at 45M (90%)
+      // Ship cargo (type 16, Medium Cargo Hold) has 2B mass capacity, currently
+      // at 45M. Process 57 (Steel Beam Rolling) outputs 1 Steel Beam per Steel
+      // input; 1.96M recipes → 1.96B output mass, overflowing the remaining
+      // 1.955B free. Warehouse slot 2 has exactly 2M Steel (product 52), so
+      // 1.96M is well within input supply.
       const res = await postAction(server, TOKEN, 'ProcessProductsStart', {
         caller_crew: CREW_1,
         processor: { id: FACTORY.id, label: FACTORY.label },
         processor_slot: 1,
         process: 57,
-        recipes: 100000,
+        recipes: 1960000,
         origin: { id: WAREHOUSE.id, label: WAREHOUSE.label },
         origin_slot: 2,
         destination: { id: SHIP_1.id, label: SHIP_1.label },

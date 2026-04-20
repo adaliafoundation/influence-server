@@ -35,8 +35,14 @@ describe('Actions – Extraction', function () {
   // ═══════════════════════════════════════════════════════════════
 
   describe('ExtractResourceStart', function () {
+    // The Cairo contract requires extractor and deposit to share a lot;
+    // EXTRACTOR building 2 sits at lotIndex 2 on asteroid 1.
+    const EXTRACTOR_LOT_ID = (2 * 4294967296) + 1;
+
     it('starts extraction on a sampled deposit', async function () {
-      const deposit = await createSampledDeposit(500, { resource: 1, remainingYield: 5000 });
+      const deposit = await createSampledDeposit(500, {
+        resource: 1, remainingYield: 5000, lotId: EXTRACTOR_LOT_ID
+      });
 
       const res = await postAction(server, TOKEN, 'ExtractResourceStart', {
         caller_crew: CREW_1,

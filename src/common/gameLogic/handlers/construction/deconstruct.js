@@ -5,6 +5,7 @@ const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
 const StateMachineValidator = require('../../validators/stateMachine');
 const { ValidationError } = require('../../errors');
+const { crewToLotTravelTime } = require('../../helpers/travel');
 
 class ConstructionDeconstructHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -61,6 +62,19 @@ class ConstructionDeconstructHandler extends BaseActionHandler {
     if (dryDocks.some((d) => d.status !== 0)) {
       throw new ValidationError('DryDock is still running');
     }
+
+    // 6. Operational inventories must be empty (Cairo construction_deconstruct.cairo:71-111).
+    // You can't deconstruct a warehouse/tank farm full of products.
+    const inventoriesForCheck = await ComponentService.findByEntity('Inventory', buildingEntity);
+    for (const inv of inventoriesForCheck) {
+      const isSite = Inventory.TYPES[inv.inventoryType]?.category === Inventory.CATEGORIES.SITE;
+      if (isSite) continue; // site inventory holding leftover materials is fine
+      const hasContents = (inv.contents || []).some((c) => (c.amount || 0) > 0);
+      if (hasContents || (inv.mass || 0) > 0 || (inv.volume || 0) > 0
+          || (inv.reservedMass || 0) > 0 || (inv.reservedVolume || 0) > 0) {
+        throw new ValidationError('Operational inventory is not empty');
+      }
+    }
   }
 
   async applyStateChanges() {
@@ -75,8 +89,13 @@ class ConstructionDeconstructHandler extends BaseActionHandler {
       finishTime: 0
     });
 
-    // Mark crew as busy for a short time (Cairo: 2 * travel_time)
-    await this.setCrewBusy(this.crew, this.now + this.capDuration(60));
+    // Mark crew as busy for 2 * hopper-travel-time (Cairo construction_deconstruct.cairo:155).
+    const buildingLocation = this.building.Location?.location;
+    const travelGameSeconds = buildingLocation
+      ? crewToLotTravelTime(this.crew, { id: buildingLocation.id, label: Entity.IDS.LOT })
+      : 0;
+    const travelRealSeconds = await this.gameSecondsToReal(travelGameSeconds);
+    await this.setCrewBusy(this.crew, this.now + (travelRealSeconds * 2));
 
     // Flip inventory statuses: site inventory → AVAILABLE, operational → UNAVAILABLE
     const inventories = await ComponentService.findByEntity('Inventory', buildingEntity);

@@ -4,9 +4,12 @@ const logger = require('@common/lib/logger');
 
 const BLOCK_OFFSET = 9_000_000_000; // high offset to never collide with real blocks
 
-// logCounter is per-action (reset on each create(), incremented by createComponentEvent()).
-// Safe in-memory because component events are always written sequentially within one request.
-let logCounter = 0;
+// Per-parent-event log counters. Keyed by the parent event's _id, so
+// concurrent actions do not stomp on each other. Entries are cleared
+// eagerly in create() (reset for the new parent) and best-effort when
+// the process restarts — memory growth is bounded to active in-flight
+// actions in practice.
+const logCounters = new Map();
 
 class SyntheticEvent {
   /**
@@ -68,7 +71,6 @@ class SyntheticEvent {
     const now = Math.floor(Date.now() / 1000);
     const blockSeq = await this._nextSeq('synthetic_block');
     const txSeq = await this._nextSeq('synthetic_tx');
-    logCounter = 0; // reset log counter for each new "transaction"
 
     const event = new StarknetEvent({
       address: 'local-hybrid-server',
@@ -90,6 +92,8 @@ class SyntheticEvent {
     });
 
     await event.save({ session });
+    // Fresh counter keyed by this specific parent event — no cross-action bleed.
+    logCounters.set(String(event._id), 0);
     return event;
   }
 
@@ -100,7 +104,9 @@ class SyntheticEvent {
    */
   static async createComponentEvent({ parentEvent, componentName, returnValues, session }) {
     const StarknetEvent = mongoose.model('Starknet');
-    logCounter += 1;
+    const key = String(parentEvent._id);
+    const next = (logCounters.get(key) || 0) + 1;
+    logCounters.set(key, next);
 
     const event = new StarknetEvent({
       address: 'local-hybrid-server',
@@ -108,7 +114,7 @@ class SyntheticEvent {
       blockNumber: parentEvent.blockNumber,
       event: `ComponentUpdated_${componentName}`,
       name: `ComponentUpdated_${componentName}`,
-      logIndex: logCounter,
+      logIndex: next,
       returnValues,
       timestamp: parentEvent.timestamp,
       transactionHash: parentEvent.transactionHash,
@@ -119,6 +125,14 @@ class SyntheticEvent {
 
     await event.save({ session });
     return event;
+  }
+
+  /**
+   * Release the per-action logCounter entry. Called by GameEngine once both
+   * phases have finished (success or failure) so the map doesn't leak memory.
+   */
+  static releaseLogCounter(parentEvent) {
+    if (parentEvent?._id) logCounters.delete(String(parentEvent._id));
   }
 
   static _generateTxHash() {

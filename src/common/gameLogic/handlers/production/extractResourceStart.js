@@ -1,10 +1,15 @@
-const { Building, Deposit, Entity, Extractor, Permission } = require('@influenceth/sdk');
+const { Building, Deposit, Entity, Extractor, Permission, Ship } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
 const StateMachineValidator = require('../../validators/stateMachine');
 const { ValidationError } = require('../../errors');
+const { crewToLotTravelTime, getAsteroidLot, hopperTravelTime } = require('../../helpers/travel');
+
+// The SDK's Permission.IDS map is missing USE_DEPOSIT; mirror the Cairo
+// constant (permissions.cairo:14) until the SDK catches up.
+const PERMISSION_USE_DEPOSIT = Permission.IDS.USE_DEPOSIT || 14;
 
 class ExtractResourceStartHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -60,7 +65,7 @@ class ExtractResourceStartHandler extends BaseActionHandler {
       throw new ValidationError('Extractor slot is not idle');
     }
 
-    // 3. Must have EXTRACT_RESOURCES permission
+    // 3. Must have EXTRACT_RESOURCES permission on the extractor
     await AccessValidator.assertPermission(this.crew, this.extractor, Permission.IDS.EXTRACT_RESOURCES);
 
     // 4. Deposit must exist and be SAMPLED or USED
@@ -79,14 +84,72 @@ class ExtractResourceStartHandler extends BaseActionHandler {
       throw new ValidationError('Target yield exceeds remaining deposit yield');
     }
 
-    // 5. Destination must exist
+    // 4b. Caller crew must have USE_DEPOSIT permission on the deposit
+    // (matches influence-starknet/src/systems/production/extract_resource_start.cairo:61)
+    await AccessValidator.assertPermission(this.crew, this.deposit, PERMISSION_USE_DEPOSIT);
+
+    // 5. Destination must exist and be ready to receive.
     this.destination = await EntityService.getEntity({
       id: destRef.id,
       label: destRef.label,
-      components: ['Location'],
+      components: ['Location', 'Building', 'Ship'],
       format: true
     });
     if (!this.destination) throw new ValidationError('Destination not found');
+
+    if (Number(destRef.label) === Entity.IDS.BUILDING) {
+      if (this.destination.Building?.status !== Building.CONSTRUCTION_STATUSES.OPERATIONAL) {
+        throw new ValidationError('Destination building is not operational');
+      }
+    } else if (Number(destRef.label) === Entity.IDS.SHIP) {
+      // Ship must be parked, and if docked inside a building that building
+      // must be operational — matches extract_resource_start.cairo:91-99.
+      const shipStatus = this.destination.Ship?.status;
+      if (shipStatus !== Ship.STATUSES.AVAILABLE) {
+        throw new ValidationError('Destination ship is not available');
+      }
+      const shipLoc = this.destination.Location?.location;
+      if (shipLoc?.label === Entity.IDS.BUILDING) {
+        const dockBuilding = await ComponentService.findOneByEntity('Building', shipLoc);
+        if (dockBuilding?.status !== Building.CONSTRUCTION_STATUSES.OPERATIONAL) {
+          throw new ValidationError('Destination ship is docked at a non-operational building');
+        }
+      }
+    }
+
+    // 6. All of crew / extractor / deposit / destination must be on the
+    //    same asteroid and on-surface (Cairo extract_resource_start.cairo:78-86).
+    const [crewLoc, extLoc, depLoc, destLocResolved] = await Promise.all([
+      getAsteroidLot(this.crew),
+      getAsteroidLot(this.extractor),
+      getAsteroidLot(this.deposit),
+      getAsteroidLot(this.destination)
+    ]);
+    if (!crewLoc || !extLoc || !depLoc || !destLocResolved) {
+      throw new ValidationError('Missing location data for one of the entities');
+    }
+    const asteroidId = extLoc.asteroidId;
+    if (depLoc.asteroidId !== asteroidId
+        || destLocResolved.asteroidId !== asteroidId
+        || crewLoc.asteroidId !== asteroidId) {
+      throw new ValidationError('All entities must be on the same asteroid');
+    }
+    if (extLoc.lotIndex !== depLoc.lotIndex) {
+      throw new ValidationError('Extractor and deposit must be on the same lot');
+    }
+    if (!destLocResolved.lotIndex || !crewLoc.lotIndex) {
+      throw new ValidationError('Crew and destination must be on the surface');
+    }
+    this._crewLoc = crewLoc;
+    this._extLoc = extLoc;
+    this._destLoc = destLocResolved;
+    this._asteroidId = asteroidId;
+
+    // 7. Caller must have ADD_PRODUCTS permission on the destination.
+    // We defer the time-bounded version to applyStateChanges once we know
+    // finishTime — matches extract_resource_start.cairo:159 (checked post-
+    // finish-time).
+    await AccessValidator.assertPermission(this.crew, this.destination, Permission.IDS.ADD_PRODUCTS);
 
     this.extractorSlot = Number(extractorSlot) || 1;
     this.destSlot = Number(destSlot) || 1;
@@ -94,8 +157,43 @@ class ExtractResourceStartHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
-    const extractionTime = Extractor.getExtractionTime(this.targetYield, this.deposit.Deposit.remainingYield, 1);
-    this.finishTime = this.now + await this.gameSecondsToReal(extractionTime);
+    const extractionGameSeconds = Extractor.getExtractionTime(
+      this.targetYield, this.deposit.Deposit.remainingYield, 1
+    );
+    const extractionRealSeconds = await this.gameSecondsToReal(extractionGameSeconds);
+
+    // Hopper travel: crew→deposit and deposit→destination, in game-seconds.
+    const crewToDeposit = hopperTravelTime(
+      this._asteroidId, this._crewLoc.lotIndex, this._extLoc.lotIndex
+    );
+    const depositToDest = hopperTravelTime(
+      this._asteroidId, this._extLoc.lotIndex, this._destLoc.lotIndex
+    );
+    const crewToDepositReal = await this.gameSecondsToReal(crewToDeposit);
+    const depositToDestReal = await this.gameSecondsToReal(depositToDest);
+
+    // Cairo extract_resource_start.cairo:148 — finishTime is when the
+    // extracted product is delivered: crew→deposit + extract + deposit→dest.
+    this.finishTime = this.now + crewToDepositReal + extractionRealSeconds + depositToDestReal;
+
+    // 7b. Time-bounded permissions (assert_can_until) — the agreements
+    // granting extract and add-products access must cover the finish time.
+    await AccessValidator.assertPermissionUntil(
+      this.crew, this.extractor, Permission.IDS.EXTRACT_RESOURCES, this.finishTime
+    );
+    await AccessValidator.assertPermissionUntil(
+      this.crew, this.destination, Permission.IDS.ADD_PRODUCTS, this.finishTime
+    );
+
+    // Reserve space on the destination inventory so concurrent actions
+    // can't oversubscribe it during the extraction window.
+    const destEntity = { id: this.destination.id, label: this.destination.label };
+    const destInventories = await ComponentService.findByEntity('Inventory', destEntity);
+    const destInv = destInventories.find((i) => i.slot === this.destSlot);
+    if (!destInv) throw new ValidationError('Destination inventory slot not found');
+    await this.reserveInventory(destEntity, destInv, [
+      { product: this.deposit.Deposit.resource, amount: this.targetYield }
+    ]);
 
     // Update extractor component to RUNNING
     await this.writeComponent('Extractor', {
@@ -104,7 +202,7 @@ class ExtractResourceStartHandler extends BaseActionHandler {
       status: Extractor.STATUSES.RUNNING,
       outputProduct: this.deposit.Deposit.resource,
       yield: this.targetYield,
-      destination: { id: this.destination.id, label: this.destination.label },
+      destination: destEntity,
       destinationSlot: this.destSlot,
       finishTime: this.finishTime
     });
@@ -120,7 +218,12 @@ class ExtractResourceStartHandler extends BaseActionHandler {
       finishTime: this.finishTime
     });
 
-    await this.setCrewBusy(this.crew, this.finishTime);
+    // Cairo extract_resource_start.cairo:162-163 — crew goes there,
+    // works 1/8 of extract time, comes back. The full extraction runs
+    // autonomously; the crew just sets it up and leaves.
+    const crewWorkReal = Math.ceil(extractionRealSeconds / 8);
+    const crewBusyUntil = this.now + crewToDepositReal + crewWorkReal + crewToDepositReal;
+    await this.setCrewBusy(this.crew, crewBusyUntil);
 
     return { finishTime: this.finishTime };
   }

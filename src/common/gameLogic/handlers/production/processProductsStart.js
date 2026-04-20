@@ -1,9 +1,10 @@
-const { Building, Entity, Inventory, Permission, Process, Processor, Product } = require('@influenceth/sdk');
+const { Building, Entity, Inventory, Permission, Process, Processor, Product, Ship } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
 const { ValidationError } = require('../../errors');
+const { crewToLotTravelTime, getAsteroidLot, hopperTravelTime } = require('../../helpers/travel');
 
 class ProcessProductsStartHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -151,12 +152,62 @@ class ProcessProductsStartHandler extends BaseActionHandler {
     if (usedVolume + addedVolume > capacity.filledVolume) {
       throw new ValidationError('Destination inventory does not have enough free volume');
     }
+
+    // 10. Crew, processor, origin, destination must be on the same asteroid
+    //     and on the surface (Cairo process_products_start.cairo:160-190).
+    const [crewLoc, procLoc, originLocResolved, destLocResolved] = await Promise.all([
+      getAsteroidLot(this.crew),
+      getAsteroidLot(this.processor),
+      getAsteroidLot(this.origin),
+      getAsteroidLot(this.destination)
+    ]);
+    if (!crewLoc || !procLoc || !originLocResolved || !destLocResolved) {
+      throw new ValidationError('Missing location data for one of the entities');
+    }
+    const asteroidId = procLoc.asteroidId;
+    if (originLocResolved.asteroidId !== asteroidId
+        || destLocResolved.asteroidId !== asteroidId
+        || crewLoc.asteroidId !== asteroidId) {
+      throw new ValidationError('All entities must be on the same asteroid');
+    }
+    if (!crewLoc.lotIndex || !procLoc.lotIndex
+        || !originLocResolved.lotIndex || !destLocResolved.lotIndex) {
+      throw new ValidationError('Crew, processor, origin, and destination must all be on the surface');
+    }
+    this._crewLoc = crewLoc;
+    this._procLoc = procLoc;
+    this._originLoc = originLocResolved;
+    this._destLoc = destLocResolved;
+    this._asteroidId = asteroidId;
   }
 
   async applyStateChanges() {
     const setupTime = Process.getSetupTime(this.processId, 1);
     const processingTime = Process.getProcessingTime(this.processId, this.recipes, 1);
-    this.finishTime = this.now + await this.gameSecondsToReal(Math.ceil(setupTime + processingTime));
+    const processingRealSeconds = await this.gameSecondsToReal(Math.ceil(setupTime + processingTime));
+
+    // Hopper travel — crew→processor, origin→processor, processor→destination.
+    const crewToProc = hopperTravelTime(this._asteroidId, this._crewLoc.lotIndex, this._procLoc.lotIndex);
+    const originToProc = hopperTravelTime(this._asteroidId, this._originLoc.lotIndex, this._procLoc.lotIndex);
+    const procToDest = hopperTravelTime(this._asteroidId, this._procLoc.lotIndex, this._destLoc.lotIndex);
+    const crewToProcReal = await this.gameSecondsToReal(crewToProc);
+    const originToProcReal = await this.gameSecondsToReal(originToProc);
+    const procToDestReal = await this.gameSecondsToReal(procToDest);
+
+    this.finishTime = this.now + originToProcReal + processingRealSeconds + procToDestReal;
+
+    // Time-bounded permissions — the RUN_PROCESS and ADD_PRODUCTS grants
+    // must remain valid through the process finish time.
+    await AccessValidator.assertPermissionUntil(
+      this.crew, this.processor, Permission.IDS.RUN_PROCESS, this.finishTime
+    );
+    await AccessValidator.assertPermissionUntil(
+      this.crew, this.destination, Permission.IDS.ADD_PRODUCTS, this.finishTime
+    );
+
+    // Reserve destination capacity for the computed outputs.
+    const destEntity = { id: this.destination.id, label: this.destination.label };
+    await this.reserveInventory(destEntity, this.destInv, this.outputProducts);
 
     // Update processor component to RUNNING
     await this.writeComponent('Processor', {
@@ -167,7 +218,7 @@ class ProcessProductsStartHandler extends BaseActionHandler {
       runningProcess: this.processId,
       recipes: this.recipes,
       outputProduct: this.primaryOutputId,
-      destination: { id: this.destination.id, label: this.destination.label },
+      destination: destEntity,
       destinationSlot: this.destSlot,
       finishTime: this.finishTime
     });
@@ -199,7 +250,11 @@ class ProcessProductsStartHandler extends BaseActionHandler {
       contents: updatedContents
     });
 
-    await this.setCrewBusy(this.crew, this.finishTime);
+    // Cairo process_products_start.cairo:200-202 — crew goes, works 1/8 time,
+    // comes back. Full process completes autonomously.
+    const crewWorkReal = Math.ceil(processingRealSeconds / 8);
+    const crewBusyUntil = this.now + crewToProcReal + crewWorkReal + crewToProcReal;
+    await this.setCrewBusy(this.crew, crewBusyUntil);
 
     return { finishTime: this.finishTime };
   }

@@ -41,15 +41,27 @@ class ConstructionPlanHandler extends BaseActionHandler {
     });
     if (!this.lot) throw new ValidationError('Lot not found');
 
-    // 4. Lot must not already have a building
-    const existing = await EntityService.getEntities({
+    // 4. Lot must not already have a (planned or built) building on it.
+    // Abandoned buildings (status UNPLANNED) release the lot — Cairo clears
+    // the `LotUse` Unique row, which here we emulate via status filtering on
+    // the results. EntityService.getEntities only allows matching on a
+    // single component, so we fetch-then-filter.
+    const { ComponentService } = require('@common/services'); // eslint-disable-line global-require
+    const occupants = await EntityService.getEntities({
       label: Entity.IDS.BUILDING,
       match: {
         'Location.location.id': lotRef.id,
         'Location.location.label': Entity.IDS.LOT
       }
     });
-    if (existing.length > 0) throw new ValidationError('Lot already has a building');
+    const BuildingModel = ComponentService.model('Building');
+    const occupantStatuses = await BuildingModel.find({
+      'entity.uuid': { $in: occupants.map((o) => o.uuid || EntityLib.toEntity(o).uuid) }
+    }).lean();
+    const lotOccupied = occupantStatuses.some(
+      (b) => b.status !== Building.CONSTRUCTION_STATUSES.UNPLANNED
+    );
+    if (lotOccupied) throw new ValidationError('Lot already has a building');
 
     // 5. Must have USE_LOT permission on the lot
     await AccessValidator.assertPermission(this.crew, this.lot, Permission.IDS.USE_LOT);

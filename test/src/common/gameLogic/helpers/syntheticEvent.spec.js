@@ -1,4 +1,5 @@
 const { expect } = require('chai');
+const mongoose = require('mongoose');
 const SyntheticEvent = require('@common/gameLogic/helpers/syntheticEvent');
 
 describe('SyntheticEvent', function () {

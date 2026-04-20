@@ -1,4 +1,4 @@
-const { DryDock, Entity, Permission, Product, Ship, Process } = require('@influenceth/sdk');
+const { Building, DryDock, Entity, Permission, Product, Ship, Process } = require('@influenceth/sdk');
 const EntityLib = require('@common/lib/Entity');
 const { ComponentService, EntityService, LocationComponentService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
@@ -6,6 +6,7 @@ const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
 const IdGenerator = require('../../helpers/idGenerator');
 const { ValidationError } = require('../../errors');
+const { crewToLotTravelTime, getAsteroidLot, hopperTravelTime } = require('../../helpers/travel');
 
 class AssembleShipStartHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -38,7 +39,7 @@ class AssembleShipStartHandler extends BaseActionHandler {
     await AccessValidator.assertControlledBy(this.crew, this.address);
     CrewValidator.assertReady(this.crew);
 
-    // 2. Dry dock building must exist
+    // 2. Dry dock building must exist and be operational.
     this.dryDock = await EntityService.getEntity({
       id: dryDockRef.id,
       label: Entity.IDS.BUILDING,
@@ -46,6 +47,9 @@ class AssembleShipStartHandler extends BaseActionHandler {
       format: true
     });
     if (!this.dryDock) throw new ValidationError('Dry dock not found');
+    if (this.dryDock.Building?.status !== Building.CONSTRUCTION_STATUSES.OPERATIONAL) {
+      throw new ValidationError('Dry dock is not operational');
+    }
 
     // 3. Must have ASSEMBLE_SHIP permission
     await AccessValidator.assertPermission(this.crew, this.dryDock, Permission.IDS.ASSEMBLE_SHIP);
@@ -58,6 +62,37 @@ class AssembleShipStartHandler extends BaseActionHandler {
     this.dryDockSlot = Number(dryDockSlot) || 1;
     this.originSlot = Number(originSlot) || 1;
     this.originRef = originRef;
+
+    // 5. Crew and (if given) origin must be on the same asteroid as the dry dock,
+    //    and origin (if a building) must be operational — Cairo assemble_ship_start.
+    const [crewLoc, dockLoc] = await Promise.all([
+      getAsteroidLot(this.crew), getAsteroidLot(this.dryDock)
+    ]);
+    if (!crewLoc || !dockLoc) throw new ValidationError('Missing location data');
+    if (crewLoc.asteroidId !== dockLoc.asteroidId) {
+      throw new ValidationError('Crew and dry dock must be on the same asteroid');
+    }
+    if (!crewLoc.lotIndex || !dockLoc.lotIndex) {
+      throw new ValidationError('Crew and dry dock must be on the surface');
+    }
+    this._crewLoc = crewLoc;
+    this._dockLoc = dockLoc;
+    if (originRef?.id && originRef?.label) {
+      const originEntityQuery = await EntityService.getEntity({
+        id: originRef.id, label: originRef.label,
+        components: ['Location', 'Building'], format: true
+      });
+      if (!originEntityQuery) throw new ValidationError('Origin not found');
+      const originLoc = await getAsteroidLot(originEntityQuery);
+      if (!originLoc || originLoc.asteroidId !== dockLoc.asteroidId) {
+        throw new ValidationError('Origin must be on the same asteroid as the dry dock');
+      }
+      if (Number(originRef.label) === Entity.IDS.BUILDING
+          && originEntityQuery.Building?.status !== Building.CONSTRUCTION_STATUSES.OPERATIONAL) {
+        throw new ValidationError('Origin building is not operational');
+      }
+      this._originLoc = originLoc;
+    }
   }
 
   async applyStateChanges() {
@@ -157,7 +192,19 @@ class AssembleShipStartHandler extends BaseActionHandler {
       finishTime: this.finishTime
     });
 
-    await this.setCrewBusy(this.crew, this.finishTime);
+    // Time-bounded ASSEMBLE_SHIP permission — must be valid through finish.
+    await AccessValidator.assertPermissionUntil(
+      this.crew, this.dryDock, Permission.IDS.ASSEMBLE_SHIP, this.finishTime
+    );
+
+    // Crew busy: there, 1/8 of assembly work, back (Cairo assemble_ship_start).
+    const crewToDockGame = hopperTravelTime(
+      this._dockLoc.asteroidId, this._crewLoc.lotIndex, this._dockLoc.lotIndex
+    );
+    const crewToDockReal = await this.gameSecondsToReal(crewToDockGame);
+    const crewWorkReal = Math.ceil((this.finishTime - this.now) / 8);
+    const crewBusyUntil = this.now + crewToDockReal + crewWorkReal + crewToDockReal;
+    await this.setCrewBusy(this.crew, crewBusyUntil);
 
     return { shipId: this.shipId, finishTime: this.finishTime };
   }

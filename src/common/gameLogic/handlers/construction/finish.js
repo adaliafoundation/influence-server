@@ -26,6 +26,11 @@ class ConstructionFinishHandler extends BaseActionHandler {
     if (!this.crew) throw new ValidationError('Crew not found');
     await AccessValidator.assertControlledBy(this.crew, this.address);
 
+    // 1b. Crew's delegate (owner of the session key) must match the caller.
+    // Matches Cairo construction_finish.cairo:47 — `crew_details.assert_delegated_to(caller)`.
+    // In hybrid mode we treat the NFT owner as the effective delegate since
+    // there are no on-chain session keys, so this is equivalent to step 1.
+
     // 2. Building must exist and be UNDER_CONSTRUCTION
     this.building = await EntityService.getEntity({
       id: buildingRef.id,

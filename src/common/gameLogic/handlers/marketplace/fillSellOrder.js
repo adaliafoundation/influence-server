@@ -4,6 +4,10 @@ const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
 
+// NOTE: Hybrid mode treats SWAY as infinite (plan §7.8, Option B). No buyer
+// → seller payment or maker/taker fee collection happens here. Product flow
+// is complete — seller escrow → buyer inventory. When the hybrid server
+// grows real SWAY bookkeeping, this handler is the first place to wire it.
 class FillSellOrderHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
   getEventName() { return 'SellOrderFilled'; }
