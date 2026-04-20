@@ -6,6 +6,7 @@ const { hideBin } = require('yargs/helpers');
 const { EthereumRetriever } = require('@common/lib/events/retrievers/ethereum/retriever');
 const { StarknetRetriever } = require('@common/lib/events/retrievers/starknet/retriever');
 const logger = require('@common/lib/logger');
+const { isHybrid } = require('@common/lib/gameMode');
 
 const EVENT_SOURCES = {
   ethereum: EthereumRetriever,
@@ -54,6 +55,12 @@ const args = yargs(hideBin(process.argv))
   })
   .help()
   .parse();
+
+// Ethereum retriever is fully disabled in hybrid mode (no L1 contracts to track)
+if (isHybrid() && args.eventSource === 'ethereum') {
+  logger.info('Ethereum retriever disabled in hybrid mode');
+  process.exit(0);
+}
 
 const main = async function ({ blocks, eventSource, fromBlock, toBlock, runOnce, contractAddress, onlyMisingBlocks }) {
   // instatiate retrievers(s)
