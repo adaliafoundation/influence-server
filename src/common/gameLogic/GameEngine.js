@@ -5,19 +5,12 @@ const { ValidationError } = require('./errors');
 
 const loadHandlers = () => ({
   // eslint-disable-next-line global-require
-  ConstructionPlan: require('./handlers/construction/plan')
-  // TODO: Add remaining handlers as they are implemented:
-  // ConstructionStart: require('./handlers/construction/start'),
-  // ConstructionFinish: require('./handlers/construction/finish'),
-  // ConstructionDeconstruct: require('./handlers/construction/deconstruct'),
-  // ConstructionAbandon: require('./handlers/construction/abandon'),
-  // ResourceExtractionStart: require('./handlers/production/extractStart'),
-  // ResourceExtractionFinish: require('./handlers/production/extractFinish'),
-  // MaterialProcessingStart: require('./handlers/production/processStart'),
-  // MaterialProcessingFinish: require('./handlers/production/processFinish'),
-  // CrewStation: require('./handlers/crew/station'),
-  // CrewForm: require('./handlers/crew/form'),
-  // ... etc
+  ConstructionPlan: require('./handlers/construction/plan'),
+  ConstructionStart: require('./handlers/construction/start'),
+  ConstructionFinish: require('./handlers/construction/finish'),
+  ConstructionDeconstruct: require('./handlers/construction/deconstruct'),
+  ConstructionAbandon: require('./handlers/construction/abandon'),
+  // TODO: Add remaining handlers as they are implemented
 });
 
 class GameEngine {
