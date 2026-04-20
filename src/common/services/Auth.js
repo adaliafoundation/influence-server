@@ -4,6 +4,7 @@ const uuid = require('short-uuid');
 const starknet = require('starknet');
 const UserService = require('@common/services/User');
 const { AuthCache } = require('@common/lib/cache');
+const { isHybrid } = require('@common/lib/gameMode');
 const logger = require('@common/lib/logger');
 
 class AuthService {
@@ -82,6 +83,15 @@ class AuthService {
 
     // Nonce has now been used, so remove from cache to avoid replay attacks
     await AuthCache.deleteLoginMessage(_address);
+
+    // In hybrid + development mode, skip on-chain deployment check and signature
+    // verification. In production hybrid mode, we still verify signatures since
+    // the server is exposed and we need to prove wallet ownership.
+    if (isHybrid() && process.env.NODE_ENV === 'development') {
+      logger.info(`Hybrid dev mode: skipping signature verification for ${_address}`);
+      return UserService.findOrCreateByAddress({ address: _address, isDeployed: true, referredBy });
+    }
+
     const provider = new starknet.RpcProvider({ nodeUrl: appConfig.get('Starknet.rpcProvider') });
 
     // If the account contract isn't deployed yet, issue a token (while this appears unsafe, the only

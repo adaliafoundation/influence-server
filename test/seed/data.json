@@ -1,0 +1,180 @@
+{
+  "_comment": "Seed data for local hybrid mode development. All entity IDs are low numbers that won't collide with locally-generated IDs (which start at 100,000,001). Replace WALLET_ADDRESS with your Starknet wallet address.",
+
+  "walletAddress": "",
+
+  "constants": [
+    { "name": "TIME_ACCELERATION", "value": "24" },
+    { "name": "CREW_SCHEDULE_BUFFER", "value": "5" }
+  ],
+
+  "entities": [
+    { "id": 1, "label": 3, "_comment": "Asteroid: Adalia Prime" },
+    { "id": 2, "label": 3, "_comment": "Asteroid: secondary" },
+    { "id": 1, "label": 1, "_comment": "Crew #1" },
+    { "id": 1, "label": 2, "_comment": "Crewmate #1 (pilot)" },
+    { "id": 2, "label": 2, "_comment": "Crewmate #2 (engineer)" },
+    { "id": 3, "label": 2, "_comment": "Crewmate #3 (miner)" },
+    { "id": 1, "label": 5, "_comment": "Building: Warehouse on Adalia Prime lot 1" },
+    { "id": 2, "label": 5, "_comment": "Building: Extractor on Adalia Prime lot 2" }
+  ],
+
+  "nftComponents": [
+    { "entity": { "id": 1, "label": 3 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 2, "label": 3 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 1, "label": 1 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 1, "label": 2 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 2, "label": 2 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 3, "label": 2 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 1, "label": 5 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 2, "label": 5 }, "owners": { "starknet": "WALLET" } }
+  ],
+
+  "celestialComponents": [
+    {
+      "entity": { "id": 1, "label": 3 },
+      "celestialType": 1,
+      "mass": 3500000000,
+      "radius": 375,
+      "scanStatus": 3,
+      "bonuses": 0,
+      "abundances": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "_comment": "radius in km — Config multiplies by 1000 to get meters. MAX_RADIUS in SDK is 375 km."
+    },
+    {
+      "entity": { "id": 2, "label": 3 },
+      "celestialType": 2,
+      "mass": 500000000,
+      "radius": 270,
+      "scanStatus": 3,
+      "bonuses": 0,
+      "abundances": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+
+  "orbitComponents": [
+    { "entity": { "id": 1, "label": 3 }, "a": 409150176.4, "ecc": 0.0791, "inc": 0.1803, "raan": 1.2915, "argp": 4.8518, "m": 3.8671, "_comment": "a in km (2.735 AU). Angles in radians." },
+    { "entity": { "id": 2, "label": 3 }, "a": 446100850.4, "ecc": 0.1200, "inc": 0.2100, "raan": 2.1000, "argp": 3.5000, "m": 1.2000, "_comment": "a in km (2.982 AU)" }
+  ],
+
+  "nameComponents": [
+    { "entity": { "id": 1, "label": 3 }, "name": "Adalia Prime" },
+    { "entity": { "id": 2, "label": 3 }, "name": "Tempest Rock" },
+    { "entity": { "id": 1, "label": 1 }, "name": "Alpha Crew" },
+    { "entity": { "id": 1, "label": 2 }, "name": "Ace" },
+    { "entity": { "id": 2, "label": 2 }, "name": "Bolt" },
+    { "entity": { "id": 3, "label": 2 }, "name": "Cinder" },
+    { "entity": { "id": 1, "label": 5 }, "name": "Main Warehouse" },
+    { "entity": { "id": 2, "label": 5 }, "name": "Iron Extractor" }
+  ],
+
+  "crewComponents": [
+    {
+      "entity": { "id": 1, "label": 1 },
+      "delegatedTo": "WALLET",
+      "readyAt": 0,
+      "lastFed": 9999999999,
+      "roster": [1, 2, 3],
+      "actionType": 0,
+      "actionRound": 0
+    }
+  ],
+
+  "crewmateComponents": [
+    { "entity": { "id": 1, "label": 2 }, "class": 1, "title": 0, "status": 1, "coll": 1, "impactful": [1, 2, 3, 4, 5, 6], "cosmetic": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+    { "entity": { "id": 2, "label": 2 }, "class": 2, "title": 0, "status": 1, "coll": 1, "impactful": [2, 3, 4, 5, 6, 1], "cosmetic": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1] },
+    { "entity": { "id": 3, "label": 2 }, "class": 3, "title": 0, "status": 1, "coll": 1, "impactful": [3, 4, 5, 6, 1, 2], "cosmetic": [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2] }
+  ],
+
+  "locationComponents": [
+    {
+      "entity": { "id": 1, "label": 1 },
+      "location": { "id": 1, "label": 5 },
+      "locations": [
+        { "id": 1, "label": 5 },
+        { "id": 4294967297, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Crew at warehouse → warehouse → lot 1 → asteroid 1"
+    },
+    {
+      "entity": { "id": 1, "label": 2 },
+      "location": { "id": 1, "label": 1 },
+      "locations": [
+        { "id": 1, "label": 1 },
+        { "id": 1, "label": 5 },
+        { "id": 4294967297, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Crewmate 1 → crew → warehouse → lot 1 → asteroid 1"
+    },
+    {
+      "entity": { "id": 2, "label": 2 },
+      "location": { "id": 1, "label": 1 },
+      "locations": [
+        { "id": 1, "label": 1 },
+        { "id": 1, "label": 5 },
+        { "id": 4294967297, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Crewmate 2 → crew → warehouse → lot 1 → asteroid 1"
+    },
+    {
+      "entity": { "id": 3, "label": 2 },
+      "location": { "id": 1, "label": 1 },
+      "locations": [
+        { "id": 1, "label": 1 },
+        { "id": 1, "label": 5 },
+        { "id": 4294967297, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Crewmate 3 → crew → warehouse → lot 1 → asteroid 1"
+    },
+    {
+      "entity": { "id": 1, "label": 5 },
+      "location": { "id": 4294967297, "label": 4 },
+      "locations": [
+        { "id": 4294967297, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Warehouse → lot 1 → asteroid 1"
+    },
+    {
+      "entity": { "id": 2, "label": 5 },
+      "location": { "id": 8589934593, "label": 4 },
+      "locations": [
+        { "id": 8589934593, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Extractor → lot 2 → asteroid 1"
+    }
+  ],
+
+  "controlComponents": [
+    { "entity": { "id": 1, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Warehouse controlled by crew" },
+    { "entity": { "id": 2, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Extractor controlled by crew" }
+  ],
+
+  "buildingComponents": [
+    { "entity": { "id": 1, "label": 5 }, "buildingType": 1, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000 },
+    { "entity": { "id": 2, "label": 5 }, "buildingType": 2, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000 }
+  ],
+
+  "inventoryComponents": [
+    {
+      "entity": { "id": 1, "label": 5 },
+      "inventoryType": 1,
+      "slot": 1,
+      "status": 0,
+      "mass": 0,
+      "volume": 0,
+      "reservedMass": 0,
+      "reservedVolume": 0,
+      "contents": []
+    }
+  ],
+
+  "stationComponents": [
+    { "entity": { "id": 1, "label": 5 }, "stationType": 1, "population": 0 }
+  ]
+}
