@@ -53,8 +53,9 @@ class ConstructionStartHandler extends BaseActionHandler {
     const processType = Building.TYPES[buildingType]?.processType;
     const processConfig = Process.TYPES[processType];
 
-    // Calculate construction time from the process setup time
-    const constructionTime = processConfig?.setupTime || 86400;
+    // setupTime is in game-seconds; convert to real-seconds via TIME_ACCELERATION
+    const setupTime = processConfig?.setupTime || 86400;
+    const constructionTime = await this.gameSecondsToReal(setupTime);
     this.finishTime = this.now + constructionTime;
 
     // Update building status to UNDER_CONSTRUCTION

@@ -7,7 +7,7 @@ const { allowedOrigin } = require('@api/plugins/origin');
 const { isHybrid } = require('@common/lib/gameMode');
 const logger = require('@common/lib/logger');
 
-const VALID_ACTION_NAME = /^[a-z][a-z0-9_]{0,63}$/;
+const VALID_ACTION_NAME = /^[A-Za-z][A-Za-z0-9]{0,63}$/;
 
 // Lazy-require GameEngine so the controller can load before Phase 4 is built.
 let _GameEngine;
@@ -65,9 +65,10 @@ if (isHybrid()) {
           ctx.status = 400;
           ctx.body = { error: error.message };
         } else {
-          logger.error(`Action "${action}" failed for ${address}:`, error);
+          logger.error(`Action "${action}" failed for ${address}: ${error.message}`);
+          logger.error(error.stack);
           ctx.status = 500;
-          ctx.body = { error: 'Internal server error' };
+          ctx.body = { error: error.message || 'Internal server error' };
         }
       }
     });

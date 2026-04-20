@@ -10,24 +10,48 @@
 
   "entities": [
     { "id": 1, "label": 3, "_comment": "Asteroid: Adalia Prime" },
-    { "id": 2, "label": 3, "_comment": "Asteroid: secondary" },
+    { "id": 2, "label": 3, "_comment": "Asteroid: Tempest Rock" },
     { "id": 1, "label": 1, "_comment": "Crew #1" },
+    { "id": 2, "label": 1, "_comment": "Crew #2" },
     { "id": 1, "label": 2, "_comment": "Crewmate #1 (pilot)" },
     { "id": 2, "label": 2, "_comment": "Crewmate #2 (engineer)" },
     { "id": 3, "label": 2, "_comment": "Crewmate #3 (miner)" },
-    { "id": 1, "label": 5, "_comment": "Building: Warehouse on Adalia Prime lot 1" },
-    { "id": 2, "label": 5, "_comment": "Building: Extractor on Adalia Prime lot 2" }
+    { "id": 4, "label": 2, "_comment": "Crewmate #4 (scientist)" },
+    { "id": 5, "label": 2, "_comment": "Crewmate #5 (merchant)" },
+    { "id": 1, "label": 5, "_comment": "Building: Warehouse on lot 1" },
+    { "id": 2, "label": 5, "_comment": "Building: Extractor on lot 2" },
+    { "id": 3, "label": 5, "_comment": "Building: Refinery on lot 3" },
+    { "id": 4, "label": 5, "_comment": "Building: Factory on lot 4" },
+    { "id": 5, "label": 5, "_comment": "Building: Shipyard on lot 5" },
+    { "id": 6, "label": 5, "_comment": "Building: Bioreactor on lot 6" },
+    { "id": 7, "label": 5, "_comment": "Building: Marketplace on lot 7" },
+    { "id": 8, "label": 5, "_comment": "Building: Habitat on lot 8" },
+    { "id": 9, "label": 5, "_comment": "Building: Spaceport on lot 9" },
+    { "id": 10, "label": 5, "_comment": "Building: Tank Farm (Fluids Storage) on lot 10" },
+    { "id": 1, "label": 6, "_comment": "Ship: Light Transport" }
   ],
 
   "nftComponents": [
     { "entity": { "id": 1, "label": 3 }, "owners": { "starknet": "WALLET" } },
     { "entity": { "id": 2, "label": 3 }, "owners": { "starknet": "WALLET" } },
     { "entity": { "id": 1, "label": 1 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 2, "label": 1 }, "owners": { "starknet": "WALLET" } },
     { "entity": { "id": 1, "label": 2 }, "owners": { "starknet": "WALLET" } },
     { "entity": { "id": 2, "label": 2 }, "owners": { "starknet": "WALLET" } },
     { "entity": { "id": 3, "label": 2 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 4, "label": 2 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 5, "label": 2 }, "owners": { "starknet": "WALLET" } },
     { "entity": { "id": 1, "label": 5 }, "owners": { "starknet": "WALLET" } },
-    { "entity": { "id": 2, "label": 5 }, "owners": { "starknet": "WALLET" } }
+    { "entity": { "id": 2, "label": 5 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 3, "label": 5 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 4, "label": 5 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 5, "label": 5 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 6, "label": 5 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 7, "label": 5 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 8, "label": 5 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 9, "label": 5 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 10, "label": 5 }, "owners": { "starknet": "WALLET" } },
+    { "entity": { "id": 1, "label": 6 }, "owners": { "starknet": "WALLET" } }
   ],
 
   "celestialComponents": [
@@ -36,19 +60,19 @@
       "celestialType": 1,
       "mass": 3500000000,
       "radius": 375,
-      "scanStatus": 3,
-      "bonuses": 0,
-      "abundances": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "_comment": "radius in km — Config multiplies by 1000 to get meters. MAX_RADIUS in SDK is 375 km."
+      "scanStatus": 4,
+      "bonuses": 63,
+      "abundances": "0x00000c87d258643202592c3eabc89a5800001f44b1c257a587d0c84b190af320",
+      "_comment": "RESOURCE_SCANNED. Bonuses=63 (yield1-3 + volatile1-3). Abundances encode 22 raw materials (Water 0.8, H2 0.7, Rhabdite 0.8, etc.)"
     },
     {
       "entity": { "id": 2, "label": 3 },
       "celestialType": 2,
       "mass": 500000000,
       "radius": 270,
-      "scanStatus": 3,
-      "bonuses": 0,
-      "abundances": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      "scanStatus": 4,
+      "bonuses": 63,
+      "abundances": "0x00000c87d258643202592c3eabc89a5800001f44b1c257a587d0c84b190af320"
     }
   ],
 
@@ -65,7 +89,16 @@
     { "entity": { "id": 2, "label": 2 }, "name": "Bolt" },
     { "entity": { "id": 3, "label": 2 }, "name": "Cinder" },
     { "entity": { "id": 1, "label": 5 }, "name": "Main Warehouse" },
-    { "entity": { "id": 2, "label": 5 }, "name": "Iron Extractor" }
+    { "entity": { "id": 2, "label": 5 }, "name": "Iron Extractor" },
+    { "entity": { "id": 3, "label": 5 }, "name": "Smelting Refinery" },
+    { "entity": { "id": 4, "label": 5 }, "name": "Module Factory" },
+    { "entity": { "id": 5, "label": 5 }, "name": "Orbital Shipyard" },
+    { "entity": { "id": 6, "label": 5 }, "name": "Hydroponics Bay" },
+    { "entity": { "id": 7, "label": 5 }, "name": "Central Exchange" },
+    { "entity": { "id": 8, "label": 5 }, "name": "Settler Habitat" },
+    { "entity": { "id": 9, "label": 5 }, "name": "Docking Spaceport" },
+    { "entity": { "id": 10, "label": 5 }, "name": "Tank Farm" },
+    { "entity": { "id": 1, "label": 6 }, "name": "Pioneer Scout" }
   ],
 
   "crewComponents": [
@@ -77,58 +110,103 @@
       "roster": [1, 2, 3],
       "actionType": 0,
       "actionRound": 0
+    },
+    {
+      "entity": { "id": 2, "label": 1 },
+      "delegatedTo": "WALLET",
+      "readyAt": 0,
+      "lastFed": 9999999999,
+      "roster": [4, 5],
+      "actionType": 0,
+      "actionRound": 0
     }
   ],
 
   "crewmateComponents": [
     { "entity": { "id": 1, "label": 2 }, "class": 1, "title": 0, "status": 1, "coll": 1, "impactful": [1, 2, 3, 4, 5, 6], "cosmetic": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
     { "entity": { "id": 2, "label": 2 }, "class": 2, "title": 0, "status": 1, "coll": 1, "impactful": [2, 3, 4, 5, 6, 1], "cosmetic": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1] },
-    { "entity": { "id": 3, "label": 2 }, "class": 3, "title": 0, "status": 1, "coll": 1, "impactful": [3, 4, 5, 6, 1, 2], "cosmetic": [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2] }
+    { "entity": { "id": 3, "label": 2 }, "class": 3, "title": 0, "status": 1, "coll": 1, "impactful": [3, 4, 5, 6, 1, 2], "cosmetic": [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2] },
+    { "entity": { "id": 4, "label": 2 }, "class": 4, "title": 0, "status": 1, "coll": 1, "impactful": [4, 5, 6, 1, 2, 3], "cosmetic": [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] },
+    { "entity": { "id": 5, "label": 2 }, "class": 5, "title": 0, "status": 1, "coll": 1, "impactful": [5, 6, 1, 2, 3, 4], "cosmetic": [5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4] }
   ],
+
+  "_lotIdComment": "Lot IDs encode asteroid + lot index: (lotIndex << 32) | asteroidId. Lot 1 on asteroid 1 = 4294967297, lot 2 = 8589934593, lot 3 = 12884901889, ... lot 9 = 38654705665",
 
   "locationComponents": [
     {
       "entity": { "id": 1, "label": 1 },
-      "location": { "id": 1, "label": 5 },
+      "location": { "id": 8, "label": 5 },
       "locations": [
-        { "id": 1, "label": 5 },
-        { "id": 4294967297, "label": 4 },
+        { "id": 8, "label": 5 },
+        { "id": 34359738369, "label": 4 },
         { "id": 1, "label": 3 }
       ],
-      "_comment": "Crew at warehouse → warehouse → lot 1 → asteroid 1"
+      "_comment": "Crew at habitat (building 8) → lot 8 → asteroid 1"
     },
     {
       "entity": { "id": 1, "label": 2 },
       "location": { "id": 1, "label": 1 },
       "locations": [
         { "id": 1, "label": 1 },
-        { "id": 1, "label": 5 },
-        { "id": 4294967297, "label": 4 },
+        { "id": 8, "label": 5 },
+        { "id": 34359738369, "label": 4 },
         { "id": 1, "label": 3 }
       ],
-      "_comment": "Crewmate 1 → crew → warehouse → lot 1 → asteroid 1"
+      "_comment": "Crewmate 1 → crew → habitat → lot 8 → asteroid 1"
     },
     {
       "entity": { "id": 2, "label": 2 },
       "location": { "id": 1, "label": 1 },
       "locations": [
         { "id": 1, "label": 1 },
-        { "id": 1, "label": 5 },
-        { "id": 4294967297, "label": 4 },
+        { "id": 8, "label": 5 },
+        { "id": 34359738369, "label": 4 },
         { "id": 1, "label": 3 }
       ],
-      "_comment": "Crewmate 2 → crew → warehouse → lot 1 → asteroid 1"
+      "_comment": "Crewmate 2 → crew → habitat → lot 8 → asteroid 1"
     },
     {
       "entity": { "id": 3, "label": 2 },
       "location": { "id": 1, "label": 1 },
       "locations": [
         { "id": 1, "label": 1 },
-        { "id": 1, "label": 5 },
-        { "id": 4294967297, "label": 4 },
+        { "id": 8, "label": 5 },
+        { "id": 34359738369, "label": 4 },
         { "id": 1, "label": 3 }
       ],
-      "_comment": "Crewmate 3 → crew → warehouse → lot 1 → asteroid 1"
+      "_comment": "Crewmate 3 → crew → habitat → lot 8 → asteroid 1"
+    },
+    {
+      "entity": { "id": 2, "label": 1 },
+      "location": { "id": 8, "label": 5 },
+      "locations": [
+        { "id": 8, "label": 5 },
+        { "id": 34359738369, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Crew 2 at habitat (building 8) → lot 8 → asteroid 1"
+    },
+    {
+      "entity": { "id": 4, "label": 2 },
+      "location": { "id": 2, "label": 1 },
+      "locations": [
+        { "id": 2, "label": 1 },
+        { "id": 8, "label": 5 },
+        { "id": 34359738369, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Crewmate 4 → crew 2 → habitat → lot 8 → asteroid 1"
+    },
+    {
+      "entity": { "id": 5, "label": 2 },
+      "location": { "id": 2, "label": 1 },
+      "locations": [
+        { "id": 2, "label": 1 },
+        { "id": 8, "label": 5 },
+        { "id": 34359738369, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Crewmate 5 → crew 2 → habitat → lot 8 → asteroid 1"
     },
     {
       "entity": { "id": 1, "label": 5 },
@@ -147,34 +225,376 @@
         { "id": 1, "label": 3 }
       ],
       "_comment": "Extractor → lot 2 → asteroid 1"
+    },
+    {
+      "entity": { "id": 3, "label": 5 },
+      "location": { "id": 12884901889, "label": 4 },
+      "locations": [
+        { "id": 12884901889, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Refinery → lot 3 → asteroid 1"
+    },
+    {
+      "entity": { "id": 4, "label": 5 },
+      "location": { "id": 17179869185, "label": 4 },
+      "locations": [
+        { "id": 17179869185, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Factory → lot 4 → asteroid 1"
+    },
+    {
+      "entity": { "id": 5, "label": 5 },
+      "location": { "id": 21474836481, "label": 4 },
+      "locations": [
+        { "id": 21474836481, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Shipyard → lot 5 → asteroid 1"
+    },
+    {
+      "entity": { "id": 6, "label": 5 },
+      "location": { "id": 25769803777, "label": 4 },
+      "locations": [
+        { "id": 25769803777, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Bioreactor → lot 6 → asteroid 1"
+    },
+    {
+      "entity": { "id": 7, "label": 5 },
+      "location": { "id": 30064771073, "label": 4 },
+      "locations": [
+        { "id": 30064771073, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Marketplace → lot 7 → asteroid 1"
+    },
+    {
+      "entity": { "id": 8, "label": 5 },
+      "location": { "id": 34359738369, "label": 4 },
+      "locations": [
+        { "id": 34359738369, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Habitat → lot 8 → asteroid 1"
+    },
+    {
+      "entity": { "id": 9, "label": 5 },
+      "location": { "id": 38654705665, "label": 4 },
+      "locations": [
+        { "id": 38654705665, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Spaceport → lot 9 → asteroid 1"
+    },
+    {
+      "entity": { "id": 10, "label": 5 },
+      "location": { "id": 42949672961, "label": 4 },
+      "locations": [
+        { "id": 42949672961, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Tank Farm → lot 10 → asteroid 1"
+    },
+    {
+      "entity": { "id": 1, "label": 6 },
+      "location": { "id": 9, "label": 5 },
+      "locations": [
+        { "id": 9, "label": 5 },
+        { "id": 38654705665, "label": 4 },
+        { "id": 1, "label": 3 }
+      ],
+      "_comment": "Ship docked at Spaceport → lot 9 → asteroid 1"
     }
   ],
 
   "controlComponents": [
+    { "entity": { "id": 1, "label": 3 }, "controller": { "id": 1, "label": 1 }, "_comment": "Asteroid 1 managed by crew" },
+    { "entity": { "id": 2, "label": 3 }, "controller": { "id": 1, "label": 1 }, "_comment": "Asteroid 2 managed by crew" },
     { "entity": { "id": 1, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Warehouse controlled by crew" },
-    { "entity": { "id": 2, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Extractor controlled by crew" }
+    { "entity": { "id": 2, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Extractor controlled by crew" },
+    { "entity": { "id": 3, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Refinery controlled by crew" },
+    { "entity": { "id": 4, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Factory controlled by crew" },
+    { "entity": { "id": 5, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Shipyard controlled by crew" },
+    { "entity": { "id": 6, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Bioreactor controlled by crew" },
+    { "entity": { "id": 7, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Marketplace controlled by crew" },
+    { "entity": { "id": 8, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Habitat controlled by crew" },
+    { "entity": { "id": 9, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Spaceport controlled by crew" },
+    { "entity": { "id": 10, "label": 5 }, "controller": { "id": 1, "label": 1 }, "_comment": "Tank Farm controlled by crew" },
+    { "entity": { "id": 1, "label": 6 }, "controller": { "id": 1, "label": 1 }, "_comment": "Ship controlled by crew" }
   ],
 
   "buildingComponents": [
-    { "entity": { "id": 1, "label": 5 }, "buildingType": 1, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000 },
-    { "entity": { "id": 2, "label": 5 }, "buildingType": 2, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000 }
+    { "entity": { "id": 1, "label": 5 }, "buildingType": 1, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000, "_comment": "Warehouse" },
+    { "entity": { "id": 2, "label": 5 }, "buildingType": 2, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000, "_comment": "Extractor" },
+    { "entity": { "id": 3, "label": 5 }, "buildingType": 3, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000, "_comment": "Refinery" },
+    { "entity": { "id": 4, "label": 5 }, "buildingType": 5, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000, "_comment": "Factory" },
+    { "entity": { "id": 5, "label": 5 }, "buildingType": 6, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000, "_comment": "Shipyard" },
+    { "entity": { "id": 6, "label": 5 }, "buildingType": 4, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000, "_comment": "Bioreactor" },
+    { "entity": { "id": 7, "label": 5 }, "buildingType": 8, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000, "_comment": "Marketplace" },
+    { "entity": { "id": 8, "label": 5 }, "buildingType": 9, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000, "_comment": "Habitat" },
+    { "entity": { "id": 9, "label": 5 }, "buildingType": 7, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000, "_comment": "Spaceport" },
+    { "entity": { "id": 10, "label": 5 }, "buildingType": 10, "status": 3, "plannedAt": 1700000000, "finishTime": 1700001000, "_comment": "Fluids Storage Terminal (Tank Farm)" }
   ],
+
+  "shipComponents": [
+    {
+      "entity": { "id": 1, "label": 6 },
+      "shipType": 2,
+      "status": 1,
+      "variant": 1,
+      "readyAt": 0,
+      "emergencyAt": 0,
+      "transitDeparture": 0,
+      "transitArrival": 0,
+      "transitOrigin": {},
+      "transitDestination": {},
+      "_comment": "Light Transport, AVAILABLE, STANDARD variant, docked"
+    }
+  ],
+
+  "_inventoryComment": "Slot 1 = site inventory (construction materials, recoverable on deconstruct). Slot 2 = player storage (warehouse and tank farm only). All amounts in kg.",
 
   "inventoryComponents": [
     {
-      "entity": { "id": 1, "label": 5 },
-      "inventoryType": 1,
-      "slot": 1,
-      "status": 0,
-      "mass": 0,
-      "volume": 0,
-      "reservedMass": 0,
-      "reservedVolume": 0,
-      "contents": []
+      "entity": { "id": 1, "label": 5 }, "inventoryType": 1, "slot": 1, "status": 0,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 44, "amount": 400000 },
+        { "product": 69, "amount": 350000 },
+        { "product": 70, "amount": 200000 }
+      ],
+      "_comment": "Warehouse site — Cement 400t, Steel Beam 350t, Steel Sheet 200t"
+    },
+    {
+      "entity": { "id": 1, "label": 5 }, "inventoryType": 10, "slot": 2, "status": 1,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 44, "amount": 15000000, "_comment": "Cement — 15,000t" },
+        { "product": 69, "amount": 10000000, "_comment": "Steel Beam — 10,000t" },
+        { "product": 70, "amount": 12000000, "_comment": "Steel Sheet — 12,000t" },
+        { "product": 101, "amount": 2000000, "_comment": "Steel Cable — 2,000t" },
+        { "product": 171, "amount": 500000, "_comment": "Stainless Steel Sheet — 500t" },
+        { "product": 52, "amount": 2000000, "_comment": "Steel — 2,000t" },
+        { "product": 29, "amount": 3000000, "_comment": "Iron — 3,000t" },
+        { "product": 30, "amount": 1000000, "_comment": "Copper — 1,000t" },
+        { "product": 53, "amount": 500000, "_comment": "Silicon — 500t" },
+        { "product": 61, "amount": 50000, "_comment": "Gold — 50t" },
+        { "product": 104, "amount": 5000, "_comment": "Platinum — 5t" },
+        { "product": 128, "amount": 500000, "_comment": "Carbon Fiber — 500t" },
+        { "product": 74, "amount": 200000, "_comment": "Polypropylene — 200t" },
+        { "product": 125, "amount": 50000, "_comment": "Polyacrylonitrile Fabric — 50t" },
+        { "product": 1, "amount": 5000000, "_comment": "Water — 5,000t" },
+        { "product": 24, "amount": 3000000, "_comment": "Deionized Water — 3,000t" },
+        { "product": 41, "amount": 500000, "_comment": "Fused Quartz — 500t" },
+        { "product": 56, "amount": 600000, "_comment": "Soil — 600t" },
+        { "product": 180, "amount": 300000, "_comment": "Pure Nitrogen — 300t" },
+        { "product": 2, "amount": 500000, "_comment": "Hydrogen — 500t" },
+        { "product": 129, "amount": 2000000, "_comment": "Food — 2,000t" },
+        { "product": 237, "amount": 500, "_comment": "Fluids Automation Module x500" },
+        { "product": 238, "amount": 500, "_comment": "Solids Automation Module x500" },
+        { "product": 240, "amount": 500, "_comment": "Avionics Module x500" },
+        { "product": 243, "amount": 500, "_comment": "Power Module x500" },
+        { "product": 244, "amount": 500, "_comment": "Thermal Module x500" },
+        { "product": 235, "amount": 500, "_comment": "Habitation Module x500" },
+        { "product": 133, "amount": 50, "_comment": "Large Thrust Bearing x50" },
+        { "product": 187, "amount": 1000, "_comment": "Thin-film Resistor x1000" },
+        { "product": 119, "amount": 1000, "_comment": "Diode x1000" },
+        { "product": 175, "amount": 20, "_comment": "Core Drill x20" },
+        { "product": 154, "amount": 50, "_comment": "Core Drill Bit x50 (spare parts)" },
+        { "product": 155, "amount": 50, "_comment": "Core Drill Thruster x50 (spare parts)" }
+      ],
+      "_comment": "Warehouse storage — player stockpile"
+    },
+    {
+      "entity": { "id": 2, "label": 5 }, "inventoryType": 2, "slot": 1, "status": 0,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 44, "amount": 250000 },
+        { "product": 69, "amount": 300000 },
+        { "product": 125, "amount": 3000 },
+        { "product": 237, "amount": 1 },
+        { "product": 243, "amount": 6 }
+      ],
+      "_comment": "Extractor site — Cement 250t, Steel Beam 300t, PAN Fabric 3t, Fluids Module 1, Power Module 6"
+    },
+    {
+      "entity": { "id": 3, "label": 5 }, "inventoryType": 3, "slot": 1, "status": 0,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 44, "amount": 600000 },
+        { "product": 69, "amount": 300000 },
+        { "product": 70, "amount": 200000 },
+        { "product": 104, "amount": 2 },
+        { "product": 237, "amount": 12 },
+        { "product": 238, "amount": 2 },
+        { "product": 240, "amount": 2 },
+        { "product": 243, "amount": 16 },
+        { "product": 244, "amount": 4 }
+      ],
+      "_comment": "Refinery site — construction materials"
+    },
+    {
+      "entity": { "id": 4, "label": 5 }, "inventoryType": 5, "slot": 1, "status": 0,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 44, "amount": 900000 },
+        { "product": 69, "amount": 1100000 },
+        { "product": 70, "amount": 700000 },
+        { "product": 237, "amount": 4 },
+        { "product": 238, "amount": 40 },
+        { "product": 240, "amount": 8 },
+        { "product": 243, "amount": 20 },
+        { "product": 244, "amount": 6 }
+      ],
+      "_comment": "Factory site — construction materials"
+    },
+    {
+      "entity": { "id": 5, "label": 5 }, "inventoryType": 6, "slot": 1, "status": 0,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 44, "amount": 1500000 },
+        { "product": 69, "amount": 2000000 },
+        { "product": 70, "amount": 1000000 },
+        { "product": 237, "amount": 8 },
+        { "product": 238, "amount": 60 },
+        { "product": 240, "amount": 10 },
+        { "product": 243, "amount": 24 },
+        { "product": 244, "amount": 6 }
+      ],
+      "_comment": "Shipyard site — construction materials"
+    },
+    {
+      "entity": { "id": 6, "label": 5 }, "inventoryType": 4, "slot": 1, "status": 0,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 24, "amount": 1400000 },
+        { "product": 41, "amount": 300000 },
+        { "product": 44, "amount": 500000 },
+        { "product": 56, "amount": 300000 },
+        { "product": 69, "amount": 100000 },
+        { "product": 70, "amount": 300000 },
+        { "product": 74, "amount": 25000 },
+        { "product": 180, "amount": 125000 },
+        { "product": 237, "amount": 16 },
+        { "product": 238, "amount": 12 },
+        { "product": 240, "amount": 3 },
+        { "product": 243, "amount": 8 }
+      ],
+      "_comment": "Bioreactor site — construction materials"
+    },
+    {
+      "entity": { "id": 7, "label": 5 }, "inventoryType": 8, "slot": 1, "status": 0,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 44, "amount": 3000000 },
+        { "product": 69, "amount": 2500000 },
+        { "product": 70, "amount": 3000000 },
+        { "product": 101, "amount": 500000 },
+        { "product": 133, "amount": 6 },
+        { "product": 235, "amount": 80 },
+        { "product": 240, "amount": 160 },
+        { "product": 243, "amount": 60 },
+        { "product": 244, "amount": 40 }
+      ],
+      "_comment": "Marketplace site — construction materials"
+    },
+    {
+      "entity": { "id": 8, "label": 5 }, "inventoryType": 9, "slot": 1, "status": 0,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 24, "amount": 300000 },
+        { "product": 44, "amount": 5000000 },
+        { "product": 56, "amount": 200000 },
+        { "product": 69, "amount": 4000000 },
+        { "product": 70, "amount": 5000000 },
+        { "product": 101, "amount": 1000000 },
+        { "product": 133, "amount": 12 },
+        { "product": 235, "amount": 240 },
+        { "product": 240, "amount": 200 },
+        { "product": 243, "amount": 240 },
+        { "product": 244, "amount": 320 }
+      ],
+      "_comment": "Habitat site — construction materials"
+    },
+    {
+      "entity": { "id": 9, "label": 5 }, "inventoryType": 7, "slot": 1, "status": 0,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 44, "amount": 3000000 },
+        { "product": 69, "amount": 1600000 },
+        { "product": 70, "amount": 2500000 },
+        { "product": 101, "amount": 200000 },
+        { "product": 237, "amount": 50 },
+        { "product": 238, "amount": 180 },
+        { "product": 240, "amount": 40 },
+        { "product": 243, "amount": 150 },
+        { "product": 244, "amount": 60 }
+      ],
+      "_comment": "Spaceport site — construction materials"
+    },
+    {
+      "entity": { "id": 10, "label": 5 }, "inventoryType": 18, "slot": 1, "status": 0,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 44, "amount": 200000 },
+        { "product": 69, "amount": 50000 },
+        { "product": 70, "amount": 50000 },
+        { "product": 171, "amount": 200000 },
+        { "product": 237, "amount": 2 }
+      ],
+      "_comment": "Tank Farm site — Cement 200t, Steel Beam 50t, Steel Sheet 50t, SS Sheet 200t, Fluids Module 2"
+    },
+    {
+      "entity": { "id": 10, "label": 5 }, "inventoryType": 19, "slot": 2, "status": 1,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 170, "amount": 30000000, "_comment": "Hydrogen Propellant — 30,000t" }
+      ],
+      "_comment": "Tank Farm storage — 30 kt propellant"
+    },
+    {
+      "entity": { "id": 1, "label": 6 }, "inventoryType": 12, "slot": 1, "status": 1,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 170, "amount": 500000, "_comment": "Hydrogen Propellant — 500t" }
+      ],
+      "_comment": "Ship propellant tank (small)"
+    },
+    {
+      "entity": { "id": 1, "label": 6 }, "inventoryType": 15, "slot": 2, "status": 1,
+      "mass": 0, "volume": 0, "reservedMass": 0, "reservedVolume": 0,
+      "contents": [
+        { "product": 129, "amount": 100000, "_comment": "Food — 100t" },
+        { "product": 1, "amount": 200000, "_comment": "Water — 200t" },
+        { "product": 70, "amount": 50000, "_comment": "Steel Sheet — 50t" }
+      ],
+      "_comment": "Ship cargo hold (small)"
     }
   ],
 
   "stationComponents": [
-    { "entity": { "id": 1, "label": 5 }, "stationType": 1, "population": 0 }
+    { "entity": { "id": 8, "label": 5 }, "stationType": 3, "population": 0, "_comment": "Habitat — Habitat type (cap 1000, recruitment)" }
+  ],
+
+  "dockComponents": [
+    { "entity": { "id": 9, "label": 5 }, "dockType": 1, "dockedShips": 1, "_comment": "Spaceport — Basic Dock, 1 ship docked" }
+  ],
+
+  "extractorComponents": [
+    { "entity": { "id": 2, "label": 5 }, "slot": 1, "status": 0, "outputProduct": 0, "yield": 0, "finishTime": 0, "_comment": "Extractor slot 1 — idle" },
+    { "entity": { "id": 2, "label": 5 }, "slot": 2, "status": 0, "outputProduct": 0, "yield": 0, "finishTime": 0, "_comment": "Extractor slot 2 — idle" }
+  ],
+
+  "processorComponents": [
+    { "entity": { "id": 3, "label": 5 }, "slot": 1, "status": 0, "outputProduct": 0, "recipes": 0, "runningProcess": 0, "secondaryEff": 0, "finishTime": 0, "_comment": "Refinery processor slot 1 — idle" },
+    { "entity": { "id": 4, "label": 5 }, "slot": 1, "status": 0, "outputProduct": 0, "recipes": 0, "runningProcess": 0, "secondaryEff": 0, "finishTime": 0, "_comment": "Factory processor slot 1 — idle" },
+    { "entity": { "id": 6, "label": 5 }, "slot": 1, "status": 0, "outputProduct": 0, "recipes": 0, "runningProcess": 0, "secondaryEff": 0, "finishTime": 0, "_comment": "Bioreactor processor slot 1 — idle" }
+  ],
+
+  "dryDockComponents": [
+    { "entity": { "id": 5, "label": 5 }, "slot": 1, "status": 0, "outputProduct": 0, "finishTime": 0, "_comment": "Shipyard dry dock slot 1 — idle" }
   ]
 }

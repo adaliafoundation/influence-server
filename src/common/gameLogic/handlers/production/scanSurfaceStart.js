@@ -41,7 +41,7 @@ class ScanSurfaceStartHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
-    this.finishTime = this.now + Asteroid.SCANNING_TIME;
+    this.finishTime = this.now + await this.gameSecondsToReal(Asteroid.SCANNING_TIME);
 
     await this.writeComponent('Celestial', {
       entity: { id: this.asteroid.id, label: Entity.IDS.ASTEROID },

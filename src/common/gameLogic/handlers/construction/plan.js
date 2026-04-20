@@ -1,4 +1,4 @@
-const { Building, Entity, Lot, Permission } = require('@influenceth/sdk');
+const { Building, Entity, Inventory, Lot, Permission } = require('@influenceth/sdk');
 const EntityLib = require('@common/lib/Entity');
 const { EntityService, LocationComponentService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
@@ -99,6 +99,19 @@ class ConstructionPlanHandler extends BaseActionHandler {
         {
           component: 'Name',
           data: { name: '' }
+        },
+        {
+          component: 'Inventory',
+          data: {
+            inventoryType: Building.TYPES[Number(buildingType)].siteType,
+            slot: Building.TYPES[Number(buildingType)].siteSlot,
+            status: Inventory.STATUSES.AVAILABLE,
+            mass: 0,
+            volume: 0,
+            reservedMass: 0,
+            reservedVolume: 0,
+            contents: []
+          }
         }
       ]
     );

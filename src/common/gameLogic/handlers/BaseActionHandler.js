@@ -23,6 +23,19 @@ class BaseActionHandler {
     this.session = session;
   }
 
+  /**
+   * Convert game-seconds to real-seconds using TIME_ACCELERATION.
+   * SDK times (setupTime, processingTime, etc.) are in game-seconds.
+   */
+  async gameSecondsToReal(gameSeconds) {
+    if (!this._timeAcceleration) {
+      const constant = await mongoose.model('Constant')
+        .findOne({ name: 'TIME_ACCELERATION' }).lean();
+      this._timeAcceleration = Number(constant?.value) || 24;
+    }
+    return Math.ceil(gameSeconds / this._timeAcceleration);
+  }
+
   // ── Subclass interface ───────────────────────────────────────────────
 
   // eslint-disable-next-line class-methods-use-this
@@ -57,16 +70,29 @@ class BaseActionHandler {
    * idempotency keys provide crash-safety for the overall operation.
    */
   async writePhase() {
-    const result = await this.applyStateChanges();
-
+    // Create the parent event shell first so that writeComponent /
+    // createEntityWithComponents called inside applyStateChanges can
+    // reference it as the parent for component sub-events.
+    // Use empty returnValues initially — we update them after
+    // applyStateChanges, which may generate IDs needed by getReturnValues.
     this.systemEvent = await SyntheticEvent.create({
       eventName: this.getEventName(),
-      returnValues: this.getReturnValues(),
+      returnValues: {},
       session: this.session,
       idempotencyKey: this.idempotencyKey
     });
 
-    return result;
+    const result = await this.applyStateChanges();
+
+    // Now that applyStateChanges has run, update with final return values
+    const returnValues = this.getReturnValues();
+    this.systemEvent.returnValues = {
+      ...returnValues,
+      ...(this.idempotencyKey && { idempotencyKey: this.idempotencyKey })
+    };
+    await this.systemEvent.save({ session: this.session });
+
+    return { event: this.systemEvent.toJSON(), ...result };
   }
 
   // ── Phase 2: Side effects (runs after transaction commit) ────────────

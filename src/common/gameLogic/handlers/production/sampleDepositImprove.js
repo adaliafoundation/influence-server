@@ -53,7 +53,7 @@ class SampleDepositImproveHandler extends BaseActionHandler {
 
   async applyStateChanges() {
     const sampleTime = Deposit.getSampleTime(1);
-    this.finishTime = this.now + sampleTime;
+    this.finishTime = this.now + await this.gameSecondsToReal(sampleTime);
 
     // Set deposit back to SAMPLING for the improvement round
     await this.writeComponent('Deposit', {

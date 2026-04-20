@@ -83,7 +83,7 @@ class ExtractResourceStartHandler extends BaseActionHandler {
 
   async applyStateChanges() {
     const extractionTime = Extractor.getExtractionTime(this.targetYield, this.deposit.Deposit.remainingYield, 1);
-    this.finishTime = this.now + extractionTime;
+    this.finishTime = this.now + await this.gameSecondsToReal(extractionTime);
 
     // Update extractor component to RUNNING
     await this.writeComponent('Extractor', {

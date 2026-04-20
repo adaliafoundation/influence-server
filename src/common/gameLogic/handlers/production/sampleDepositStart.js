@@ -53,7 +53,7 @@ class SampleDepositStartHandler extends BaseActionHandler {
 
   async applyStateChanges() {
     const sampleTime = Deposit.getSampleTime(1);
-    this.finishTime = this.now + sampleTime;
+    this.finishTime = this.now + await this.gameSecondsToReal(sampleTime);
 
     // Generate a new deposit ID
     this.depositId = await IdGenerator.next(Entity.IDS.DEPOSIT);

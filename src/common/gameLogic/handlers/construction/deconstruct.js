@@ -1,5 +1,5 @@
-const { Building, Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { Building, Entity, Inventory } = require('@influenceth/sdk');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const CrewValidator = require('../../validators/crew');
@@ -49,14 +49,37 @@ class ConstructionDeconstructHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
+    const buildingEntity = { id: this.building.id, label: Entity.IDS.BUILDING };
+
     // Deconstruct reverts building to PLANNED status
     await this.writeComponent('Building', {
-      entity: { id: this.building.id, label: Entity.IDS.BUILDING },
+      entity: buildingEntity,
       buildingType: this.building.Building.buildingType,
       status: Building.CONSTRUCTION_STATUSES.PLANNED,
       plannedAt: this.now,
       finishTime: 0
     });
+
+    // Flip inventory statuses: site inventory → AVAILABLE, operational → UNAVAILABLE
+    const inventories = await ComponentService.findByEntity('Inventory', buildingEntity);
+    for (const inv of inventories) {
+      const isSite = Inventory.TYPES[inv.inventoryType]?.category === Inventory.CATEGORIES.SITE;
+      const newStatus = isSite ? Inventory.STATUSES.AVAILABLE : Inventory.STATUSES.UNAVAILABLE;
+      if (inv.status !== newStatus) {
+        // eslint-disable-next-line no-await-in-loop
+        await this.writeComponent('Inventory', {
+          entity: buildingEntity,
+          inventoryType: inv.inventoryType,
+          slot: inv.slot,
+          status: newStatus,
+          mass: inv.mass,
+          volume: inv.volume,
+          reservedMass: inv.reservedMass,
+          reservedVolume: inv.reservedVolume,
+          contents: inv.contents
+        });
+      }
+    }
 
     return { buildingId: this.building.id };
   }
