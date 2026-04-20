@@ -1,3 +1,4 @@
+const actions = require('./actions');
 const activity = require('./activity');
 const annotations = require('./annotations');
 const argent = require('./argent');
@@ -11,6 +12,7 @@ const crossings = require('./crossings');
 const deprecated = require('./deprecated');
 const entities = require('./entities');
 const faucet = require('./faucet');
+const health = require('./health');
 const images = require('./images');
 const lots = require('./lots');
 const messages = require('./messages');
@@ -22,6 +24,7 @@ const stripe = require('./stripe');
 const users = require('./users');
 
 module.exports = {
+  actions,
   activity,
   annotations,
   argent,
@@ -35,6 +38,7 @@ module.exports = {
   deprecated,
   entities,
   faucet,
+  health,
   images,
   lots,
   messages,
