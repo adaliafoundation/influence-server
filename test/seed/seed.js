@@ -5,27 +5,39 @@
  *
  * Usage:
  *   node test/seed/seed.js [--wallet 0xYOUR_ADDRESS] [--reset]
+ *   node test/seed/seed.js --wallets test/seed/wallets.example.txt
  *
  * Options:
  *   --wallet   Override the wallet address in data.json
+ *   --wallets  File with extra wallets (one address per line); each receives
+ *              its own starter loadout on top of the base seed.
  *   --reset    Drop all seeded collections before inserting
  */
 require('module-alias/register');
 require('dotenv').config({ silent: true });
 require('@common/storage/db');
 
+const fs = require('fs');
 const mongoose = require('mongoose');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
+const sdk = require('@influenceth/sdk');
+const { Address } = require('@influenceth/sdk');
 const EntityLib = require('@common/lib/Entity');
 const PackedLotDataService = require('@common/services/PackedData/LotData');
 const logger = require('@common/lib/logger');
 const seedData = require('./data.json');
+const { buildWalletLoadout, mergeLoadouts } = require('../../src/workers/walletLoadout');
 
 const args = yargs(hideBin(process.argv))
   .option('wallet', {
     type: 'string',
     description: 'Starknet wallet address (overrides data.json)',
+    default: null
+  })
+  .option('wallets', {
+    type: 'string',
+    description: 'Path to a file with one starknet address per line — each receives its own starter loadout',
     default: null
   })
   .option('reset', {
@@ -35,6 +47,24 @@ const args = yargs(hideBin(process.argv))
   })
   .help()
   .parse();
+
+/** Read a wallets file: one address per line, # comments + blanks ignored. */
+function readWallets(filePath) {
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const seen = new Set();
+  const out = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    let addr;
+    try { addr = Address.toStandard(trimmed); }
+    catch (e) { logger.warn(`Skipping invalid address: ${trimmed}`); continue; }
+    if (seen.has(addr)) continue;
+    seen.add(addr);
+    out.push(addr);
+  }
+  return out;
+}
 
 const COLLECTIONS = [
   'Constant',
@@ -57,6 +87,18 @@ const COLLECTIONS = [
   'DryDockComponent',
   'ExchangeComponent',
   'OrderComponent',
+  // Agreements, policies, whitelists — without these, old leases and price
+  // cards survived --reset and continued to authorize the tenant.
+  'PrepaidPolicyComponent',
+  'PrepaidAgreementComponent',
+  'ContractPolicyComponent',
+  'ContractAgreementComponent',
+  'PublicPolicyComponent',
+  'WhitelistAgreementComponent',
+  // Gameplay state
+  'DepositComponent',
+  'DeliveryComponent',
+  'PrivateSaleComponent',
   'User',
   'WorldFork',
   'Activity'
@@ -81,6 +123,25 @@ const main = async () => {
     process.exit(1);
   }
   logger.info(`Seeding with wallet: ${walletAddress}`);
+
+  // ── Per-wallet starter loadouts (optional --wallets) ────────────────────
+  let extraWallets = [];
+  if (args.wallets) {
+    extraWallets = readWallets(args.wallets);
+    if (extraWallets.length === 0) {
+      logger.warn(`No wallet addresses found in ${args.wallets}`);
+    } else {
+      const loadouts = extraWallets.map((addr, i) => buildWalletLoadout({
+        walletAddress: addr, index: i, sdk
+      }));
+      const merged = mergeLoadouts(loadouts);
+      for (const [key, arr] of Object.entries(merged)) {
+        if (!seedData[key]) seedData[key] = [];
+        seedData[key].push(...arr);
+      }
+      logger.info(`Wallet loadouts merged: ${extraWallets.length}`);
+    }
+  }
 
   if (args.reset) {
     logger.info('Resetting collections...');
@@ -322,14 +383,17 @@ const main = async () => {
   }
   logger.info(`DryDockComponents: ${(seedData.dryDockComponents || []).length}`);
 
-  // 18. User
+  // 18. User — base wallet plus every extra wallet from --wallets
   const User = mongoose.model('User');
-  await User.findOneAndUpdate(
-    { address: walletAddress },
-    { $setOnInsert: { address: walletAddress } },
-    { upsert: true, new: true }
-  );
-  logger.info('User: 1');
+  const allWallets = [walletAddress, ...extraWallets];
+  for (const addr of allWallets) {
+    await User.findOneAndUpdate(
+      { address: addr },
+      { $setOnInsert: { address: addr } },
+      { upsert: true, new: true }
+    );
+  }
+  logger.info(`Users: ${allWallets.length}`);
 
   // 14. WorldFork (so health check passes)
   const WorldFork = mongoose.model('WorldFork');

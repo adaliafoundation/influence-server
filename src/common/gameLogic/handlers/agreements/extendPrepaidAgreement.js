@@ -1,8 +1,9 @@
-const { Entity } = require('@influenceth/sdk');
+const { Address, Entity } = require('@influenceth/sdk');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
+const Sway = require('../../helpers/sway');
 
 class ExtendPrepaidAgreementHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -46,19 +47,36 @@ class ExtendPrepaidAgreementHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
-    if (this.existingAgreement) {
-      await this.writeComponent('PrepaidAgreement', {
-        entity: this.vars.target,
-        permission: this.permission,
-        permitted: this.permitted,
-        rate: this.rate,
-        initialTerm: this.initialTerm,
-        noticePeriod: this.noticePeriod,
-        startTime: this.existingAgreement.startTime,
-        endTime: this.term,
-        noticeTime: this.existingAgreement.noticeTime || 0
+    if (!this.existingAgreement) return {};
+
+    // SWAY: tenant pays for the extension. Same unit conversion as accept
+    // (rate = microSWAY/hour, term = seconds → wei = rate × 1e12 × sec / 3600).
+    const costWei = Sway.leaseCostWei({
+      ratePerHourMicroSway: this.rate,
+      seconds: this.addedTerm
+    });
+    if (costWei > 0n) {
+      const control = await ComponentService.findOneByEntity('Control', this.vars.target);
+      const lessorAddress = await Sway.addressOfCrew(control?.controller);
+      if (!lessorAddress) throw new ValidationError('Lessor wallet not found for target');
+      await Sway.transfer({
+        fromAddress: Address.toStandard(this.address),
+        toAddress: lessorAddress,
+        amountWei: costWei
       });
     }
+
+    await this.writeComponent('PrepaidAgreement', {
+      entity: this.vars.target,
+      permission: this.permission,
+      permitted: this.permitted,
+      rate: this.rate,
+      initialTerm: this.initialTerm,
+      noticePeriod: this.noticePeriod,
+      startTime: this.existingAgreement.startTime,
+      endTime: this.term,
+      noticeTime: this.existingAgreement.noticeTime || 0
+    });
 
     return {};
   }

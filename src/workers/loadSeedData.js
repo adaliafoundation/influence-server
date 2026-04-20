@@ -4,6 +4,7 @@
  * Usage:
  *   node src/workers/loadSeedData.js --wallet 0xYOUR_STARKNET_WALLET_ADDRESS
  *   node src/workers/loadSeedData.js  (uses a default dev wallet)
+ *   node src/workers/loadSeedData.js --wallets path/to/wallets.txt
  *
  * This populates the database with a set of starter entities:
  *   - 2 asteroids, 2 crews, 5 crewmates
@@ -13,30 +14,69 @@
  *   - A User document for the wallet
  *   - A WorldFork record (if not already present)
  *
- * All entity IDs are low numbers (< 100) that won't collide with
- * locally-generated IDs (which start at 100,000,001).
+ * When `--wallets <file>` is provided, each non-comment line is a
+ * starknet address that gets its own starter loadout on top of the base
+ * seed — see src/workers/walletLoadout.js for the per-wallet entity
+ * layout.
+ *
+ * All base-seed IDs are low (< 100); wallet-loadout IDs start at 1000;
+ * locally-generated IDs start at 100_000_001. These three ranges never
+ * collide.
  */
 require('module-alias/register');
 require('dotenv').config({ silent: true });
 require('@common/storage/db');
+const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
+const sdk = require('@influenceth/sdk');
 const { Address } = require('@influenceth/sdk');
 const EntityLib = require('@common/lib/Entity');
 const logger = require('@common/lib/logger');
+const { buildWalletLoadout, mergeLoadouts } = require('./walletLoadout');
 
 const SEED_DATA_PATH = path.resolve(__dirname, '../../test/seed/data.json');
 
 const args = yargs(hideBin(process.argv))
   .option('wallet', {
     type: 'string',
-    description: 'Starknet wallet address that will own the seed entities',
+    description: 'Starknet wallet address that will own the base-seed entities',
     default: '0x0669B0254bce827409e794EB6146d355Ed0dE3A7306ab8E4CDA9ed8C5A48b09d'
+  })
+  .option('wallets', {
+    type: 'string',
+    description: 'Path to a file with one starknet address per line — each receives its own starter loadout',
+    default: null
   })
   .help()
   .parse();
+
+/**
+ * Read a wallets file. Each non-empty, non-comment line is an address.
+ * Returns normalized (Address.toStandard) addresses in order, deduplicated.
+ */
+function readWallets(filePath) {
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const seen = new Set();
+  const out = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    let addr;
+    try {
+      addr = Address.toStandard(trimmed);
+    } catch (e) {
+      logger.warn(`Skipping invalid address: ${trimmed}`);
+      continue;
+    }
+    if (seen.has(addr)) continue;
+    seen.add(addr);
+    out.push(addr);
+  }
+  return out;
+}
 
 function replaceWallet(obj, address) {
   return JSON.parse(JSON.stringify(obj).replace(/"WALLET"/g, JSON.stringify(address)));
@@ -55,7 +95,7 @@ async function upsertArray(modelName, docs, matchFields) {
   }
 }
 
-async function main({ wallet }) {
+async function main({ wallet, wallets: walletsFile }) {
   const walletAddress = Address.toStandard(wallet);
   logger.info(`Loading seed data for wallet: ${walletAddress}`);
 
@@ -65,6 +105,35 @@ async function main({ wallet }) {
   }
 
   const seedData = require(SEED_DATA_PATH); // eslint-disable-line global-require
+
+  // ── Per-wallet starter loadouts ────────────────────────────────────────
+  // If the caller passed --wallets, build a loadout for every address and
+  // merge the arrays into the existing seed structures so the rest of the
+  // loader treats them identically to the base seed.
+  let walletLoadoutSummary = null;
+  if (walletsFile) {
+    const addresses = readWallets(walletsFile);
+    if (addresses.length === 0) {
+      logger.warn(`No wallet addresses found in ${walletsFile}`);
+    } else {
+      const loadouts = addresses.map((addr, i) => buildWalletLoadout({
+        walletAddress: addr,
+        index: i,
+        sdk
+      }));
+      const merged = mergeLoadouts(loadouts);
+
+      // Append each merged array onto the matching seed key (creating
+      // the key if the base seed doesn't have it — which doesn't happen
+      // in practice but is defensive).
+      for (const [key, arr] of Object.entries(merged)) {
+        if (!seedData[key]) seedData[key] = [];
+        seedData[key].push(...arr);
+      }
+      walletLoadoutSummary = { addresses, count: addresses.length };
+      logger.info(`  Wallet loadouts prepared: ${addresses.length}`);
+    }
+  }
 
   // Constants
   for (const c of (seedData.constants || [])) {
@@ -158,12 +227,15 @@ async function main({ wallet }) {
   // DryDocks
   await upsertArray('DryDockComponent', seedData.dryDockComponents || [], ['entity.id', 'entity.label']);
 
-  // User
-  await mongoose.model('User').findOneAndUpdate(
-    { address: walletAddress },
-    { $setOnInsert: { address: walletAddress } },
-    { upsert: true, new: true }
-  );
+  // User records — the base-seed wallet, plus one per --wallets address.
+  const allWallets = [walletAddress, ...(walletLoadoutSummary?.addresses || [])];
+  for (const addr of allWallets) {
+    await mongoose.model('User').findOneAndUpdate(
+      { address: addr },
+      { $setOnInsert: { address: addr } },
+      { upsert: true, new: true }
+    );
+  }
 
   // WorldFork (create if missing)
   const existingFork = await mongoose.model('WorldFork').findOne({});
@@ -194,6 +266,13 @@ async function main({ wallet }) {
     await PackedLotDataService.update(loc.location);
   }
   logger.info(`  Updated packed lot data for ${occupiedLots.length} occupied lots`);
+
+  if (walletLoadoutSummary) {
+    logger.info(`  Wallet loadouts inserted: ${walletLoadoutSummary.count}`);
+    walletLoadoutSummary.addresses.forEach((a, i) => {
+      logger.info(`    [${i}] ${a}`);
+    });
+  }
 
   logger.info('Seed data loaded successfully.');
 }

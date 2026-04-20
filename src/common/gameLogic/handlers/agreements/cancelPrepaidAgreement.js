@@ -1,8 +1,9 @@
 const { Entity } = require('@influenceth/sdk');
-const { EntityService } = require('@common/services');
+const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
+const Sway = require('../../helpers/sway');
 
 class CancelPrepaidAgreementHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -29,13 +30,49 @@ class CancelPrepaidAgreementHandler extends BaseActionHandler {
 
     this.permission = Number(permission);
     this.permitted = permittedRef || this.vars.caller_crew;
+    this.now = Math.floor(Date.now() / 1000);
     // In hybrid mode, eviction is immediate
-    this.evictionTime = Math.floor(Date.now() / 1000);
+    this.evictionTime = this.now;
+
+    // Load the existing agreement so we can size the refund.
+    this.existingAgreement = await ComponentService.findOne('PrepaidAgreement', {
+      'entity.id': targetRef.id,
+      'entity.label': targetRef.label,
+      permission: this.permission,
+      'permitted.id': this.permitted.id
+    });
   }
 
   async applyStateChanges() {
-    // Mark agreement as cancelled — the dispatcher side-effect handler
-    // updates the PrepaidAgreement component status to CANCELLED
+    // SWAY refund: return the tenant's unused prepaid time.
+    //   refundSeconds = max(0, endTime - now - noticePeriod)
+    // Cairo only refunds the portion beyond the notice period; matches
+    // here so a tenant who cancels mid-lease still owes the landlord for
+    // the notice window they agreed to.
+    if (this.existingAgreement && this.existingAgreement.rate > 0) {
+      const endTime = this.existingAgreement.endTime || 0;
+      const noticePeriod = this.existingAgreement.noticePeriod || 0;
+      const refundSeconds = Math.max(0, endTime - this.now - noticePeriod);
+      if (refundSeconds > 0) {
+        const refundWei = Sway.leaseCostWei({
+          ratePerHourMicroSway: this.existingAgreement.rate,
+          seconds: refundSeconds
+        });
+        const control = await ComponentService.findOneByEntity('Control', this.vars.target);
+        const lessorAddress = await Sway.addressOfCrew(control?.controller);
+        const tenantAddress = await Sway.addressOfCrew(this.permitted);
+        if (lessorAddress && tenantAddress) {
+          await Sway.transfer({
+            fromAddress: lessorAddress,
+            toAddress: tenantAddress,
+            amountWei: refundWei
+          });
+        }
+      }
+    }
+
+    // The PrepaidAgreement.status flip to CANCELLED happens in the
+    // Dispatcher side-effect handler (PrepaidAgreementCancelled).
     return {};
   }
 

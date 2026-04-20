@@ -61,7 +61,7 @@ class ExtractResourceStartHandler extends BaseActionHandler {
     const extractorEntity = { id: extractorRef.id, label: Entity.IDS.BUILDING };
     const extractors = await ComponentService.findByEntity('Extractor', extractorEntity);
     const slot = extractors.find((e) => e.slot === (Number(extractorSlot) || 1));
-    if (!slot || slot.status !== 0) {
+    if (!slot || slot.status !== Extractor.STATUSES.IDLE) {
       throw new ValidationError('Extractor slot is not idle');
     }
 
@@ -160,7 +160,6 @@ class ExtractResourceStartHandler extends BaseActionHandler {
     const extractionGameSeconds = Extractor.getExtractionTime(
       this.targetYield, this.deposit.Deposit.remainingYield, 1
     );
-    const extractionRealSeconds = await this.gameSecondsToReal(extractionGameSeconds);
 
     // Hopper travel: crew→deposit and deposit→destination, in game-seconds.
     const crewToDeposit = hopperTravelTime(
@@ -169,12 +168,21 @@ class ExtractResourceStartHandler extends BaseActionHandler {
     const depositToDest = hopperTravelTime(
       this._asteroidId, this._extLoc.lotIndex, this._destLoc.lotIndex
     );
-    const crewToDepositReal = await this.gameSecondsToReal(crewToDeposit);
-    const depositToDestReal = await this.gameSecondsToReal(depositToDest);
 
-    // Cairo extract_resource_start.cairo:148 — finishTime is when the
-    // extracted product is delivered: crew→deposit + extract + deposit→dest.
-    this.finishTime = this.now + crewToDepositReal + extractionRealSeconds + depositToDestReal;
+    // Cap the TOTAL once. Individually-capped components add up to N×cap,
+    // which defeats MAX_ACTION_SECONDS. Sum game-seconds first.
+    const totalGameSeconds = crewToDeposit + extractionGameSeconds + depositToDest;
+    const totalRealSeconds = await this.gameSecondsToReal(totalGameSeconds);
+    this.finishTime = this.now + totalRealSeconds;
+
+    // Derive component fractions in real-seconds so downstream crew-busy
+    // math (2×travel + extract/8) stays self-consistent with finishTime.
+    const extractionRealSeconds = totalGameSeconds === 0
+      ? 0
+      : Math.round((totalRealSeconds * extractionGameSeconds) / totalGameSeconds);
+    const crewToDepositReal = totalGameSeconds === 0
+      ? 0
+      : Math.round((totalRealSeconds * crewToDeposit) / totalGameSeconds);
 
     // 7b. Time-bounded permissions (assert_can_until) — the agreements
     // granting extract and add-products access must cover the finish time.

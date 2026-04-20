@@ -118,10 +118,16 @@ function extractPredicates(query) {
       });
     }
 
-    // { nested: { path: "Location.locations", query: { bool: ... } } }
+    // { nested: { path: "PublicPolicies", query: { term: {...} } } }
+    // The inner query can be a bool OR a bare leaf clause (term/terms/range/…).
+    // elastic-builder is fine with both; our builder was only wiring up bool,
+    // which silently dropped nested term-queries — e.g. the "PublicPolicies.permission
+    // = N" branch of the accessible-inventory search, so publicly-permitted
+    // buildings owned by another crew never showed up in destination pickers.
     if (clause.nested) {
       const { path, query: nestedQuery } = clause.nested;
-      const nestedPred = buildBoolPredicate(nestedQuery);
+      const wrappedQuery = nestedQuery?.bool ? nestedQuery : { bool: { filter: [nestedQuery] } };
+      const nestedPred = buildBoolPredicate(wrappedQuery);
       if (nestedPred) {
         predicates.push((entity) => {
           const arr = getNestedValue(entity, path);

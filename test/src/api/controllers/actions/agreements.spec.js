@@ -340,6 +340,24 @@ describe('Actions – Agreements & Permissions', function () {
 
     describe('TransferPrepaidAgreement', function () {
       it('transfers a prepaid agreement to a new permitted entity', async function () {
+        // Seed an existing agreement with CREW_1 as the tenant so the
+        // handler has something to transfer. Without this the
+        // authorization / existence check rejects — the handler now
+        // enforces the old-tenant rule from Cairo transfer_prepaid.cairo.
+        await mongoose.model('PrepaidAgreementComponent').findOneAndUpdate(
+          { 'entity.id': WAREHOUSE.id, 'entity.label': WAREHOUSE.label,
+            permission: Permission.IDS.ADD_PRODUCTS, 'permitted.id': CREW_1.id },
+          {
+            entity: { id: WAREHOUSE.id, label: WAREHOUSE.label },
+            permission: Permission.IDS.ADD_PRODUCTS,
+            permitted: { id: CREW_1.id, label: CREW_1.label },
+            rate: 0, initialTerm: 0, noticePeriod: 0,
+            startTime: Math.floor(Date.now() / 1000),
+            endTime: Math.floor(Date.now() / 1000) + 7 * 86400
+          },
+          { upsert: true, new: true }
+        );
+
         const res = await postAction(server, TOKEN, 'TransferPrepaidAgreement', {
           caller_crew: CREW_1,
           target: WAREHOUSE,

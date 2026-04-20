@@ -184,17 +184,26 @@ class ProcessProductsStartHandler extends BaseActionHandler {
   async applyStateChanges() {
     const setupTime = Process.getSetupTime(this.processId, 1);
     const processingTime = Process.getProcessingTime(this.processId, this.recipes, 1);
-    const processingRealSeconds = await this.gameSecondsToReal(Math.ceil(setupTime + processingTime));
+    const processingGameSeconds = Math.ceil(setupTime + processingTime);
 
     // Hopper travel — crew→processor, origin→processor, processor→destination.
     const crewToProc = hopperTravelTime(this._asteroidId, this._crewLoc.lotIndex, this._procLoc.lotIndex);
     const originToProc = hopperTravelTime(this._asteroidId, this._originLoc.lotIndex, this._procLoc.lotIndex);
     const procToDest = hopperTravelTime(this._asteroidId, this._procLoc.lotIndex, this._destLoc.lotIndex);
-    const crewToProcReal = await this.gameSecondsToReal(crewToProc);
-    const originToProcReal = await this.gameSecondsToReal(originToProc);
-    const procToDestReal = await this.gameSecondsToReal(procToDest);
 
-    this.finishTime = this.now + originToProcReal + processingRealSeconds + procToDestReal;
+    // Cap the total once (MAX_ACTION_SECONDS applies to the whole action,
+    // not per time slice). Without this, 4 `gameSecondsToReal` calls × 10s
+    // cap = 40s before we even start.
+    const finishGameSeconds = originToProc + processingGameSeconds + procToDest;
+    const totalRealSeconds = await this.gameSecondsToReal(finishGameSeconds);
+    this.finishTime = this.now + totalRealSeconds;
+
+    const processingRealSeconds = finishGameSeconds === 0
+      ? 0
+      : Math.round((totalRealSeconds * processingGameSeconds) / finishGameSeconds);
+    const crewToProcReal = finishGameSeconds === 0
+      ? 0
+      : Math.round((totalRealSeconds * crewToProc) / finishGameSeconds);
 
     // Time-bounded permissions — the RUN_PROCESS and ADD_PRODUCTS grants
     // must remain valid through the process finish time.

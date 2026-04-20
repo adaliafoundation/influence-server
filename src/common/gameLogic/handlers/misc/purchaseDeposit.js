@@ -1,8 +1,10 @@
-const { Entity } = require('@influenceth/sdk');
+const { Address, Entity } = require('@influenceth/sdk');
+const EntityLib = require('@common/lib/Entity');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
 const AccessValidator = require('../../validators/access');
 const { ValidationError } = require('../../errors');
+const Sway = require('../../helpers/sway');
 
 class PurchaseDepositHandler extends BaseActionHandler {
   // eslint-disable-next-line class-methods-use-this
@@ -24,23 +26,49 @@ class PurchaseDepositHandler extends BaseActionHandler {
 
     this.deposit = { id: depositRef.id, label: Entity.IDS.DEPOSIT };
 
-    // Look up the current sale listing to get price and seller
+    // Must actually be listed for sale.
     const sale = await ComponentService.findOne('PrivateSale', {
       'entity.id': depositRef.id,
       'entity.label': Entity.IDS.DEPOSIT
     });
-    this.price = sale?.amount || 0;
+    if (!sale || sale.status !== 1) throw new ValidationError('Deposit is not listed for sale');
+    this.price = sale.amount || 0;
 
-    // Find the seller crew (current controller of the deposit)
+    // Find the seller crew (current controller of the deposit).
     const control = await ComponentService.findOne('Control', {
       'entity.id': depositRef.id,
       'entity.label': Entity.IDS.DEPOSIT
     });
-    this.sellerCrew = control?.controller || { id: 0, label: Entity.IDS.CREW };
+    this.sellerCrew = control?.controller;
+    if (!this.sellerCrew) throw new ValidationError('Deposit has no controller');
+    if (this.sellerCrew.id === this.crew.id) {
+      throw new ValidationError('Cannot purchase your own deposit');
+    }
   }
 
   async applyStateChanges() {
-    // Mark the sale as completed
+    // SWAY: buyer → seller. Price is stored in the sale's SWAY scale
+    // (6-decimal microSWAY matching the client) → convert to wei via ×1e12.
+    if (this.price > 0) {
+      const priceWei = BigInt(this.price) * Sway.SCALE_PRICE_TO_WEI;
+      const sellerAddress = await Sway.addressOfCrew(this.sellerCrew);
+      if (!sellerAddress) throw new ValidationError('Seller wallet not found');
+      await Sway.transfer({
+        fromAddress: Address.toStandard(this.address),
+        toAddress: sellerAddress,
+        amountWei: priceWei
+      });
+    }
+
+    // Transfer Control of the deposit to the buyer's crew. Without this,
+    // the deposit's controller stays with the seller and the buyer can't
+    // exercise USE_DEPOSIT when trying to extract.
+    await this.writeComponent('Control', {
+      entity: this.deposit,
+      controller: EntityLib.toEntity(this.vars.caller_crew).toObject()
+    });
+
+    // Mark the sale as completed.
     await this.writeComponent('PrivateSale', {
       entity: this.deposit,
       status: 0,

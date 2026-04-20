@@ -97,13 +97,16 @@ class AccessValidator {
       });
       if (whitelist) return;
 
-      // 4. Check prepaid agreements
+      // 4. Check an active prepaid AGREEMENT on the target for this crew.
+      // A PrepaidPolicy is the lessor's rate card (no tenant field); the
+      // actual tenancy lives in a separate PrepaidAgreement doc.
       const now = Math.floor(Date.now() / 1000);
-      const prepaid = await ComponentService.findOne('PrepaidPolicy', {
+      const prepaid = await ComponentService.findOne('PrepaidAgreement', {
         'entity.uuid': checkEntity.uuid,
-        'target.uuid': crewEntity.uuid,
+        'permitted.uuid': crewEntity.uuid,
         permission: permissionId,
-        endTime: { $gt: now }
+        endTime: { $gt: now },
+        status: { $ne: 'CANCELLED' }
       });
       if (prepaid) return;
 
@@ -171,11 +174,13 @@ class AccessValidator {
       });
       if (contractPolicy) return;
 
-      // The only mechanism that can fail the time check is PrepaidPolicy.
-      const prepaid = await ComponentService.findOne('PrepaidPolicy', {
+      // The only mechanism that can fail the time check is a PrepaidAgreement
+      // with a fixed endTime. Re-query the same collection as the main check.
+      const prepaid = await ComponentService.findOne('PrepaidAgreement', {
         'entity.uuid': checkEntity.uuid,
-        'target.uuid': crewEntity.uuid,
-        permission: permissionId
+        'permitted.uuid': crewEntity.uuid,
+        permission: permissionId,
+        status: { $ne: 'CANCELLED' }
       });
       if (prepaid && (!prepaid.endTime || prepaid.endTime >= untilTime)) return;
     }

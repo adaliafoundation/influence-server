@@ -273,27 +273,117 @@ class BaseActionHandler {
   }
 
   /**
+   * Assert that an inventory will accept a list of additional items.
+   * Mirrors the Cairo `inventory::assert_acceptance` checks (see
+   * `influence/common/inventory.cairo`):
+   *
+   *   1. If the type has a `productConstraints` map, every incoming
+   *      product must be in the map.
+   *   2. If any product has a per-slot cap, the post-add amount of that
+   *      product must not exceed the cap. `0` in the constraint map
+   *      means "allowed with no per-product cap".
+   *   3. The constrained products' total mass/volume must stay within
+   *      `productConstraintsTotalMass` / `productConstraintsTotalVolume`
+   *      (if set).
+   *   4. All items must fit within the inventory's overall
+   *      `massConstraint` / `volumeConstraint` (already enforced
+   *      elsewhere but redundantly checked here so callers can rely on
+   *      this one helper).
+   *
+   * Throws `ValidationError` on violation so handlers reject with a 400.
+   */
+  // eslint-disable-next-line class-methods-use-this
+  _assertInventoryAccepts(inventory, items) {
+    const { Inventory, Product } = require('@influenceth/sdk'); // eslint-disable-line global-require
+    const { ValidationError } = require('../errors'); // eslint-disable-line global-require
+    const invType = Inventory.TYPES[inventory.inventoryType];
+    if (!invType) throw new ValidationError(`Unknown inventory type: ${inventory.inventoryType}`);
+
+    const constraints = invType.productConstraints;
+    const totalMassCap = invType.productConstraintsTotalMass;
+    const totalVolumeCap = invType.productConstraintsTotalVolume;
+
+    // Build post-add contents so per-product cap checks see the full total.
+    const merged = new Map();
+    for (const c of (inventory.contents || [])) merged.set(c.product, c.amount || 0);
+    for (const it of (items || [])) {
+      if (!it?.product || !it?.amount) continue;
+      merged.set(it.product, (merged.get(it.product) || 0) + it.amount);
+    }
+
+    if (constraints) {
+      for (const it of (items || [])) {
+        if (!it?.amount) continue;
+        if (!(String(it.product) in constraints)) {
+          const name = Product.TYPES[it.product]?.name || `product ${it.product}`;
+          throw new ValidationError(`${invType.name} does not accept ${name}`);
+        }
+        const cap = constraints[String(it.product)];
+        // Convention: cap === 0 means "no per-slot cap, only the totals apply".
+        if (cap > 0 && merged.get(it.product) > cap) {
+          const name = Product.TYPES[it.product]?.name || `product ${it.product}`;
+          throw new ValidationError(
+            `${invType.name} cap exceeded for ${name} (${merged.get(it.product)} > ${cap})`
+          );
+        }
+      }
+
+      if (totalMassCap || totalVolumeCap) {
+        let constrainedMass = 0;
+        let constrainedVolume = 0;
+        for (const [product, amount] of merged.entries()) {
+          if (!(String(product) in constraints)) continue;
+          const pt = Product.TYPES[product];
+          if (pt) {
+            constrainedMass += (pt.massPerUnit || 0) * amount;
+            constrainedVolume += (pt.volumePerUnit || 0) * amount;
+          }
+        }
+        if (totalMassCap && constrainedMass > totalMassCap) {
+          throw new ValidationError(
+            `${invType.name} total mass cap exceeded (${constrainedMass} > ${totalMassCap})`
+          );
+        }
+        if (totalVolumeCap && constrainedVolume > totalVolumeCap) {
+          throw new ValidationError(
+            `${invType.name} total volume cap exceeded (${constrainedVolume} > ${totalVolumeCap})`
+          );
+        }
+      }
+    }
+
+    // Overall mass/volume envelope. `massConstraint`/`volumeConstraint` are
+    // null for SITE inventories — those rely on the per-product totals
+    // computed above, so we skip this check when they're missing.
+    const { mass: addedMass, volume: addedVolume } = this._sizeOfItems(items);
+    const currentMass = inventory.mass || 0;
+    const currentVolume = inventory.volume || 0;
+    const resMass = inventory.reservedMass || 0;
+    const resVolume = inventory.reservedVolume || 0;
+    if (invType.massConstraint != null
+        && currentMass + resMass + addedMass > invType.massConstraint) {
+      throw new ValidationError(`${invType.name} mass cap exceeded`);
+    }
+    if (invType.volumeConstraint != null
+        && currentVolume + resVolume + addedVolume > invType.volumeConstraint) {
+      throw new ValidationError(`${invType.name} volume cap exceeded`);
+    }
+  }
+
+  /**
    * Reserve capacity in a destination inventory. Writes the component
    * back with reservedMass/reservedVolume incremented by the items' size.
-   * Throws if the reservation would exceed the inventory's constraint.
+   * Throws if the reservation would exceed the inventory's constraint OR
+   * if the inventory type doesn't accept the items (productConstraints).
    */
   async reserveInventory(entity, inventory, items) {
-    const { Inventory } = require('@influenceth/sdk'); // eslint-disable-line global-require
-    const invType = Inventory.TYPES[inventory.inventoryType];
-    if (!invType) throw new Error(`Unknown inventory type: ${inventory.inventoryType}`);
-    const { mass, volume } = this._sizeOfItems(items);
+    this._assertInventoryAccepts(inventory, items);
 
+    const { mass, volume } = this._sizeOfItems(items);
     const currentMass = inventory.mass || 0;
     const currentVolume = inventory.volume || 0;
     const resMass = (inventory.reservedMass || 0) + mass;
     const resVolume = (inventory.reservedVolume || 0) + volume;
-
-    if (currentMass + resMass > invType.massConstraint) {
-      throw new Error('Insufficient reserved mass capacity at destination');
-    }
-    if (currentVolume + resVolume > invType.volumeConstraint) {
-      throw new Error('Insufficient reserved volume capacity at destination');
-    }
 
     await this.writeComponent('Inventory', {
       entity,
@@ -312,9 +402,13 @@ class BaseActionHandler {
   /**
    * Release a prior reservation and add the items to contents. Used when
    * the in-flight operation completes (extract/process finish, delivery
-   * receive).
+   * receive). Also enforces productConstraints — if a delivery somehow
+   * arrives at an inventory that doesn't accept the product (e.g., an
+   * extractor slot changed type mid-extraction), we reject.
    */
   async unreserveAndDeposit(entity, inventory, items) {
+    this._assertInventoryAccepts(inventory, items);
+
     const { mass, volume } = this._sizeOfItems(items);
     const contents = [...(inventory.contents || [])];
     for (const it of items) {

@@ -1,5 +1,5 @@
 const { Address } = require('@influenceth/sdk');
-const { ActivityService } = require('@common/services');
+const { ActivityService, LocationComponentService } = require('@common/services');
 const StarknetBaseHandler = require('../../Handler');
 
 class Handler extends StarknetBaseHandler {
@@ -19,7 +19,12 @@ class Handler extends StarknetBaseHandler {
 
     if (activityResult?.created === 0) return;
 
+    // Fan-out: owner crew + the asteroid the deposit sits on, so other
+    // players browsing that asteroid's deposits see the listing without
+    // a refresh. Same pattern as the policy handlers.
     this.messages.push({ to: `Crew::${callerCrew.id}` });
+    const asteroidEntity = await LocationComponentService.getAsteroidForEntity(deposit);
+    if (asteroidEntity) this.messages.push({ to: `Asteroid::${asteroidEntity.id}` });
   }
 
   static transformEventData(event) {

@@ -1,4 +1,4 @@
-const { Asteroid, Building, Delivery, Entity, Inventory, Product } = require('@influenceth/sdk');
+const { Asteroid, Building, Delivery, Entity, Inventory, Permission, Product } = require('@influenceth/sdk');
 const EntityLib = require('@common/lib/Entity');
 const { ComponentService, EntityService } = require('@common/services');
 const BaseActionHandler = require('../BaseActionHandler');
@@ -42,6 +42,13 @@ class SendDeliveryHandler extends BaseActionHandler {
 
     this.dest = await EntityService.getEntity({ id: destRef.id, label: destRef.label, components: ['Location'], format: true });
     if (!this.dest) throw new ValidationError('Destination not found');
+
+    // 2b. Caller must have REMOVE_PRODUCTS on the origin and ADD_PRODUCTS
+    // on the destination. Cairo send.cairo:104-105 enforces both — without
+    // these checks a crew could siphon from any warehouse it can see and
+    // dump into any inventory it can see.
+    await AccessValidator.assertPermission(this.crew, this.origin, Permission.IDS.REMOVE_PRODUCTS);
+    await AccessValidator.assertPermission(this.crew, this.dest, Permission.IDS.ADD_PRODUCTS);
 
     this.originSlot = Number(originSlot) || 1;
     this.destSlot = Number(destSlot) || 1;
@@ -98,6 +105,11 @@ class SendDeliveryHandler extends BaseActionHandler {
           throw new ValidationError(`Too much ${name}: site needs ${required}, already has ${alreadyOnSite}, sending ${p.amount}`);
         }
       }
+    } else {
+      // Non-site destination: enforce productConstraints up-front so we
+      // don't reserve space for a delivery that can never be received
+      // (e.g. sending Steel to a Propellant Tank).
+      this._assertInventoryAccepts(this.destInv, this.products);
     }
 
     // 6. Destination must have enough free mass and volume
