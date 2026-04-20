@@ -1,0 +1,190 @@
+const mongoose = require('mongoose');
+const Entity = require('@common/lib/Entity');
+const { ComponentService, ElasticSearchService } = require('@common/services');
+const SyntheticEvent = require('../helpers/syntheticEvent');
+
+class BaseActionHandler {
+  constructor({ action, address, callerCrew, vars, meta, idempotencyKey }) {
+    this.action = action;
+    this.address = address;
+    this.callerCrew = callerCrew;
+    this.vars = vars;
+    this.meta = meta;
+    this.idempotencyKey = idempotencyKey;
+    this.systemEvent = null;
+    this.session = null;
+    this._dispatcherHandler = null;
+  }
+
+  /**
+   * Called by GameEngine to inject the MongoDB session for Phase 1.
+   */
+  setSession(session) {
+    this.session = session;
+  }
+
+  // ── Subclass interface ───────────────────────────────────────────────
+
+  // eslint-disable-next-line class-methods-use-this
+  async validate() { throw new Error('Must implement validate()'); }
+
+  // eslint-disable-next-line class-methods-use-this
+  async applyStateChanges() { throw new Error('Must implement applyStateChanges()'); }
+
+  // eslint-disable-next-line class-methods-use-this
+  getEventName() { throw new Error('Must implement getEventName()'); }
+
+  // eslint-disable-next-line class-methods-use-this
+  getReturnValues() { throw new Error('Must implement getReturnValues()'); }
+
+  /**
+   * Return the existing Dispatcher system handler class for this action.
+   * @returns {Class} e.g., require('...Dispatcher/systems/ConstructionPlanned')
+   */
+  // eslint-disable-next-line class-methods-use-this
+  getDispatcherSystemHandler() { throw new Error('Must implement getDispatcherSystemHandler()'); }
+
+  // ── Phase 1: Write (runs inside transaction) ─────────────────────────
+
+  /**
+   * Called by GameEngine inside the transaction. Creates synthetic events
+   * and writes components. The synthetic event is saved with the session
+   * so it rolls back on abort.
+   *
+   * NOTE: ComponentService.updateOrCreateFromEvent() does not currently
+   * accept a session parameter — its internal save() calls run outside
+   * the transaction. The transaction protects the synthetic event creation;
+   * idempotency keys provide crash-safety for the overall operation.
+   */
+  async writePhase() {
+    const result = await this.applyStateChanges();
+
+    this.systemEvent = await SyntheticEvent.create({
+      eventName: this.getEventName(),
+      returnValues: this.getReturnValues(),
+      session: this.session,
+      idempotencyKey: this.idempotencyKey
+    });
+
+    return result;
+  }
+
+  // ── Phase 2: Side effects (runs after transaction commit) ────────────
+
+  /**
+   * Called by GameEngine AFTER the transaction commits. Runs the existing
+   * Dispatcher system handler against the synthetic event. The handler's
+   * DB reads can now see the committed component data from Phase 1.
+   */
+  async sideEffectPhase() {
+    const HandlerClass = this.getDispatcherSystemHandler();
+    this._dispatcherHandler = new HandlerClass(this.systemEvent);
+    await this._dispatcherHandler.processEvent();
+    await this._dispatcherHandler.finalizeEvent();
+  }
+
+  /**
+   * Emit Socket.IO events collected by the Dispatcher handler.
+   * Called by GameEngine after sideEffectPhase() completes.
+   */
+  async emitEvents() {
+    if (this._dispatcherHandler) {
+      await this._dispatcherHandler.emitSocketEvents();
+    }
+  }
+
+  // ── Component write helpers ──────────────────────────────────────────
+
+  /**
+   * Create an Entity document in the Entity collection.
+   * Uses updateOne with upsert — same pattern as the entitiesPlugin.
+   */
+  async createEntity(entityRef) {
+    const entityData = Entity.toEntity(entityRef);
+    await mongoose.model('Entity').updateOne(
+      { uuid: entityData.uuid },
+      entityData.toObject(),
+      { upsert: true, session: this.session }
+    );
+    return entityData;
+  }
+
+  /**
+   * Create a new entity and all its initial components atomically.
+   * Creates the Entity document first, then writes each component via
+   * ComponentService.updateOrCreateFromEvent().
+   */
+  async createEntityWithComponents(entityRef, components) {
+    const entity = Entity.toEntity(entityRef);
+    await mongoose.model('Entity').updateOne(
+      { uuid: entity.uuid },
+      entity.toObject(),
+      { upsert: true, session: this.session }
+    );
+
+    const componentResults = [];
+    for (const { component, data, options } of components) {
+      // eslint-disable-next-line no-await-in-loop
+      const componentEvent = await SyntheticEvent.createComponentEvent({
+        parentEvent: this.systemEvent,
+        componentName: component,
+        returnValues: { ...data, entity: entity.toObject() },
+        session: this.session
+      });
+
+      // eslint-disable-next-line no-await-in-loop
+      const result = await ComponentService.updateOrCreateFromEvent({
+        component,
+        event: componentEvent,
+        data: { ...data, entity: entity.toObject() },
+        replace: options?.replace !== false
+      });
+
+      if (result.updated) {
+        // eslint-disable-next-line no-await-in-loop
+        await ElasticSearchService.queueEntityForIndexing(entity);
+      }
+
+      componentResults.push(result);
+    }
+
+    return { entity, componentResults };
+  }
+
+  /**
+   * Write a single component. Use for updating existing entities
+   * (e.g., changing Building status). For new entities, prefer
+   * createEntityWithComponents().
+   */
+  async writeComponent(componentName, data, options = {}) {
+    const componentEvent = await SyntheticEvent.createComponentEvent({
+      parentEvent: this.systemEvent,
+      componentName,
+      returnValues: data,
+      session: this.session
+    });
+
+    const result = await ComponentService.updateOrCreateFromEvent({
+      component: componentName,
+      event: componentEvent,
+      data,
+      replace: options.replace !== false
+    });
+
+    if (result.updated && data.entity) {
+      await ElasticSearchService.queueEntityForIndexing(data.entity);
+    }
+
+    return result;
+  }
+
+  /**
+   * Delete a component (for actions like ConstructionAbandon).
+   */
+  // eslint-disable-next-line class-methods-use-this
+  async deleteComponent(componentName, data, filter) {
+    return ComponentService.deleteOne({ component: componentName, data, filter });
+  }
+}
+
+module.exports = BaseActionHandler;
