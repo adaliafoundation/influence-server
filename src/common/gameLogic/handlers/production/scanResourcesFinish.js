@@ -35,7 +35,7 @@ class ScanResourcesFinishHandler extends BaseActionHandler {
     if (this.asteroid.Celestial?.scanStatus !== Asteroid.SCAN_STATUSES.RESOURCE_SCANNING) {
       throw new ValidationError('Asteroid is not currently resource scanning');
     }
-    StateMachineValidator.assertFinished(this.asteroid.Celestial, 'Resource scan');
+    StateMachineValidator.assertFinished(this.asteroid.Celestial, 'Resource scan', 'scanFinishTime');
   }
 
   async applyStateChanges() {

@@ -22,17 +22,18 @@ class StateMachineValidator {
    * Asserts a time-gated operation has finished (finishTime has passed).
    * Used for construction, extraction, processing, transit completions.
    *
-   * @param {object} component - Component with a finishTime field
+   * @param {object} component - Component with a finishTime (or custom) field
    * @param {string} [label] - Human-readable label for error messages
+   * @param {string} [field] - Field name containing the finish timestamp (default: 'finishTime')
    */
-  static assertFinished(component, label = 'Component') {
+  static assertFinished(component, label = 'Component', field = 'finishTime') {
     if (!component) throw new ValidationError(`${label} not found`);
-    if (!component.finishTime) throw new ValidationError(`${label} has no finish time`);
+    if (!component[field]) throw new ValidationError(`${label} has no finish time`);
 
     const now = Math.floor(Date.now() / 1000);
-    if (component.finishTime > now) {
+    if (component[field] > now) {
       throw new ValidationError(
-        `${label} not finished yet (finishes at ${component.finishTime}, now ${now})`
+        `${label} not finished yet (finishes at ${component[field]}, now ${now})`
       );
     }
   }
