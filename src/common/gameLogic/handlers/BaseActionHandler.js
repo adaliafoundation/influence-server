@@ -24,6 +24,17 @@ class BaseActionHandler {
   }
 
   /**
+   * Cap a real-seconds duration when MAX_ACTION_SECONDS is set.
+   * Useful for dev/testing: `MAX_ACTION_SECONDS=2` makes every timed
+   * action complete in at most 2 real seconds instead of hours/days.
+   */
+  // eslint-disable-next-line class-methods-use-this
+  capDuration(realSeconds) {
+    const cap = Number(process.env.MAX_ACTION_SECONDS);
+    return (cap > 0) ? Math.min(realSeconds, cap) : realSeconds;
+  }
+
+  /**
    * Convert game-seconds to real-seconds using TIME_ACCELERATION.
    * SDK times (setupTime, processingTime, etc.) are in game-seconds.
    */
@@ -33,7 +44,7 @@ class BaseActionHandler {
         .findOne({ name: 'TIME_ACCELERATION' }).lean();
       this._timeAcceleration = Number(constant?.value) || 24;
     }
-    return Math.ceil(gameSeconds / this._timeAcceleration);
+    return this.capDuration(Math.ceil(gameSeconds / this._timeAcceleration));
   }
 
   // ── Subclass interface ───────────────────────────────────────────────

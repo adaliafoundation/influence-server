@@ -66,6 +66,10 @@ class TransitStartHandler extends BaseActionHandler {
     this.destination = destRef;
     this.departureTime = Number(departureTime);
     this.arrivalTime = Number(arrivalTime);
+
+    // Cap transit duration in fast-action mode
+    const maxDuration = this.capDuration(this.arrivalTime - this.now);
+    this.arrivalTime = this.now + maxDuration;
   }
 
   async applyStateChanges() {

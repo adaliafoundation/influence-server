@@ -38,7 +38,7 @@ class AcceptDeliveryHandler extends BaseActionHandler {
   }
 
   async applyStateChanges() {
-    this.finishTime = this.now + 60;
+    this.finishTime = this.now + this.capDuration(60);
 
     await this.writeComponent('Delivery', {
       entity: { id: this.delivery.id, label: Entity.IDS.DELIVERY },
