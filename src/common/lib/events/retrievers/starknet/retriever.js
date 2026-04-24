@@ -1,11 +1,10 @@
 const appConfig = require('config');
-const { delay, groupBy, omitBy } = require('lodash');
+const { delay, groupBy } = require('lodash');
 const { Timer } = require('timer-node');
 const logger = require('@common/lib/logger');
 const { ActivityService, StarknetEventService } = require('@common/services');
 const StarknetProvider = require('@common/lib/starknet/provider');
 const { StarknetBlockCache } = require('@common/lib/cache');
-const { PRE_CONFIRMED_BLOCK_NUMBER } = require('@common/lib/starknet/models/constants');
 const StarknetEventConfig = require('./config');
 
 class StarknetRetriever {
@@ -193,11 +192,6 @@ class StarknetRetriever {
 
   // Internal
 
-  async getLastL1CachedBlock() {
-    // Adjust down by one from origin block since the first one won't necessarily be accepted on l1 (on local)
-    return (await StarknetBlockCache.getl1AcceptedBlock()) || appConfig.get('Starknet.originBlock') - 1;
-  }
-
   /**
    * @description Pulls events from the provider and formats them for storage
    *
@@ -241,145 +235,6 @@ class StarknetRetriever {
     logger.info(`${logSlug}, [${events.length}] event(s) on [${fromBlock} -> ${toBlock}]`);
     await StarknetEventService.updateOrCreateMany(events);
     return events.length;
-  }
-
-  async findLastSyncedBlock({ blockNumbers, cachedBlocks }) {
-    // If there are no blocks in cache just return 0 to start from the beginning
-    if (blockNumbers.length === 0) return 0;
-
-    const half = Math.floor(blockNumbers.length / 2);
-    const checkBlockNumber = blockNumbers[half];
-
-    // There's only one element in the array so return the last block to start from
-    if (half === 0) return checkBlockNumber;
-
-    const block = await this.provider.getBlock(checkBlockNumber);
-
-    // If the block hashes are not equal start running at the previous known synced block
-    if (block.blockHash !== cachedBlocks[checkBlockNumber]) return blockNumbers[0];
-
-    // Otherwise recurse until the end
-    return this.findLastSyncedBlock({ blockNumbers: blockNumbers.slice(half), cachedBlocks });
-  }
-
-  /**
-   * @description Handles an aborted block
-   *
-   * @param {Object} block
-   */
-  async handleAbortedBlock(block) {
-    let l2CachedBlocks = await StarknetBlockCache.getl2AcceptedBlocks();
-    const blockNumbersToPurge = Object.keys(l2CachedBlocks).filter((blockNumber) => (blockNumber >= block.blockNumber));
-    await StarknetEventService.updateManyAsRemoved({ blockNumber: { $in: blockNumbersToPurge } });
-
-    // Purge activity item(s) that have been marked removed
-    await ActivityService.purgeByRemoved();
-
-    // update l2 Accepted cached block(s)
-    l2CachedBlocks = omitBy(l2CachedBlocks, (_, blockNumber) => (blockNumbersToPurge.includes(blockNumber)));
-    await StarknetBlockCache.setl2AcceptedBlocks(l2CachedBlocks);
-  }
-
-  /**
-   * @description Processes a block
-   *
-   * @param {Object} block
-   * @param {Object} options
-   */
-  async processBlock(block, options = {}) {
-    const { useCache = true } = options;
-    const logSlug = 'StarknetRetriever::processBlock';
-    // get the processed cached blocks
-    const l2CachedBlocks = await StarknetBlockCache.getl2AcceptedBlocks();
-
-    // check cache
-    const l2CachedBlockHash = l2CachedBlocks[block.blockNumber];
-
-    if (l2CachedBlockHash && useCache) {
-      if (l2CachedBlockHash !== block.blockHash) {
-        // handle aborted block
-        logger.warn(`${logSlug}, handling aborted block [${block.blockNumber}] with hash [${block.blockHash}]`);
-        await this.handleAbortedBlock(block);
-
-        // break out of loop now. The next run will pull down the new blocks
-        throw new Error('Aborted block detected');
-      }
-      if (l2CachedBlockHash === block.blockHash && block.isAcceptedL1()) {
-        await StarknetBlockCache.setl1AcceptedBlock(block.blockNumber);
-
-        // Remove all l2 cached block number(s) up to and incuding the current block number
-        // This block is ACCEPTED on l1, we are assuming the previous block as as well
-        await StarknetBlockCache.setl2AcceptedBlocks(omitBy(l2CachedBlocks, (__, cachedBlockNumber) => (
-          cachedBlockNumber <= block.blockNumber
-        )));
-
-        // Update starknet event(s) prior to and including `block.blockNumber` and status accepted on l2
-        // to accepted on l1
-        await StarknetEventService.updateManyToL1Accepted(block.blockNumber);
-        logger.debug(`${logSlug}, block [${block.blockNumber}] status updated to l1Accepted`);
-      } else if (l2CachedBlockHash === block.blockHash && block.isAcceptedL2()) {
-        logger.debug(`${logSlug}, block [${block.blockNumber}] status still l2Accepted, skipping`);
-      }
-    } else {
-      const events = await this.pullAndFormatEvents(block);
-
-      // save event(s)
-      const formattedBlockNumber = (block.blockNumber === PRE_CONFIRMED_BLOCK_NUMBER)
-        ? 'PRE_CONFIRMED'
-        : block.blockNumber;
-      logger.info(`${logSlug}, [${events.length}] event(s) on block ${formattedBlockNumber}`);
-      if (events.length > 0) await StarknetEventService.updateOrCreateMany(events);
-
-      if (block.isAcceptedL1() && useCache) {
-        await StarknetBlockCache.setl1AcceptedBlock(block.blockNumber);
-      } else if (block.isAcceptedL2() && useCache) {
-        await StarknetBlockCache.setl2AcceptedBlocks({ ...l2CachedBlocks, [block.blockNumber]: block.blockHash });
-      }
-    }
-  }
-
-  async retrieveAndProcessBlock(blockNumber) {
-    const logSlug = 'StarknetRetriever::retrieveAndProcessBlock';
-    let block;
-
-    try {
-      block = await this.provider.getBlock(blockNumber);
-    } catch (error) {
-      logger.error(`${logSlug}, getBlock failed: ${blockNumber}`);
-      throw error;
-    }
-
-    // if the PRE_CONFIRMED block was requested but the returned block is ACCPETED_ON_L2,
-    // we can return now. It will get picked up and processed on the next run
-    if (blockNumber === 'pre_confirmed' && block.isAcceptedL2()) return;
-
-    try {
-      await this.processBlock(block);
-    } catch (error) {
-      logger.error(`${logSlug}, processBlock failed: [block: ${blockNumber}] ${JSON.stringify(block, null, 2)}`);
-      throw error;
-    }
-  }
-
-  /**
-   * @description Processes from the oldest block in L2 accepted cache
-   * until the oldest / first L2 accepted block on chain
-   *
-   * @param {Number} previousLastL1CachedBlock
-   * @returns {Number} The last L1 cached block number
-   */
-  async updateCachedL2BlocksToL1(previousLastL1CachedBlock) {
-    const l2CachedBlocks = await StarknetBlockCache.getl2AcceptedBlocks();
-
-    // Adjust down by one from origin block since the first one won't necessarily be accepted on l1 (on local)
-    const currentLastL1CachedBlock = await this.getLastL1CachedBlock();
-
-    if (Object.values(l2CachedBlocks).length === 0 || previousLastL1CachedBlock === currentLastL1CachedBlock) {
-      return currentLastL1CachedBlock;
-    }
-
-    await this.retrieveAndProcessBlock(currentLastL1CachedBlock + 1);
-    return this.updateCachedL2BlocksToL1(currentLastL1CachedBlock);
   }
 }
 
