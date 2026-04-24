@@ -135,6 +135,80 @@ describe('Starknet RpcProvider', function () {
     });
   });
 
+  describe('_getEvents pagination', function () {
+    it('should follow continuation_token until all pages are retrieved', async function () {
+      const page1Event = starknetGetEvents.result.events[0];
+      const page2Event = { ...starknetGetEvents.result.events[1] };
+      const postStub = sandbox.stub(axios, 'post');
+      postStub.onFirstCall().resolves({
+        data: {
+          result: {
+            events: [page1Event],
+            continuation_token: 'next-page-token'
+          }
+        }
+      });
+      postStub.onSecondCall().resolves({
+        data: {
+          result: {
+            events: [page2Event]
+          }
+        }
+      });
+
+      const results = await provider._getEvents({
+        address: page1Event.from_address,
+        fromBlock: 1,
+        toBlock: 2
+      });
+
+      expect(results).to.have.lengthOf(2);
+      expect(postStub.callCount).to.eql(2);
+      expect(postStub.getCall(0).args[1].params.filter.continuation_token).to.eql(null);
+      expect(postStub.getCall(1).args[1].params.filter.continuation_token).to.eql('next-page-token');
+    });
+
+    it('should forward batch continuation_token to _getEvents in _getEventsBatch', async function () {
+      const page1Event = starknetGetEvents.result.events[0];
+      const page2Event = { ...starknetGetEvents.result.events[1] };
+      const postStub = sandbox.stub(axios, 'post').resolves({
+        data: [
+          {
+            id: 0,
+            result: {
+              events: [page1Event],
+              continuation_token: 'batch-next-token'
+            }
+          },
+          {
+            id: 1,
+            result: {
+              events: [page2Event]
+            }
+          }
+        ]
+      });
+      const continuationStub = sandbox.stub(provider, '_getEvents').resolves([new Event(page2Event)]);
+      const addresses = [page1Event.from_address, page2Event.from_address];
+
+      const results = await provider._getEventsBatch({
+        addresses,
+        fromBlock: 1,
+        toBlock: 2
+      });
+
+      expect(postStub.calledOnce).to.eql(true);
+      expect(continuationStub.calledOnceWithExactly({
+        address: addresses[0],
+        chunkSize: 100,
+        continuationToken: 'batch-next-token',
+        fromBlock: 1,
+        toBlock: 2
+      })).to.eql(true);
+      expect(results).to.have.lengthOf(3);
+    });
+  });
+
   describe('getTransactionReceipts', function () {
     it('should return an array of transaction receipts', async function () {
       sandbox.stub(provider, 'getTransactionReceipt').callsFake(async function () {
