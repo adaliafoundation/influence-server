@@ -39,11 +39,11 @@ class StarknetProvider {
     }
   }
 
-  async getEvents({ address, addresses, fromBlock, toBlock }) {
+  async getEvents({ address, addresses, fromBlock, toBlock }, options = {}) {
     for (let p = 0; p < this.providers.length; p += 1) {
       try {
         logger.verbose(`getEvents, using provider: ${this.providers[p].constructor.name}`);
-        const events = await this.providers[p].getEvents({ address, addresses, fromBlock, toBlock });
+        const events = await this.providers[p].getEvents({ address, addresses, fromBlock, toBlock }, options);
         return events;
       } catch (error) {
         logger.warn(`StarknetProvider::getEvents, ${error.e || error}`);

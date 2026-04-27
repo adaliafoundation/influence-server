@@ -133,6 +133,32 @@ describe('Starknet RpcProvider', function () {
       expect(events).to.have.lengthOf(24);
       expect(events[0]).to.deep.eql(expected);
     });
+
+    it('should make only one attempt if called with { withBackOff: false }', async function () {
+      const stub = sandbox.stub(provider, '_getEvents').rejects(new Error('boom'));
+      try {
+        await provider.getEvents({
+          address: '0x1',
+          fromBlock: 1
+        }, { withBackOff: false });
+        expect.fail();
+      } catch (error) {
+        expect(stub.callCount).to.eql(1);
+      }
+    });
+
+    it('should retry on fail when called with default { withBackOff: true }', async function () {
+      const stub = sandbox.stub(provider, '_getEvents').rejects(new Error('boom'));
+      try {
+        await provider.getEvents({
+          address: '0x1',
+          fromBlock: 1
+        });
+        expect.fail();
+      } catch (error) {
+        expect(stub.callCount).to.eql(2);
+      }
+    });
   });
 
   describe('_getEvents pagination', function () {

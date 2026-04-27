@@ -1,7 +1,11 @@
 const { expect } = require('chai');
 const sinon = require('sinon');
 const appConfig = require('config');
-const { ActivityService, StarknetEventService } = require('@common/services');
+const {
+  ActivityService,
+  StarknetEventService,
+  StarknetReconciliationBlockService
+} = require('@common/services');
 const { StarknetRetriever } = require('@common/lib/events/retrievers/starknet/retriever');
 const StarknetEventConfig = require('../../../../../../../src/common/lib/events/retrievers/starknet/config');
 
@@ -88,6 +92,9 @@ describe('Starknet Event Retriever', function () {
       const removeStub = sandbox.stub(StarknetEventService, 'updateManyAsRemoved').resolves();
       const purgeStub = sandbox.stub(ActivityService, 'purgeByRemoved').resolves();
       const upsertStub = sandbox.stub(StarknetEventService, 'updateOrCreateMany').resolves();
+      sandbox.stub(retriever, 'reconcileTrackedBlocks').resolves({ checkedBlocks: 0, reorgStartBlock: null });
+      sandbox.stub(retriever, 'syncReconciliationBlocks').resolves();
+      sandbox.stub(retriever, 'removeReconciliationBlocks').resolves();
 
       const result = await retriever.auditOnce({ blockOffset: 10 });
 
@@ -114,6 +121,9 @@ describe('Starknet Event Retriever', function () {
       const removeStub = sandbox.stub(StarknetEventService, 'updateManyAsRemoved').resolves();
       const purgeStub = sandbox.stub(ActivityService, 'purgeByRemoved').resolves();
       const upsertStub = sandbox.stub(StarknetEventService, 'updateOrCreateMany').resolves();
+      sandbox.stub(retriever, 'reconcileTrackedBlocks').resolves({ checkedBlocks: 0, reorgStartBlock: null });
+      sandbox.stub(retriever, 'syncReconciliationBlocks').resolves();
+      sandbox.stub(retriever, 'removeReconciliationBlocks').resolves();
 
       const result = await retriever.auditOnce({ blockOffset: 10 });
 
@@ -132,6 +142,9 @@ describe('Starknet Event Retriever', function () {
       const removeStub = sandbox.stub(StarknetEventService, 'updateManyAsRemoved').resolves();
       const purgeStub = sandbox.stub(ActivityService, 'purgeByRemoved').resolves();
       const upsertStub = sandbox.stub(StarknetEventService, 'updateOrCreateMany').resolves();
+      sandbox.stub(retriever, 'reconcileTrackedBlocks').resolves({ checkedBlocks: 0, reorgStartBlock: null });
+      sandbox.stub(retriever, 'syncReconciliationBlocks').resolves();
+      sandbox.stub(retriever, 'removeReconciliationBlocks').resolves();
 
       const result = await retriever.auditOnce({ blockOffset: 1001 });
 
@@ -150,6 +163,19 @@ describe('Starknet Event Retriever', function () {
       expect(removeStub.called).to.eql(false);
       expect(purgeStub.called).to.eql(false);
       expect(upsertStub.called).to.eql(false);
+    });
+
+    it('should replay from detected reorg start block', async function () {
+      sandbox.stub(retriever.provider, 'getBlockNumber').resolves(200);
+      sandbox.stub(retriever, 'pullAndFormatEvents').resolves([]);
+      sandbox.stub(StarknetEventService, 'getEventsByBlockRange').resolves([]);
+      const replayStub = sandbox.stub(retriever, 'replayRangeFromBlock').resolves();
+      sandbox.stub(retriever, 'reconcileTrackedBlocks').resolves({ checkedBlocks: 1, reorgStartBlock: 150 });
+
+      const result = await retriever.auditOnce({ blockOffset: 10 });
+
+      expect(replayStub.calledOnceWithExactly({ fromBlock: 150, toBlock: 200 })).to.eql(true);
+      expect(result.mismatchedBlocks).to.eql(1);
     });
   });
 
@@ -183,6 +209,66 @@ describe('Starknet Event Retriever', function () {
       expect(retrieveStub.getCall(0).calledWithExactly({ fromBlock: 2, toBlock: 2 })).to.eql(true);
       expect(retrieveStub.getCall(1).calledWithExactly({ fromBlock: 'pre_confirmed', toBlock: 'pre_confirmed' }))
         .to.eql(true);
+    });
+  });
+
+  describe('reconcileTrackedBlocks', function () {
+    it('should prune old l1 tracked blocks even when they are outside reconciliation selection', async function () {
+      const pruneStub = sandbox.stub(StarknetReconciliationBlockService, 'pruneAcceptedOnL1OlderThan').resolves();
+      const getTrackedStub = sandbox.stub(StarknetReconciliationBlockService, 'getTrackedBlocks').resolves([]);
+      const upsertStub = sandbox.stub(StarknetReconciliationBlockService, 'upsertMany').resolves();
+      const deleteStub = sandbox.stub(StarknetReconciliationBlockService, 'deleteByBlockNumbers').resolves();
+      const getBlockStub = sandbox.stub(retriever.provider, 'getBlock');
+
+      const result = await retriever.reconcileTrackedBlocks({ headBlock: 5000 });
+
+      expect(result.reorgStartBlock).to.eql(null);
+      expect(result.checkedBlocks).to.eql(0);
+      expect(pruneStub.calledOnceWithExactly(3000)).to.eql(true);
+      expect(getTrackedStub.calledOnceWithExactly({
+        headBlock: 5000,
+        retentionBlocks: 2000,
+        limit: 500
+      })).to.eql(true);
+      expect(getBlockStub.called).to.eql(false);
+      expect(upsertStub.called).to.eql(false);
+      expect(deleteStub.called).to.eql(false);
+    });
+
+    it('should detect reorg on tracked block hash mismatch', async function () {
+      sandbox.stub(StarknetReconciliationBlockService, 'pruneAcceptedOnL1OlderThan').resolves();
+      sandbox.stub(StarknetReconciliationBlockService, 'getTrackedBlocks').resolves([
+        { blockNumber: 25, blockHash: '0xabc', status: 'ACCEPTED_ON_L2' }
+      ]);
+      const upsertStub = sandbox.stub(StarknetReconciliationBlockService, 'upsertMany').resolves();
+      const deleteStub = sandbox.stub(StarknetReconciliationBlockService, 'deleteByBlockNumbers').resolves();
+      sandbox.stub(retriever.provider, 'getBlock').resolves({ blockHash: '0xdef', status: 'ACCEPTED_ON_L2' });
+
+      const result = await retriever.reconcileTrackedBlocks({ headBlock: 100 });
+
+      expect(result.reorgStartBlock).to.eql(25);
+      expect(upsertStub.called).to.eql(false);
+      expect(deleteStub.called).to.eql(false);
+    });
+
+    it('should promote tracked l2 blocks to l1 on finalization', async function () {
+      sandbox.stub(StarknetReconciliationBlockService, 'pruneAcceptedOnL1OlderThan').resolves();
+      sandbox.stub(StarknetReconciliationBlockService, 'getTrackedBlocks').resolves([
+        { blockNumber: 30, blockHash: '0xabc', status: 'ACCEPTED_ON_L2' }
+      ]);
+      const upsertStub = sandbox.stub(StarknetReconciliationBlockService, 'upsertMany').resolves();
+      const deleteStub = sandbox.stub(StarknetReconciliationBlockService, 'deleteByBlockNumbers').resolves();
+      sandbox.stub(retriever.provider, 'getBlock').resolves({ blockHash: '0xabc', status: 'ACCEPTED_ON_L1' });
+      const promoteStub = sandbox.stub(StarknetEventService, 'updateBlockToL1Accepted').resolves();
+
+      const result = await retriever.reconcileTrackedBlocks({ headBlock: 31 });
+
+      expect(result.reorgStartBlock).to.eql(null);
+      expect(promoteStub.calledOnceWithExactly(30)).to.eql(true);
+      expect(upsertStub.calledOnceWithExactly([
+        { blockNumber: 30, blockHash: '0xabc', status: 'ACCEPTED_ON_L1' }
+      ])).to.eql(true);
+      expect(deleteStub.called).to.eql(false);
     });
   });
 });

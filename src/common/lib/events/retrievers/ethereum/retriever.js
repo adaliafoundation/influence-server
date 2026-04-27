@@ -115,22 +115,18 @@ class EthereumRetriever {
       const logSlug = 'EthereumRetriever::runner';
       const timer = new Timer({ label: 'EthereumRetriever-timer' }).start();
       let latestBlockNumber;
+      let latestAvailableBlock;
+      let toBlock;
       try {
         latestBlockNumber = Number(await web3.eth.getBlockNumber());
         if (!latestBlockNumber) throw new Error('getBlockNumber returned empty value');
-      } catch (error) {
-        logger.error(error);
-        return null;
-      }
+        const lastRetrieved = (await EthereumBlockCache.getLastRetrievedBlock()) || ETH_ORIGIN_BLOCK;
+        const lastLocalEvent = (await this.getLatestLocalBlockNumber()) || ETH_ORIGIN_BLOCK;
+        const localStartBlock = Math.max(Number(lastRetrieved), Number(lastLocalEvent));
+        latestAvailableBlock = latestBlockNumber - BLOCK_WINDOW_OFFSET;
+        const fromBlock = Math.min(localStartBlock, latestAvailableBlock);
+        toBlock = Math.min(latestAvailableBlock, fromBlock + BLOCK_WINDOW_OFFSET);
 
-      const lastRetrieved = (await EthereumBlockCache.getLastRetrievedBlock()) || ETH_ORIGIN_BLOCK;
-      const lastLocalEvent = (await this.getLatestLocalBlockNumber()) || ETH_ORIGIN_BLOCK;
-      const localStartBlock = Math.max(Number(lastRetrieved), Number(lastLocalEvent));
-      const latestAvailableBlock = latestBlockNumber - BLOCK_WINDOW_OFFSET;
-      const fromBlock = Math.min(localStartBlock, latestAvailableBlock);
-      const toBlock = Math.min(latestAvailableBlock, fromBlock + BLOCK_WINDOW_OFFSET);
-
-      try {
         const events = await this.pullEvents({ fromBlock, toBlock });
 
         if (events.length > 0) {
@@ -142,12 +138,16 @@ class EthereumRetriever {
 
         await EthereumBlockCache.setLastRetrievedBlock(toBlock);
       } catch (error) {
+        logger.error(`${logSlug}, runner iteration failed`);
         logger.error(error);
       }
 
       if (timer.ms() < _runDelay) {
         const shortDelay = appConfig.util.getEnv('NODE_ENV') === 'development' ? 1 : 1000;
-        const delayMs = toBlock < latestAvailableBlock ? shortDelay : _runDelay - timer.ms();
+        const caughtUp = Number.isFinite(toBlock)
+          && Number.isFinite(latestAvailableBlock)
+          && toBlock >= latestAvailableBlock;
+        const delayMs = caughtUp ? _runDelay - timer.ms() : shortDelay;
 
         logger.info(`${logSlug}, run delay not met, delaying for [${delayMs}ms]...`);
         await new Promise((resolve) => {

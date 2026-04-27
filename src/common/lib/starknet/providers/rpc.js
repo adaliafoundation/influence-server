@@ -243,16 +243,19 @@ class RpcProvider extends DefaultStarknetProvider {
       : this._getBlockNumber();
   }
 
-  async getEvents({ address, addresses = [], fromBlock, toBlock }) {
+  async getEvents({ address, addresses = [], fromBlock, toBlock }, { withBackOff = true } = {}) {
     if (typeof fromBlock === 'undefined' || fromBlock === null) throw new Error('No fromBlock provided');
     const method = (addresses?.length > 0) ? '_getEventsBatch' : '_getEvents';
-    const rawEvents = await this[method]({
+    const fetchRawEvents = () => this[method]({
       address,
       addresses,
       fromBlock,
       toBlock: toBlock || fromBlock,
       chunkSize: 100
     });
+    const rawEvents = (withBackOff)
+      ? await this._callWithBackoff(fetchRawEvents, 'getEvents')
+      : await fetchRawEvents();
     if (rawEvents.length === 0) return [];
 
     const blocksByHash = {};

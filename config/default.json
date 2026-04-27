@@ -73,8 +73,11 @@
     },
     "starknet": {
       "runDelay": 20000,
+      "auditBlockOffset": 10,
       "rpcProvider": null,
-      "reconciliationLookback": 50
+      "reconciliationLookback": 50,
+      "auditUnresolvedBlockBatchSize": 500,
+      "auditL1RetentionBlocks": 2000
     }
   },
   "EventProcessor": {

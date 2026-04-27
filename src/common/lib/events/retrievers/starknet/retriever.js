@@ -2,14 +2,21 @@ const appConfig = require('config');
 const { delay, groupBy } = require('lodash');
 const { Timer } = require('timer-node');
 const logger = require('@common/lib/logger');
-const { ActivityService, StarknetEventService } = require('@common/services');
+const {
+  ActivityService,
+  StarknetEventService,
+  StarknetReconciliationBlockService
+} = require('@common/services');
 const StarknetProvider = require('@common/lib/starknet/provider');
 const { StarknetBlockCache } = require('@common/lib/cache');
+const { PRE_CONFIRMED_BLOCK_NUMBER } = require('@common/lib/starknet/models/constants');
 const StarknetEventConfig = require('./config');
 
 const DEFAULT_BLOCK_BATCH_SIZE = 1000;
 const RUN_ONCE_BLOCK_BATCH_SIZE = DEFAULT_BLOCK_BATCH_SIZE;
 const AUDIT_BLOCK_BATCH_SIZE = DEFAULT_BLOCK_BATCH_SIZE;
+const AUDIT_UNRESOLVED_BLOCK_BATCH_SIZE = 500;
+const AUDIT_L1_RETENTION_BLOCKS = 2000;
 
 class StarknetRetriever {
   constructor(props = {}) {
@@ -88,14 +95,26 @@ class StarknetRetriever {
           if (blockStoredEvents.length > 0) {
             await StarknetEventService.updateManyAsRemoved({ blockNumber });
             await ActivityService.purgeByRemoved();
+            await this.removeReconciliationBlocks([blockNumber]);
           }
 
           if (blockChainEvents.length > 0) {
             await StarknetEventService.updateOrCreateMany(blockChainEvents);
+            await this.syncReconciliationBlocks(blockChainEvents);
           }
         }
       }
     });
+
+    const unresolvedResult = await this.reconcileTrackedBlocks({ headBlock });
+    if (unresolvedResult.reorgStartBlock !== null) {
+      logger.warn(`${logSlug}, reorg detected starting at block [${unresolvedResult.reorgStartBlock}]`);
+      await this.replayRangeFromBlock({
+        fromBlock: unresolvedResult.reorgStartBlock,
+        toBlock: headBlock
+      });
+      mismatchedBlocks += 1;
+    }
 
     return { headBlock, mismatchedBlocks, startBlock };
   }
@@ -108,7 +127,12 @@ class StarknetRetriever {
     while (keepRunning) {
       const timer = new Timer({ label: 'StarknetAuditRetriever-timer' }).start();
       const logSlug = 'StarknetAuditRetriever::auditRunner';
-      await this.auditOnce({ blockOffset });
+      try {
+        await this.auditOnce({ blockOffset });
+      } catch (error) {
+        logger.error(`${logSlug}, runner iteration failed`);
+        logger.error(error);
+      }
 
       if (timer.ms() < _runDelay) {
         const delayMs = _runDelay - timer.ms();
@@ -264,7 +288,105 @@ class StarknetRetriever {
 
     logger.info(`${logSlug}, [${events.length}] event(s) on [${fromBlock} -> ${toBlock}]`);
     await StarknetEventService.updateOrCreateMany(events);
+    await this.syncReconciliationBlocks(events);
     return events.length;
+  }
+
+  async syncReconciliationBlocks(events = []) {
+    if (!Array.isArray(events) || events.length === 0) return;
+
+    const blocks = [];
+    events.forEach((event) => {
+      const blockNumber = Number(event.blockNumber);
+      if (!Number.isFinite(blockNumber) || blockNumber === PRE_CONFIRMED_BLOCK_NUMBER) return;
+
+      blocks.push({
+        blockNumber,
+        blockHash: event.blockHash,
+        status: event.status
+      });
+    });
+
+    await StarknetReconciliationBlockService.upsertMany(blocks);
+  }
+
+  async removeReconciliationBlocks(blockNumbers = []) {
+    if (!Array.isArray(blockNumbers) || blockNumbers.length === 0) return;
+    await StarknetReconciliationBlockService.deleteByBlockNumbers(blockNumbers);
+  }
+
+  async reconcileTrackedBlocks({ headBlock }) {
+    const retentionBlocks = Number(
+      appConfig.EventRetriever.starknet?.auditL1RetentionBlocks || AUDIT_L1_RETENTION_BLOCKS
+    );
+    const batchSize = Number(
+      appConfig.EventRetriever.starknet?.auditUnresolvedBlockBatchSize || AUDIT_UNRESOLVED_BLOCK_BATCH_SIZE
+    );
+
+    const minRetainedL1Block = headBlock - retentionBlocks;
+    await StarknetReconciliationBlockService.pruneAcceptedOnL1OlderThan(minRetainedL1Block);
+    const trackedBlocks = await StarknetReconciliationBlockService.getTrackedBlocks({
+      headBlock,
+      retentionBlocks,
+      limit: batchSize
+    });
+
+    const upserts = [];
+    const deletions = [];
+    let reorgStartBlock = null;
+    for (const tracked of trackedBlocks) {
+      const blockNumber = Number(tracked.blockNumber);
+      const chainBlock = await this.provider.getBlock(blockNumber);
+      const hashMismatch = chainBlock.blockHash !== tracked.blockHash;
+      const statusRegressed = tracked.status === 'ACCEPTED_ON_L1' && chainBlock.status !== 'ACCEPTED_ON_L1';
+
+      if (hashMismatch || statusRegressed) {
+        reorgStartBlock = blockNumber;
+        break;
+      }
+
+      if (chainBlock.status === 'ACCEPTED_ON_L1') {
+        if (tracked.status !== 'ACCEPTED_ON_L1') await StarknetEventService.updateBlockToL1Accepted(blockNumber);
+        if ((headBlock - blockNumber) > retentionBlocks) {
+          deletions.push(blockNumber);
+        } else {
+          upserts.push({
+            blockNumber,
+            blockHash: chainBlock.blockHash,
+            status: 'ACCEPTED_ON_L1'
+          });
+        }
+      } else {
+        upserts.push({
+          blockNumber,
+          blockHash: chainBlock.blockHash,
+          status: chainBlock.status
+        });
+      }
+    }
+
+    if (upserts.length > 0) await StarknetReconciliationBlockService.upsertMany(upserts);
+    if (deletions.length > 0) await StarknetReconciliationBlockService.deleteByBlockNumbers(deletions);
+
+    return {
+      checkedBlocks: trackedBlocks.length,
+      reorgStartBlock
+    };
+  }
+
+  async replayRangeFromBlock({ fromBlock, toBlock }) {
+    if (!Number.isFinite(fromBlock) || !Number.isFinite(toBlock) || fromBlock > toBlock) {
+      throw new Error(`Invalid replay range [${fromBlock} -> ${toBlock}]`);
+    }
+
+    await StarknetReconciliationBlockService.deleteFromBlock(fromBlock);
+
+    await StarknetEventService.updateManyAsRemoved({
+      blockNumber: { $gte: fromBlock, $lte: toBlock },
+      removed: { $ne: true }
+    });
+    await ActivityService.purgeByRemoved();
+    await this.retrieveAndProcessRange({ fromBlock, toBlock });
   }
 }
 

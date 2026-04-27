@@ -58,6 +58,13 @@ class StarknetEventService {
     );
   }
 
+  static updateBlockToL1Accepted(blockNumber) {
+    return mongoose.model('Starknet').updateMany(
+      { status: 'ACCEPTED_ON_L2', blockNumber, removed: { $ne: true } },
+      { status: 'ACCEPTED_ON_L1' }
+    );
+  }
+
   static getLatestEventByBlock() {
     return mongoose.model('Starknet').findOne({ removed: { $ne: true } }).sort({ blockNumber: -1 });
   }

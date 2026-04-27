@@ -29,6 +29,7 @@ const PrepaidMerklePolicyService = require('./Components/Policies/PrepaidMerkle'
 const ReferralService = require('./Referral');
 const ShipService = require('./Ship');
 const StarknetEventService = require('./Event/Starknet');
+const StarknetReconciliationBlockService = require('./StarknetReconciliationBlock');
 const SwayClaimService = require('./SwayClaim');
 const SwayCrossingService = require('./SwayCrossing');
 const UserService = require('./User');
@@ -64,6 +65,7 @@ module.exports = {
   ReferralService,
   ShipService,
   StarknetEventService,
+  StarknetReconciliationBlockService,
   SwayClaimService,
   SwayCrossingService,
   UserService,

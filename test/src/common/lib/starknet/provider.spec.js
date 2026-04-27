@@ -70,4 +70,21 @@ describe('Starknet Provider', function () {
       }
     });
   });
+
+  describe('getEvents', function () {
+    it('should pass through options to the underlying provider', async function () {
+      const starknetProvider = new StarknetProvider();
+      const stub = sinon.stub(starknetProvider.providers[0], 'getEvents').resolves([]);
+
+      await starknetProvider.getEvents(
+        { address: '0x1', fromBlock: 1, toBlock: 1 },
+        { withBackOff: false }
+      );
+
+      expect(stub.calledOnceWithExactly(
+        { address: '0x1', addresses: undefined, fromBlock: 1, toBlock: 1 },
+        { withBackOff: false }
+      )).to.eql(true);
+    });
+  });
 });

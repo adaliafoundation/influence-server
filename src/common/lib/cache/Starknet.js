@@ -6,7 +6,8 @@ class StarknetBlockCache extends BaseMongoCache {
 
     return Promise.all([
       cache.delete('ACCEPTED_L1_BLOCK'),
-      cache.delete('ACCEPTED_L2_BLOCKS')
+      cache.delete('ACCEPTED_L2_BLOCKS'),
+      cache.delete('STARKNET_RECONCILIATION_BLOCKS')
     ]);
   }
 
@@ -41,6 +42,20 @@ class StarknetBlockCache extends BaseMongoCache {
 
   static getCurrentBlockNumber() {
     return this.cacheInstance.get('CURRENT_STARKNET_BLOCK_NUMBER');
+  }
+
+  /*
+    Get tracked event-bearing blocks for reorg/finality reconciliation.
+    Each item contains blockHash + last seen status.
+    Example: { "1234": { blockHash: "0xabc", status: "ACCEPTED_ON_L2" } }
+  */
+  static async getReconciliationBlocks() {
+    const result = await this.cacheInstance.get('STARKNET_RECONCILIATION_BLOCKS');
+    return result || {};
+  }
+
+  static setReconciliationBlocks(values) {
+    return this.cacheInstance.set('STARKNET_RECONCILIATION_BLOCKS', values);
   }
 }
 
