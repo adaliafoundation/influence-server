@@ -74,7 +74,6 @@
   "Starknet": {
     "chainSlug": "SN_SEPOLIA",
     "chainId": "0x534e5f5345504f4c4941",
-    "originBlock": 14380,
-    "provider": "https://alpha-sepolia.starknet.io"
+    "originBlock": 14380
   }
 }

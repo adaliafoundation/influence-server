@@ -1,32 +1,39 @@
 const { isObject, isString } = require('lodash');
 const { hex } = require('../../num');
 const TransactionReceipt = require('./TransactionReceipt');
-const { PENDING_BLOCK_NUMBER } = require('./constants');
+const { PRE_CONFIRMED_BLOCK_HASH, PRE_CONFIRMED_BLOCK_NUMBER } = require('./constants');
 
 class Block {
   constructor(blockData) {
     this.blockData = blockData || {};
   }
 
-  static isPendingBlockNumber(blockNumber) {
-    if (!blockNumber) throw new Error('blockNumber is required');
+  static isPreConfirmedBlockNumber(blockNumber) {
+    if (typeof blockNumber === 'undefined' || blockNumber === null) throw new Error('blockNumber is required');
 
-    return (blockNumber.toString().toLowerCase() === 'pending') || blockNumber === PENDING_BLOCK_NUMBER;
+    return (blockNumber.toString().toLowerCase() === 'pre_confirmed') || blockNumber === PRE_CONFIRMED_BLOCK_NUMBER;
   }
 
-  // returns the blockNumber if available, if the block is in pending status,
+  static isPendingBlockNumber(blockNumber) {
+    return this.isPreConfirmedBlockNumber(blockNumber);
+  }
+
+  // returns the blockNumber if available, if the block is in pre_confirmed status,
   // return 'Number.MAX_SAFE_INTEGER' as the blockNumber
   get blockNumber() {
-    return (this.blockData.block_number) ? Number(this.blockData.block_number) : PENDING_BLOCK_NUMBER;
+    return (typeof this.blockData.block_number !== 'undefined' && this.blockData.block_number !== null)
+      ? Number(this.blockData.block_number)
+      : PRE_CONFIRMED_BLOCK_NUMBER;
   }
 
-  // returns the blockHash if available, if the block is in pending status, return 'PENDING' as the hash
+  // returns the blockHash if available, if the block is in pre_confirmed status,
+  // return 'PRE_CONFIRMED' as the hash
   get blockHash() {
-    return this.blockData.block_hash || 'PENDING';
+    return this.blockData.block_hash || PRE_CONFIRMED_BLOCK_HASH;
   }
 
   get status() {
-    return this.blockData.status || 'PENDING';
+    return this.blockData.status || this.blockData.finality_status || 'PRE_CONFIRMED';
   }
 
   get timestamp() {
@@ -74,8 +81,15 @@ class Block {
     return this.blockData.status === 'ABORTED';
   }
 
+  isPreConfirmed() {
+    return this.blockData.status === 'PRE_CONFIRMED'
+      || !this.blockData.status
+      || typeof this.blockData.block_number === 'undefined'
+      || this.blockData.block_number === null;
+  }
+
   isPending() {
-    return this.blockData.status === 'PENDING' || !this.blockData.status || !this.blockData.block_number;
+    return this.isPreConfirmed();
   }
 }
 

@@ -3,8 +3,7 @@ const { Timer } = require('timer-node');
 const { eachSeries } = require('async');
 const StarknetProvider = require('@common/lib/starknet/provider');
 const EventService = require('@common/services/Event');
-const { EthereumBlockCache, StarknetBlockCache } = require('@common/lib/cache');
-const web3 = require('@common/lib/web3');
+const { StarknetBlockCache } = require('@common/lib/cache');
 const logger = require('@common/lib/logger');
 const eventEmitter = require('@common/lib/sio/emitter');
 const EventConfig = require('./config');
@@ -32,20 +31,6 @@ class EventProcessor {
       await handler.finalizeEvent();
       await handler.emitSocketEvents();
     });
-  }
-
-  // get and cache the current on chain block number
-  async processEthBlockNumber() {
-    try {
-      const blockNumber = await web3.eth.getBlockNumber();
-      const cachedBlockNumber = await EthereumBlockCache.getCurrentBlockNumber();
-      if (blockNumber && blockNumber !== cachedBlockNumber) {
-        // update the cache (NOTE: this value is returned in /events header)
-        await EthereumBlockCache.setCurrentBlockNumber(blockNumber);
-      }
-    } catch (error) {
-      logger.warn('EventProcessor::processEthBlockNumber', error);
-    }
   }
 
   // get and cache the current on chain block number
@@ -78,7 +63,6 @@ class EventProcessor {
     logger.info(`EventProcessor::main, event(s) to process: ${events.length}`);
 
     await this.process({ events });
-    // await this.processEthBlockNumber();
     await this.processStarknetBlockNumber();
 
     // if time elapsed is greater than the run delay, run now, else delay the diff

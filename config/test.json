@@ -98,7 +98,6 @@
   "Starknet": {
     "chainId": 1,
     "originBlock": 1,
-    "provider": "STARKNET_PROVIDER",
     "rpcProvider": "STARKNET_RPC_PROVIDER"
   },
   "Stripe": {

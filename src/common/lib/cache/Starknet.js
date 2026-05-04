@@ -5,34 +5,17 @@ class StarknetBlockCache extends BaseMongoCache {
     const cache = this.cacheInstance;
 
     return Promise.all([
-      cache.delete('ACCEPTED_L1_BLOCK'),
-      cache.delete('ACCEPTED_L2_BLOCKS')
+      cache.delete('LAST_RETRIEVED_STARKNET_BLOCK'),
+      cache.delete('LAST_AUDITED_FINALIZED_STARKNET_BLOCK')
     ]);
   }
 
-  /*
-    Get the last accepted l1 block from cache
-  */
-  static getl1AcceptedBlock() {
-    return this.cacheInstance.get('ACCEPTED_L1_BLOCK');
+  static getLastRetrievedBlock() {
+    return this.cacheInstance.get('LAST_RETRIEVED_STARKNET_BLOCK');
   }
 
-  static setl1AcceptedBlock(blockNumber) {
-    return this.cacheInstance.set('ACCEPTED_L1_BLOCK', blockNumber);
-  }
-
-  /*
-    Get seen/processed blocks from cache
-    Each item will contain the blockNumber and blockHash
-    Example: { 1234: 0x123456848 }
-  */
-  static async getl2AcceptedBlocks() {
-    const result = await this.cacheInstance.get('ACCEPTED_L2_BLOCKS');
-    return result || {};
-  }
-
-  static setl2AcceptedBlocks(values) {
-    return this.cacheInstance.set('ACCEPTED_L2_BLOCKS', values);
+  static setLastRetrievedBlock(blockNumber) {
+    return this.cacheInstance.set('LAST_RETRIEVED_STARKNET_BLOCK', blockNumber);
   }
 
   static setCurrentBlockNumber(blockNumber) {
@@ -41,6 +24,18 @@ class StarknetBlockCache extends BaseMongoCache {
 
   static getCurrentBlockNumber() {
     return this.cacheInstance.get('CURRENT_STARKNET_BLOCK_NUMBER');
+  }
+
+  static getLastAuditedFinalizedBlock() {
+    return this.cacheInstance.get('LAST_AUDITED_FINALIZED_STARKNET_BLOCK');
+  }
+
+  static setLastAuditedFinalizedBlock(blockNumber) {
+    return this.cacheInstance.set('LAST_AUDITED_FINALIZED_STARKNET_BLOCK', blockNumber);
+  }
+
+  static getLegacyAcceptedL1Block() {
+    return this.cacheInstance.get('ACCEPTED_L1_BLOCK');
   }
 }
 

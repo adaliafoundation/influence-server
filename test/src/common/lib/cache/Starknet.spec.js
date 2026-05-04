@@ -1,11 +1,16 @@
 const { expect } = require('chai');
 const mongoose = require('mongoose');
-const { range } = require('lodash');
+const BaseMongoCache = require('@common/lib/cache/Base');
 const StarknetBlockCache = require('@common/lib/cache/Starknet');
 
 describe('StarknetBlockCache', function () {
+  let collection;
+
+  beforeEach(function () {
+    collection = mongoose.connection.collection('keyv');
+  });
+
   afterEach(async function () {
-    const collection = mongoose.connection.collection('keyv');
     await collection.deleteMany({});
   });
 
@@ -15,52 +20,66 @@ describe('StarknetBlockCache', function () {
     });
   });
 
-  describe('setl1AcceptedBlock', function () {
-    it('should set the l1 accepted block', async function () {
-      await StarknetBlockCache.setl1AcceptedBlock(1234);
-      const coll = mongoose.connection.collection('keyv');
-      const result = await coll.findOne({});
-      expect(result.key).to.equal('keyv:ACCEPTED_L1_BLOCK');
-      expect(result.value).to.equal('{"value":1234,"expires":null}');
+  describe('getCurrentBlockNumber', function () {
+    it('should get the current starknet block number', async function () {
+      await BaseMongoCache.cacheInstance.set('CURRENT_STARKNET_BLOCK_NUMBER', 42);
+      expect(await StarknetBlockCache.getCurrentBlockNumber()).to.equal(42);
     });
   });
 
-  describe('getl1AcceptedBlock: ', function () {
-    it('should get the cached value of the l1 accepted block', async function () {
-      await StarknetBlockCache.setl1AcceptedBlock(1234);
-      const result = await StarknetBlockCache.getl1AcceptedBlock();
-      expect(result).to.equal(1234);
+  describe('setCurrentBlockNumber', function () {
+    it('should set the current starknet block number', async function () {
+      await StarknetBlockCache.setCurrentBlockNumber(42);
+      expect(await BaseMongoCache.cacheInstance.get('CURRENT_STARKNET_BLOCK_NUMBER')).to.equal(42);
     });
   });
 
-  describe('setl2AcceptedBlocks: ', function () {
-    it('should update the cached value of the l2 accepted blocks', async function () {
-      await StarknetBlockCache.setl2AcceptedBlocks({ 1234: '0x123456' });
-      const coll = mongoose.connection.collection('keyv');
-      const { key, value } = await coll.findOne({});
-      expect(key).to.equal('keyv:ACCEPTED_L2_BLOCKS');
-      expect(value).to.equal('{"value":{"1234":"0x123456"},"expires":null}');
-    });
-
-    it('should be able to store 10,000 blocks', async function () {
-      const blockData = range(12_345, 22_346).reduce((acc, blockNumber) => {
-        acc[blockNumber] = `0x${blockNumber}`;
-        return acc;
-      }, {});
-      await StarknetBlockCache.setl2AcceptedBlocks(blockData);
-      const coll = mongoose.connection.collection('keyv');
-      const { key, value } = await coll.findOne({});
-      const parsedValue = JSON.parse(value);
-      expect(key).to.equal('keyv:ACCEPTED_L2_BLOCKS');
-      expect(Object.keys(parsedValue.value).length).to.eql(10_001);
+  describe('getLastRetrievedBlock', function () {
+    it('should get the last retrieved starknet block number', async function () {
+      await BaseMongoCache.cacheInstance.set('LAST_RETRIEVED_STARKNET_BLOCK', 42);
+      expect(await StarknetBlockCache.getLastRetrievedBlock()).to.equal(42);
     });
   });
 
-  describe('getl2AcceptedBlocks: ', function () {
-    it('should get the cached value of the l2 accepted blocks', async function () {
-      await StarknetBlockCache.setl2AcceptedBlocks({ 1234: '0x123456' });
-      const result = await StarknetBlockCache.getl2AcceptedBlocks();
-      expect(result).to.eql({ 1234: '0x123456' });
+  describe('setLastRetrievedBlock', function () {
+    it('should set the last retrieved starknet block number', async function () {
+      await StarknetBlockCache.setLastRetrievedBlock(42);
+      expect(await BaseMongoCache.cacheInstance.get('LAST_RETRIEVED_STARKNET_BLOCK')).to.equal(42);
+    });
+  });
+
+  describe('getLastAuditedFinalizedBlock', function () {
+    it('should get the last audited finalized starknet block number', async function () {
+      await BaseMongoCache.cacheInstance.set('LAST_AUDITED_FINALIZED_STARKNET_BLOCK', 99);
+      expect(await StarknetBlockCache.getLastAuditedFinalizedBlock()).to.equal(99);
+    });
+  });
+
+  describe('setLastAuditedFinalizedBlock', function () {
+    it('should set the last audited finalized starknet block number', async function () {
+      await StarknetBlockCache.setLastAuditedFinalizedBlock(99);
+      expect(await BaseMongoCache.cacheInstance.get('LAST_AUDITED_FINALIZED_STARKNET_BLOCK')).to.equal(99);
+    });
+  });
+
+  describe('getLegacyAcceptedL1Block', function () {
+    it('should get the legacy accepted on l1 starknet block number', async function () {
+      await BaseMongoCache.cacheInstance.set('ACCEPTED_L1_BLOCK', 77);
+      expect(await StarknetBlockCache.getLegacyAcceptedL1Block()).to.equal(77);
+    });
+  });
+
+  describe('reset', function () {
+    it('should delete only the optimistic/audited starknet checkpoint keys', async function () {
+      await BaseMongoCache.cacheInstance.set('LAST_RETRIEVED_STARKNET_BLOCK', 11);
+      await BaseMongoCache.cacheInstance.set('LAST_AUDITED_FINALIZED_STARKNET_BLOCK', 22);
+      await BaseMongoCache.cacheInstance.set('CURRENT_STARKNET_BLOCK_NUMBER', 33);
+
+      await StarknetBlockCache.reset();
+
+      expect(await BaseMongoCache.cacheInstance.get('LAST_RETRIEVED_STARKNET_BLOCK')).to.equal(undefined);
+      expect(await BaseMongoCache.cacheInstance.get('LAST_AUDITED_FINALIZED_STARKNET_BLOCK')).to.equal(undefined);
+      expect(await BaseMongoCache.cacheInstance.get('CURRENT_STARKNET_BLOCK_NUMBER')).to.equal(33);
     });
   });
 });

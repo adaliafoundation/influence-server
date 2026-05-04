@@ -9,6 +9,13 @@ const Event = require('../models/Event');
 const DefaultStarknetProvider = require('./default');
 
 class RpcProvider extends DefaultStarknetProvider {
+  _toBlockId(blockNumber) {
+    if (isObject(blockNumber) && ('block_number' in blockNumber || 'block_hash' in blockNumber)) return blockNumber;
+    if (isString(blockNumber) && !Number.isFinite(Number(blockNumber))) return blockNumber;
+    if (Block.isPreConfirmedBlockNumber(blockNumber)) return 'pre_confirmed';
+    return { block_number: blockNumber };
+  }
+
   /*
     Internal methods
   */
@@ -17,7 +24,7 @@ class RpcProvider extends DefaultStarknetProvider {
       jsonrpc: '2.0',
       method: 'starknet_getBlockWithTxHashes',
       id: 0,
-      params: (blockNumber === 'pending') ? { block_id: 'pending' } : { block_id: { block_number: blockNumber } }
+      params: { block_id: this._toBlockId(blockNumber) }
     }, { responseType: 'json' });
 
     if (response.data.error) {
@@ -28,7 +35,8 @@ class RpcProvider extends DefaultStarknetProvider {
   }
 
   async _getBlockWithTxHashes({ blockNumber, blockHash, cacheEnabled = false } = {}) {
-    if (!blockNumber && !blockHash) throw new Error('No block number or block hash provided');
+    const hasBlockNumber = typeof blockNumber !== 'undefined' && blockNumber !== null;
+    if (!hasBlockNumber && !blockHash) throw new Error('No block number or block hash provided');
 
     if (cacheEnabled && (blockHash || blockNumber)) {
       const cached = await StarknetRpcCache.getBlockWithTxHashes({ blockNumber, blockHash });
@@ -39,7 +47,7 @@ class RpcProvider extends DefaultStarknetProvider {
       jsonrpc: '2.0',
       method: 'starknet_getBlockWithTxHashes',
       id: 0,
-      params: { block_id: (blockHash) ? { block_hash: blockHash } : { block_number: blockNumber } }
+      params: { block_id: (blockHash) ? { block_hash: blockHash } : this._toBlockId(blockNumber) }
     }, { responseType: 'json' });
 
     if (response.data.error) {
@@ -48,20 +56,20 @@ class RpcProvider extends DefaultStarknetProvider {
 
     const block = new Block(response.data.result);
 
-    // Only cache if the block is not pending
-    if (cacheEnabled && !block.isPending()) {
+    // Only cache if the block is not pre-confirmed
+    if (cacheEnabled && !block.isPreConfirmed()) {
       await StarknetRpcCache.setBlockWithTxHashes({ blockHash, blockNumber, data: response.data.result });
     }
 
     return block;
   }
 
-  async _getPendingBlock() {
+  async _getPreConfirmedBlock() {
     const response = await axios.post(this.endpoint, {
       jsonrpc: '2.0',
       method: 'starknet_getBlockWithTxHashes',
       id: 0,
-      params: { block_id: 'pending' }
+      params: { block_id: 'pre_confirmed' }
     }, { responseType: 'json' });
 
     if (response.data.error) {
@@ -74,8 +82,8 @@ class RpcProvider extends DefaultStarknetProvider {
   async _getEvents({ address, chunkSize = 100, fromBlock, toBlock = null, continuationToken = null, acc = [] }) {
     if (!address) throw new Error('No address provided');
 
-    const _fromBlock = (Block.isPendingBlockNumber(fromBlock)) ? 'pending' : { block_number: fromBlock };
-    const _toBlock = (Block.isPendingBlockNumber(toBlock)) ? 'pending' : { block_number: (toBlock || _fromBlock) };
+    const _fromBlock = this._toBlockId(fromBlock);
+    const _toBlock = this._toBlockId(toBlock ?? fromBlock);
 
     const response = await axios.post(this.endpoint, {
       jsonrpc: '2.0',
@@ -92,9 +100,7 @@ class RpcProvider extends DefaultStarknetProvider {
       }
     }, { responseType: 'json' });
 
-    if (response.data.error) {
-      throw new Error(`Error getting block: ${JSON.stringify(response.data.error)}`);
-    }
+    if (response.data.error) throw new Error(`Error getting events: ${JSON.stringify(response.data.error)}`);
 
     if (response.data.result.continuation_token) {
       return this._getEvents({
@@ -113,8 +119,8 @@ class RpcProvider extends DefaultStarknetProvider {
   async _getEventsBatch({ addresses, chunkSize = 100, fromBlock, toBlock = null }) {
     if (addresses?.length === 0) throw new Error('No addresses provided');
 
-    const _fromBlock = (Block.isPendingBlockNumber(fromBlock)) ? 'pending' : { block_number: fromBlock };
-    const _toBlock = (Block.isPendingBlockNumber(toBlock)) ? 'pending' : { block_number: (toBlock || _fromBlock) };
+    const _fromBlock = this._toBlockId(fromBlock);
+    const _toBlock = this._toBlockId(toBlock ?? fromBlock);
 
     const events = [];
     const body = addresses.map((a, index) => ({
@@ -135,7 +141,7 @@ class RpcProvider extends DefaultStarknetProvider {
 
     // error check
     const hasErrors = response.data.some((r) => r.error);
-    if (hasErrors) throw new Error(`Error getting block: ${JSON.stringify(response.data.map((r) => r.error))}`);
+    if (hasErrors) throw new Error(`Error getting events: ${JSON.stringify(response.data.map((r) => r.error))}`);
 
     for (const { id, result } of response.data) {
       events.push(...result.events.map((e) => new Event(e)));
@@ -188,8 +194,8 @@ class RpcProvider extends DefaultStarknetProvider {
 
     const txReceipt = new TransactionReceipt(response.data.result);
 
-    // Only cache if the block is not pending
-    if (cacheEnabled && !txReceipt.isBlockPending()) {
+    // Only cache if the block is not pre-confirmed
+    if (cacheEnabled && !txReceipt.isBlockPreConfirmed()) {
       await StarknetRpcCache.setTransactionReceipt(transactionHash, response.data.result);
     }
 
@@ -237,62 +243,88 @@ class RpcProvider extends DefaultStarknetProvider {
       : this._getBlockNumber();
   }
 
-  async getEvents({ address, addresses = [], fromBlock, toBlock }) {
+  async getEvents({ address, addresses = [], fromBlock, toBlock }, { withBackOff = true } = {}) {
+    if (typeof fromBlock === 'undefined' || fromBlock === null) throw new Error('No fromBlock provided');
+    const method = (addresses?.length > 0) ? '_getEventsBatch' : '_getEvents';
+    const fetchRawEvents = () => this[method]({
+      address,
+      addresses,
+      fromBlock,
+      toBlock: toBlock || fromBlock,
+      chunkSize: 100
+    });
+    const rawEvents = (withBackOff)
+      ? await this._callWithBackoff(fetchRawEvents, 'getEvents')
+      : await fetchRawEvents();
+    if (rawEvents.length === 0) return [];
+
+    const blocksByHash = {};
+    const isPreConfirmedRange = (
+      Block.isPreConfirmedBlockNumber(fromBlock) || Block.isPreConfirmedBlockNumber(toBlock || fromBlock)
+    );
+    const confirmedBlockHashes = chain(rawEvents)
+      .filter((event) => !event.isBlockPreConfirmed() && event.blockHash)
+      .map('blockHash')
+      .uniq()
+      .value();
+    for (const blockHash of confirmedBlockHashes) {
+      blocksByHash[blockHash] = await this._getBlockWithTxHashes({ blockHash, cacheEnabled: true });
+    }
+
+    let preConfirmedBlock = null;
+    if (isPreConfirmedRange) {
+      try {
+        preConfirmedBlock = await this._getPreConfirmedBlock();
+      } catch (error) {
+        logger.warn(`RpcProvider::getEvents, unable to load pre_confirmed block metadata: ${error}`);
+      }
+    }
+
     const events = [];
-    if (!fromBlock) throw new Error('No fromBlock provided');
+    const transactionEventIndexMap = {};
+    for (const event of rawEvents) {
+      const block = event.isBlockPreConfirmed() ? preConfirmedBlock : blocksByHash[event.blockHash];
 
-    const pendingBlock = (Block.isPendingBlockNumber(fromBlock) || Block.isPendingBlockNumber(toBlock || fromBlock))
-      ? await this._getPendingBlock() : null;
-
-    // Get a unique list of transaction receipts for the given address(es) and block range
-    const transactionReceipts = await this._getTransactionReceipts({
-      address, addresses, fromBlock, toBlock: toBlock || fromBlock, isPending: !!pendingBlock });
-
-    // For each transaction hash, get the transaction receipt, pull the relevant events
-    for (const transactionReceipt of transactionReceipts) {
-      const block = (transactionReceipt.isBlockPending()) ? pendingBlock
-        : await this._getBlockWithTxHashes({ blockHash: transactionReceipt.blockHash });
-
-      if (!block && transactionReceipt.isBlockPending()) {
-        logger.debug(`Non-pending block not found for transactionReceipt: ${JSON.stringify(transactionReceipt)}`);
+      if (!block && !event.isBlockPreConfirmed()) {
+        throw new Error(`Block not found for event: ${JSON.stringify(event)}`);
+      }
+      if (!block && event.isBlockPreConfirmed()) {
+        logger.debug(`Skipping pre-confirmed event missing block metadata: ${JSON.stringify(event)}`);
         continue; // eslint-disable-line no-continue
       }
 
-      // if not a pending block transaction and no block found, throw an error
-      // this will cause the block to be fetched again
-      if (!block) throw new Error(`Block not found for transactionReceipt: ${JSON.stringify(transactionReceipt)}`);
-
-      let transactionIndex;
-      try {
-        transactionIndex = block.getTransactionIndex(transactionReceipt.transactionHash);
-      } catch (error) {
-        // If we are in a pending block, the transaction may have been reverted, just skip it
-        if (pendingBlock) {
-          logger.debug(`Transaction ${transactionReceipt.transactionHash} not found on pending block.`);
-          continue; // eslint-disable-line no-continue
-        } else {
+      let { transactionIndex } = event;
+      if (transactionIndex === null && event.transactionHash) {
+        try {
+          transactionIndex = block.getTransactionIndex(event.transactionHash);
+        } catch (error) {
+          if (event.isBlockPreConfirmed()) {
+            logger.debug(`Pre-confirmed transaction ${event.transactionHash} not found on current block.`);
+            continue; // eslint-disable-line no-continue
+          }
           throw error;
         }
       }
 
-      // NOTE: this filtering may not be required
-      const filteredEvents = transactionReceipt.getEventsByAddress([address, ...addresses]);
+      let { logIndex } = event;
+      if (logIndex === null) {
+        const txKey = event.transactionHash;
+        logIndex = transactionEventIndexMap[txKey] || 0;
+        transactionEventIndexMap[txKey] = logIndex + 1;
+      }
 
-      filteredEvents.reduce((acc, e) => {
-        acc.push({
-          address: e.fromAddress,
-          blockHash: block.blockHash,
-          blockNumber: block.blockNumber,
-          data: e.data,
-          keys: e.keys,
-          logIndex: e.logIndex,
-          status: block.status,
-          timestamp: block.timestamp,
-          transactionHash: transactionReceipt.transactionHash,
-          transactionIndex
-        });
-        return acc;
-      }, events);
+      events.push({
+        address: event.fromAddress,
+        blockHash: block.blockHash,
+        blockNumber: block.blockNumber,
+        data: event.data,
+        keys: event.keys,
+        logIndex,
+        status: block.status,
+        timestamp: block.timestamp,
+        transactionHash: event.transactionHash,
+        transactionIndex
+      });
     }
 
     return events;

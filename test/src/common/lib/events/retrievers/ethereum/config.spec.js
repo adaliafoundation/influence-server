@@ -23,9 +23,17 @@ describe('Ethereum Event Config', function () {
     it('should build and set the _eventsConfig property', function () {
       EthereumEventConfig.buildEventsConfig(ADDRESS_NAME_MAP);
       const address = '0x0000000000000000000000000000000000000123';
-      expect(EthereumEventConfig._eventsConfig[address]).to.have.all.keys('address', 'contract', 'handlers');
+      expect(EthereumEventConfig._eventsConfig[address]).to.have.all.keys(
+        'abi',
+        'address',
+        'contract',
+        'eventTopicMap',
+        'eventTopics',
+        'handlers'
+      );
       expect(EthereumEventConfig._eventsConfig[address].handlers).to.have.all.keys('Transfer');
       expect(EthereumEventConfig._eventsConfig[address].contract).to.be.an('object');
+      expect(EthereumEventConfig._eventsConfig[address].eventTopics).to.have.lengthOf(1);
     });
   });
 

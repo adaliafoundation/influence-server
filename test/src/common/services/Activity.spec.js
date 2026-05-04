@@ -290,14 +290,12 @@ describe('ActivityService', function () {
     });
   });
 
-  describe('purgeByRemoved', function () {
-    it('should remove activities matching removed events', async function () {
-      await Promise.all([
-        events[0].set('removed', true).save(),
-        events[1].set('removed', true).save()
+  describe('purgeByTransactionHashes', function () {
+    it('should remove activities matching only the specified transaction hashes', async function () {
+      await ActivityService.purgeByTransactionHashes([
+        events[0].transactionHash,
+        events[1].transactionHash
       ]);
-
-      await ActivityService.purgeByRemoved();
 
       const docs = await mongoose.model('Activity').find({});
       expect(docs.length).to.eql(1);

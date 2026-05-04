@@ -1,7 +1,7 @@
 const { Address } = require('@influenceth/sdk');
 const { isNil } = require('lodash');
 const { hex } = require('../../num');
-const { PENDING_BLOCK_NUMBER } = require('./constants');
+const { PRE_CONFIRMED_BLOCK_HASH, PRE_CONFIRMED_BLOCK_NUMBER } = require('./constants');
 
 class Event {
   constructor(eventData) {
@@ -9,11 +9,13 @@ class Event {
   }
 
   get blockNumber() {
-    return (this._eventData.block_number || PENDING_BLOCK_NUMBER);
+    return (typeof this._eventData.block_number !== 'undefined' && this._eventData.block_number !== null)
+      ? Number(this._eventData.block_number)
+      : PRE_CONFIRMED_BLOCK_NUMBER;
   }
 
   get blockHash() {
-    return this._eventData.block_hash || 'PENDING';
+    return this._eventData.block_hash || PRE_CONFIRMED_BLOCK_HASH;
   }
 
   get data() {
@@ -29,15 +31,25 @@ class Event {
   }
 
   get logIndex() {
-    return (isNil(this._eventData.logIndex)) ? null : this._eventData.logIndex;
+    const index = isNil(this._eventData.logIndex) ? this._eventData.event_index : this._eventData.logIndex;
+    return isNil(index) ? null : Number(index);
   }
 
   get transactionHash() {
     return (this._eventData.transaction_hash) ? hex.to64(this._eventData.transaction_hash) : null;
   }
 
+  get transactionIndex() {
+    const index = this._eventData.transaction_index;
+    return isNil(index) ? null : Number(index);
+  }
+
+  isBlockPreConfirmed() {
+    return this.blockNumber === PRE_CONFIRMED_BLOCK_NUMBER;
+  }
+
   isBlockPending() {
-    return this.blockNumber === PENDING_BLOCK_NUMBER;
+    return this.isBlockPreConfirmed();
   }
 
   toString() {
@@ -52,7 +64,8 @@ class Event {
       fromAddress: this.fromAddress,
       keys: this.keys,
       logIndex: this.logIndex,
-      transactionHash: this.transactionHash
+      transactionHash: this.transactionHash,
+      transactionIndex: this.transactionIndex
     };
   }
 }

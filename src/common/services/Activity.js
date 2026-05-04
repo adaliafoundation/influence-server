@@ -217,18 +217,13 @@ class ActivityService {
     });
   }
 
-  /**
-   * Remove all activities matching the transactionHash for event docs that have been marked as removed
-   */
-  static async purgeByRemoved() {
-    const eventDocs = await mongoose.model('Event')
-      .find({ removed: true })
-      .select('transactionHash');
+  static async purgeByTransactionHashes(transactionHashes = []) {
+    const uniqueTransactionHashes = [...new Set(compact(transactionHashes))];
+    if (uniqueTransactionHashes.length === 0) return { deletedCount: 0 };
 
-    if (eventDocs.length > 0) {
-      await mongoose.model('Activity').deleteMany({
-        'event.transactionHash': { $in: eventDocs.map(({ transactionHash }) => transactionHash) } });
-    }
+    return mongoose.model('Activity').deleteMany({
+      'event.transactionHash': { $in: uniqueTransactionHashes }
+    });
   }
 
   /**

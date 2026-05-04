@@ -1,5 +1,10 @@
 require('module-alias/register');
 require('dotenv').config({ silent: true });
+
+// Keep tests deterministic regardless of shell/.env values.
+process.env.CLIENT_URL = 'http://localhost.local';
+process.env.IMAGES_SERVER_URL = 'IMAGES_SERVER_URL';
+
 const sinon = require('sinon');
 const appConfig = require('config');
 const mongoose = require('mongoose');

@@ -1,5 +1,5 @@
 const appConfig = require('config');
-const { compact, delay } = require('lodash');
+const { delay } = require('lodash');
 const { Timer } = require('timer-node');
 const { EthereumBlockCache } = require('@common/lib/cache');
 const web3 = require('@common/lib/web3');
@@ -7,83 +7,124 @@ const EthereumEventService = require('../../../../services/Event/Ethereum');
 const EthereumEventsConfig = require('./config');
 const logger = require('../../../logger');
 
-const BLOCK_WINDOW_OFFSET = 6;
 const ETH_ORIGIN_BLOCK = appConfig.get('Ethereum.originBlock');
+const DEFAULT_BLOCK_BATCH_SIZE = 1000;
+const DEFAULT_BOOTSTRAP_LOOKBACK_BLOCKS = 10000;
 
 class EthereumRetriever {
-  async getLatestLocalBlockNumber() {
-    const event = await EthereumEventService.getLatestEventByBlock();
-    return (event || {}).blockNumber;
+  async getBootstrapLastRetrievedBlock() {
+    const originBlock = Number(ETH_ORIGIN_BLOCK);
+    const bootstrapLookbackBlocks = Number(
+      appConfig.EventRetriever.ethereum?.bootstrapLookbackBlocks || DEFAULT_BOOTSTRAP_LOOKBACK_BLOCKS
+    );
+    const lastAuditedFinalizedBlock = Number(await EthereumBlockCache.getLastAuditedFinalizedBlock());
+    const latestEvent = await EthereumEventService.getLatestEventByBlock();
+    const latestEventBlock = Number(latestEvent?.blockNumber);
+    let recentHeadBlock = Number.NaN;
+
+    try {
+      const headBlock = Number(await web3.eth.getBlockNumber());
+      if (Number.isFinite(headBlock)) {
+        recentHeadBlock = Math.max(originBlock - 1, headBlock - bootstrapLookbackBlocks);
+      }
+    } catch (error) {
+      logger.warn(`EthereumRetriever::getBootstrapLastRetrievedBlock, unable to load head block: ${error.message}`);
+    }
+
+    const orderedCandidates = [
+      ['lastAuditedFinalizedBlock', lastAuditedFinalizedBlock],
+      ['recentHeadBlock', recentHeadBlock],
+      ['latestEventBlock', latestEventBlock]
+    ];
+    const [source, bootstrapBlock = originBlock - 1] = orderedCandidates
+      .find(([, value]) => Number.isFinite(value)) || [];
+
+    return {
+      bootstrapBlock,
+      source,
+      candidates: {
+        lastAuditedFinalizedBlock,
+        recentHeadBlock,
+        latestEventBlock
+      }
+    };
+  }
+
+  async ensureBootstrapCheckpoint() {
+    const existingValue = await EthereumBlockCache.getLastRetrievedBlock();
+    const parsedValue = Number(existingValue);
+    if (Number.isFinite(parsedValue)) return parsedValue;
+
+    const { bootstrapBlock, source, candidates } = await this.getBootstrapLastRetrievedBlock();
+    await EthereumBlockCache.setLastRetrievedBlock(bootstrapBlock);
+    logger.info(
+      `EthereumRetriever::ensureBootstrapCheckpoint, bootstrapped to block ${bootstrapBlock}`
+      + ` via ${source || 'origin'}`
+      + ` (audited=${candidates.lastAuditedFinalizedBlock}, recentHead=${candidates.recentHeadBlock},`
+      + ` latestEvent=${candidates.latestEventBlock})`
+    );
+    return bootstrapBlock;
+  }
+
+  async cacheCurrentBlockNumber(blockNumber) {
+    if (!Number.isFinite(blockNumber)) return;
+
+    const cachedBlockNumber = await EthereumBlockCache.getCurrentBlockNumber();
+    if (blockNumber !== Number(cachedBlockNumber)) {
+      await EthereumBlockCache.setCurrentBlockNumber(blockNumber);
+    }
+  }
+
+  async forEachBlockRangeBatch({ fromBlock, toBlock, batchSize = DEFAULT_BLOCK_BATCH_SIZE }, fn) {
+    if (!fn || typeof fn !== 'function') throw new Error('fn callback is required');
+    if (!Number.isFinite(fromBlock) || !Number.isFinite(toBlock)) throw new Error('fromBlock/toBlock must be numbers');
+    if (!Number.isFinite(batchSize) || batchSize < 1) throw new Error('batchSize must be a positive number');
+
+    for (let blockNumber = fromBlock; blockNumber <= toBlock; blockNumber += batchSize) {
+      const batchToBlock = Math.min(toBlock, blockNumber + batchSize - 1);
+      await fn({ fromBlock: blockNumber, toBlock: batchToBlock });
+    }
   }
 
   async pullEvents({ address, fromBlock, toBlock } = {}) {
     logger.debug(`EthereumRetriever::pullEvents, from: ${fromBlock} to: ${toBlock}`);
-    if (!fromBlock || fromBlock < 0) return [];
-    const results = [];
+    if (!Number.isFinite(fromBlock) || fromBlock < 0) return [];
 
-    const configs = (address) ? compact([EthereumEventsConfig.getConfigByAddress(address)])
-      : EthereumEventsConfig.toArray();
+    const normalizedAddress = address ? EthereumEventsConfig.getConfigByAddress(address)?.address : null;
+    const queryAddresses = normalizedAddress ? [normalizedAddress] : EthereumEventsConfig.getTrackedAddresses();
+    const topics = normalizedAddress
+      ? Object.keys(EthereumEventsConfig.getConfigByAddress(normalizedAddress)?.eventTopicMap || {})
+      : EthereumEventsConfig.getTrackedTopics();
 
-    if (configs.length === 0) throw new Error('No configs found for address(es) provided');
+    if (queryAddresses.length === 0 || topics.length === 0) return [];
 
-    for (const config of configs) {
-      for (const handler of Object.values(config.handlers)) {
-        const { eventFilter = {}, eventName } = handler;
-        // If the to block is greater than the optional deprecation block, dont pull events
-        if (!handler.eventFilter?.DEPRECATED_AT || handler.eventFilter?.DEPRECATED_AT > toBlock) {
-          const events = await config.contract.getPastEvents(eventName, { fromBlock, toBlock, filter: eventFilter });
-          results.push(...events.map((e) => handler.parseEvent(e)));
-        }
+    const logs = await web3.eth.getPastLogs({
+      address: queryAddresses,
+      fromBlock,
+      toBlock,
+      topics: [topics]
+    });
+
+    return logs.reduce((events, log) => {
+      const decodedEvent = EthereumEventsConfig.decodeRawLog(log);
+      if (!decodedEvent) return events;
+
+      const handler = EthereumEventsConfig.getHandler(decodedEvent);
+      if (!handler) return events;
+
+      if (handler.eventFilter?.DEPRECATED_AT && handler.eventFilter.DEPRECATED_AT <= decodedEvent.blockNumber) {
+        return events;
       }
-    }
 
-    return results;
+      if (!EthereumEventsConfig.matchesEventFilter(decodedEvent, handler.eventFilter)) return events;
+
+      events.push(handler.parseEvent(decodedEvent));
+      return events;
+    }, []);
   }
 
   async saveEvents(events) {
     return EthereumEventService.updateOrCreateMany(events);
-  }
-
-  async saveEvent(event) {
-    return EthereumEventService.updateOrCreateOne(event);
-  }
-
-  async initListeners() {
-    const handleEvent = async (event, handler) => {
-      const _event = handler.parseEvent(event);
-      const { eventFilter } = handler;
-
-      try {
-        if (!eventFilter?.DEPRECATED_AT
-          || (_event.blockNumber && _event.blockNumber < eventFilter?.DEPRECATED_AT)) {
-          await this.saveEvent(_event);
-        }
-      } catch (saveError) {
-        logger.error(saveError);
-      }
-    };
-
-    const currentEthBlockNumber = await EthereumBlockCache.getCurrentBlockNumber()
-      || await web3.eth.getBlockNumber();
-
-    for (const { address, contract, handlers } of EthereumEventsConfig.toArray()) {
-      for (const handler of Object.values(handlers)) {
-        let options = {};
-        const { eventFilter, eventName } = handler;
-
-        // add event filter if it exists
-        if (eventFilter) options = { filter: eventFilter };
-        if (!eventFilter?.DEPRECATED_AT
-          || (currentEthBlockNumber && eventFilter?.DEPRECATED_AT > currentEthBlockNumber)) {
-          // add event subscription for the current event
-
-          logger.info(`EthereumRetriever::initListeners, setting up listener for contract ${address}::${eventName}`);
-          const subscription = await contract.events[eventName](options);
-          subscription.on('data', (event) => handleEvent(event, handler));
-          subscription.on('error', (error) => logger.error(error));
-        }
-      }
-    }
   }
 
   async runOnce({ blocks, contractAddress, fromBlock, toBlock }) {
@@ -94,10 +135,21 @@ class EthereumRetriever {
         if (events.length > 0) await this.saveEvents(events);
       }
     } else {
-      if (toBlock < fromBlock) return null;
-      const events = await this.pullEvents({ address: contractAddress, fromBlock, toBlock });
-      logger.info(`EthereumRetriever:runOnce, event(s) pulled: ${events.length}`);
-      if (events.length > 0) await this.saveEvents(events);
+      const usesLatestHead = toBlock === 'latest' || typeof toBlock === 'undefined' || toBlock === null;
+      const _fromBlock = Number(fromBlock || ETH_ORIGIN_BLOCK);
+      const _toBlock = usesLatestHead
+        ? Number(await web3.eth.getBlockNumber())
+        : Number(toBlock);
+      if (usesLatestHead) await this.cacheCurrentBlockNumber(_toBlock);
+      if (_toBlock < _fromBlock) return null;
+      const batchSize = Number(appConfig.EventRetriever.ethereum?.blockBatchSize || DEFAULT_BLOCK_BATCH_SIZE);
+      await this.forEachBlockRangeBatch({ fromBlock: _fromBlock, toBlock: _toBlock, batchSize }, async (range) => {
+        const events = await this.pullEvents({ address: contractAddress, ...range });
+        logger.info(
+          `EthereumRetriever:runOnce, [${range.fromBlock} -> ${range.toBlock}], event(s) pulled: ${events.length}`
+        );
+        if (events.length > 0) await this.saveEvents(events);
+      });
     }
 
     return null;
@@ -115,39 +167,45 @@ class EthereumRetriever {
       const logSlug = 'EthereumRetriever::runner';
       const timer = new Timer({ label: 'EthereumRetriever-timer' }).start();
       let latestBlockNumber;
+      let fromBlock;
+      let toBlock;
       try {
         latestBlockNumber = Number(await web3.eth.getBlockNumber());
         if (!latestBlockNumber) throw new Error('getBlockNumber returned empty value');
-      } catch (error) {
-        logger.error(error);
-        return null;
-      }
+        await this.cacheCurrentBlockNumber(latestBlockNumber);
+        const batchSize = Number(appConfig.EventRetriever.ethereum?.blockBatchSize || DEFAULT_BLOCK_BATCH_SIZE);
+        const lastRetrieved = await this.ensureBootstrapCheckpoint();
+        fromBlock = Math.max(Number(ETH_ORIGIN_BLOCK), lastRetrieved + 1);
+        toBlock = Math.min(latestBlockNumber, fromBlock + batchSize - 1);
 
-      const lastRetrieved = (await EthereumBlockCache.getLastRetrievedBlock()) || ETH_ORIGIN_BLOCK;
-      const lastLocalEvent = (await this.getLatestLocalBlockNumber()) || ETH_ORIGIN_BLOCK;
-      const localStartBlock = Math.max(Number(lastRetrieved), Number(lastLocalEvent));
-      const latestAvailableBlock = latestBlockNumber - BLOCK_WINDOW_OFFSET;
-      const fromBlock = Math.min(localStartBlock, latestAvailableBlock);
-      const toBlock = Math.min(latestAvailableBlock, fromBlock + BLOCK_WINDOW_OFFSET);
-
-      try {
-        const events = await this.pullEvents({ fromBlock, toBlock });
-
-        if (events.length > 0) {
-          logger.info(`${logSlug}, event(s) pulled: ${events.length}`);
-          await this.saveEvents(events);
+        if (fromBlock > latestBlockNumber) {
+          logger.debug(`${logSlug}, caught up at block ${latestBlockNumber}`);
         } else {
-          logger.debug(`${logSlug}, event(s) pulled: ${events.length}`);
-        }
+          logger.info(`${logSlug}, retrieve range [${fromBlock} -> ${toBlock}] (head=${latestBlockNumber})`);
+          const events = await this.pullEvents({ fromBlock, toBlock });
 
-        await EthereumBlockCache.setLastRetrievedBlock(toBlock);
+          if (events.length > 0) {
+            logger.info(`${logSlug}, event(s) pulled: ${events.length}`);
+            await this.saveEvents(events);
+          } else {
+            logger.debug(`${logSlug}, event(s) pulled: ${events.length}`);
+          }
+
+          await EthereumBlockCache.setLastRetrievedBlock(toBlock);
+          logger.info(`${logSlug}, advanced checkpoint to block ${toBlock}`);
+        }
       } catch (error) {
+        logger.error(`${logSlug}, runner iteration failed`);
         logger.error(error);
       }
 
       if (timer.ms() < _runDelay) {
         const shortDelay = appConfig.util.getEnv('NODE_ENV') === 'development' ? 1 : 1000;
-        const delayMs = toBlock < latestAvailableBlock ? shortDelay : _runDelay - timer.ms();
+        const caughtUp = !Number.isFinite(latestBlockNumber)
+          || !Number.isFinite(fromBlock)
+          || fromBlock > latestBlockNumber
+          || (Number.isFinite(toBlock) && toBlock >= latestBlockNumber);
+        const delayMs = caughtUp ? _runDelay - timer.ms() : shortDelay;
 
         logger.info(`${logSlug}, run delay not met, delaying for [${delayMs}ms]...`);
         await new Promise((resolve) => {

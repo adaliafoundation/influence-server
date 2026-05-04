@@ -1,6 +1,6 @@
 const { expect } = require('chai');
 const Event = require('@common/lib/starknet/models/Event');
-const { PENDING_BLOCK_NUMBER } = require('@common/lib/starknet/models/constants');
+const { PRE_CONFIRMED_BLOCK_NUMBER } = require('@common/lib/starknet/models/constants');
 
 describe('Starknet Event model', function () {
   describe('constructor', function () {
@@ -18,10 +18,10 @@ describe('Starknet Event model', function () {
       expect(event.blockNumber).to.equal(1);
     });
 
-    it('should return the pending block number (if empty)', function () {
+    it('should return the pre_confirmed block number (if empty)', function () {
       const eventData = {};
       const event = new Event(eventData);
-      expect(event.blockNumber).to.equal(PENDING_BLOCK_NUMBER);
+      expect(event.blockNumber).to.equal(PRE_CONFIRMED_BLOCK_NUMBER);
     });
   });
 
@@ -32,10 +32,10 @@ describe('Starknet Event model', function () {
       expect(event.blockHash).to.equal('hash');
     });
 
-    it('should return "PENDING" (if empty)', function () {
+    it('should return "PRE_CONFIRMED" (if empty)', function () {
       const eventData = {};
       const event = new Event(eventData);
-      expect(event.blockHash).to.equal('PENDING');
+      expect(event.blockHash).to.equal('PRE_CONFIRMED');
     });
   });
 
@@ -85,19 +85,19 @@ describe('Starknet Event model', function () {
     });
   });
 
-  describe('isBlockPending', function () {
-    it('should return true if the block number is pending', function () {
+  describe('isBlockPreConfirmed', function () {
+    it('should return true if the block number is pre_confirmed', function () {
       let event = new Event({});
-      expect(event.isBlockPending()).to.equal(true);
+      expect(event.isBlockPreConfirmed()).to.equal(true);
 
-      event = new Event({ block_number: PENDING_BLOCK_NUMBER });
-      expect(event.isBlockPending()).to.equal(true);
+      event = new Event({ block_number: PRE_CONFIRMED_BLOCK_NUMBER });
+      expect(event.isBlockPreConfirmed()).to.equal(true);
     });
 
-    it('should return false if the block number is not pending', function () {
+    it('should return false if the block number is not pre_confirmed', function () {
       const eventData = { block_number: 1 };
       const event = new Event(eventData);
-      expect(event.isBlockPending()).to.equal(false);
+      expect(event.isBlockPreConfirmed()).to.equal(false);
     });
   });
 
@@ -105,8 +105,8 @@ describe('Starknet Event model', function () {
     it('should return a stringified version of the object', function () {
       const eventData = { data: 'data' };
       const event = new Event(eventData);
-      expect(event.toString()).to.equal('{"blockNumber":9007199254740991,"blockHash":"PENDING","data":"data",'
-        + '"fromAddress":null,"keys":null,"logIndex":null,"transactionHash":null}');
+      expect(event.toString()).to.equal('{"blockNumber":9007199254740991,"blockHash":"PRE_CONFIRMED","data":"data",'
+        + '"fromAddress":null,"keys":null,"logIndex":null,"transactionHash":null,"transactionIndex":null}');
     });
   });
 
@@ -129,7 +129,8 @@ describe('Starknet Event model', function () {
         fromAddress: '0x0517567ac7026ce129c950e6e113e437aa3c83716cd61481c6bb8c5057e6923e',
         keys: eventData.keys,
         logIndex: eventData.logIndex,
-        transactionHash: '0x00ac3dcc7c733ba73e19b5fd262533a12607748a174c9af5c7c28a6e84263e22'
+        transactionHash: '0x00ac3dcc7c733ba73e19b5fd262533a12607748a174c9af5c7c28a6e84263e22',
+        transactionIndex: null
       });
     });
   });

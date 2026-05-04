@@ -9,7 +9,7 @@
     "updatePositions": "node ./bin/updatePositions.js",
     "ethereumEventRetriever": "node ./src/workers/eventRetriever.js --eventSource=ethereum",
     "starknetEventRetriever": "node ./src/workers/eventRetriever.js --eventSource=starknet",
-    "starknetEventAuditor": "node ./src/workers/starknetEventAuditor.js",
+    "eventAuditor": "node ./src/workers/eventAuditor.js",
     "eventProcessor": "node ./src/workers/eventProcessor.js",
     "elasticIndexer": "node ./src/workers/elasticsearch.js",
     "nftCardBuilder": "node ./src/workers/nftCardBuilder.js",
@@ -106,7 +106,7 @@
     "supertest": "6.3.3"
   },
   "engines": {
-    "node": "18.15.0"
+    "node": "20.x"
   },
   "_moduleAliases": {
     "@api": "./src/api",

@@ -39,11 +39,14 @@ describe('CrewmateCard', function () {
   describe('getInvalidationPaths', function () {
     it('should return an array of paths the be invalidated', async function () {
       const prefix = 'influence/dev/images/crew/1';
-      const encoded = 'eyJidWNrZXQiOiJ1bnN0b3BwYWJsZWdhbWVzIiwia2V5IjoiaW5mbHVlbmNlL2Rldi9pbWFnZXMvY3Jldy8x';
       const paths = cdnInstance.getInvalidationPaths({ id: 1 });
+      const encodedPath = paths[1].slice(1, -1);
+      const padded = encodedPath.padEnd(Math.ceil(encodedPath.length / 4) * 4, '=');
+      const decoded = atob(padded);
+
       expect(paths.length).to.eql(2);
       expect(paths[0]).to.eql(`/${prefix}*`);
-      expect(paths[1]).to.eql(`/${encoded}*`);
+      expect(decoded).to.eql(`{"bucket":"${cdnInstance.bucket}","key":"${prefix}`);
     });
   });
 

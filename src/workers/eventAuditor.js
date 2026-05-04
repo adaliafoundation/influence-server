@@ -1,8 +1,7 @@
 require('module-alias/register');
 require('dotenv').config({ silent: true });
-const appConfig = require('config');
 require('@common/storage/db');
-const { StarknetRetriever } = require('@common/lib/events/retrievers/starknet/retriever');
+const { CombinedEventAuditor } = require('@common/lib/events/auditors');
 const logger = require('@common/lib/logger');
 
 const done = function (error) {
@@ -12,13 +11,10 @@ const done = function (error) {
 };
 
 const main = async function () {
-  const retriever = new StarknetRetriever();
+  const auditor = new CombinedEventAuditor();
 
   try {
-    await retriever.auditRunner({
-      runDelay: appConfig.get('EventRetriever.starknet.auditRunDelay'),
-      blockOffset: appConfig.get('EventRetriever.starknet.auditBlockOffset')
-    });
+    await auditor.runOnce();
   } catch (error) {
     logger.inspect(error, 'error');
   }

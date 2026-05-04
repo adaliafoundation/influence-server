@@ -113,6 +113,16 @@ class EthereumEventsConfig {
     return contract;
   }
 
+  static getContractAbi(name) {
+    const abi = abis[name];
+    if (!abi) throw new Error(`No abi found for ${name}`);
+    return abi;
+  }
+
+  static getEventAbiItem(abi, eventName) {
+    return abi.find((item) => item.type === 'event' && item.name === eventName);
+  }
+
   /**
    * @description Creates a map of contract addresses to event names and handlers. Event names are encoded.
    *
@@ -122,12 +132,31 @@ class EthereumEventsConfig {
     this._eventsConfig = reduce(handlerMap, (acc, cfg, address) => {
       if (!address || address === 'undefined') return acc;
       const _address = toStandard(address, 'ethereum');
-      acc[_address] = { address: _address, handlers: cfg.handlers };
+      const abi = this.getContractAbi(cfg.name);
+      acc[_address] = {
+        abi,
+        address: _address,
+        eventTopicMap: {},
+        eventTopics: [],
+        handlers: cfg.handlers
+      };
 
       // init web3 contract
       const contract = this.getContractInstance(cfg.name, address);
       if (!contract) return acc;
       acc[_address].contract = contract;
+
+      Object.values(cfg.handlers).forEach((handler) => {
+        const abiItem = this.getEventAbiItem(abi, handler.eventName);
+        if (!abiItem) return;
+
+        const topic = web3.eth.abi.encodeEventSignature(abiItem);
+        acc[_address].eventTopicMap[topic] = {
+          abiItem,
+          handler
+        };
+        acc[_address].eventTopics.push(topic);
+      });
 
       return acc;
     }, {});
@@ -139,13 +168,74 @@ class EthereumEventsConfig {
   }
 
   static getHandler(event) {
-    if (!event.from_address) return null;
-    const contractConfig = this.config[toStandard(event.from_address, 'ethereum')];
+    const address = event.from_address || event.address;
+    if (!address) return null;
+
+    const contractConfig = this.config[toStandard(address, 'ethereum')];
     return contractConfig ? contractConfig.handlers[event.event] : null;
   }
 
   static getConfigByAddress(address) {
     return this.config[toStandard(address, 'ethereum')];
+  }
+
+  static getHandlerConfigByLog(log) {
+    const address = log?.address ? toStandard(log.address, 'ethereum') : null;
+    if (!address) return null;
+
+    const contractConfig = this.config[address];
+    if (!contractConfig) return null;
+
+    return contractConfig.eventTopicMap[log.topics?.[0]] || null;
+  }
+
+  static decodeRawLog(log) {
+    const address = toStandard(log.address, 'ethereum');
+    const contractConfig = this.getConfigByAddress(address);
+    if (!contractConfig) return null;
+
+    const eventConfig = contractConfig.eventTopicMap[log.topics?.[0]];
+    if (!eventConfig) return null;
+
+    const { abiItem, handler } = eventConfig;
+    const returnValues = web3.eth.abi.decodeLog(abiItem.inputs, log.data, log.topics.slice(1));
+
+    return {
+      address,
+      blockHash: log.blockHash,
+      blockNumber: Number(log.blockNumber),
+      event: handler.eventName,
+      logIndex: Number(log.logIndex),
+      raw: {
+        data: log.data,
+        topics: log.topics
+      },
+      removed: log.removed || false,
+      returnValues,
+      signature: log.topics?.[0],
+      transactionHash: log.transactionHash,
+      transactionIndex: Number(log.transactionIndex)
+    };
+  }
+
+  static matchesEventFilter(event, eventFilter = {}) {
+    const filterKeys = Object.keys(eventFilter || {}).filter((key) => key !== 'DEPRECATED_AT');
+    if (filterKeys.length === 0) return true;
+
+    return filterKeys.every((key) => {
+      const expected = eventFilter[key];
+      const actual = event.returnValues?.[key];
+      if (Array.isArray(expected)) return expected.map((value) => value.toString()).includes(actual?.toString());
+      return actual?.toString() === expected?.toString();
+    });
+  }
+
+  static getTrackedAddresses() {
+    return Object.keys(this.config);
+  }
+
+  static getTrackedTopics() {
+    return [...new Set(this.toArray().flatMap(({ eventTopics }) => eventTopics || []))];
   }
 
   /**

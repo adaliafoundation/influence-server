@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { orderBy } = require('lodash');
+const { PRE_CONFIRMED_BLOCK_HASH } = require('@common/lib/starknet/models/constants');
 
 class StarknetEventService {
   static async updateOrCreateMany(events) {
@@ -33,9 +34,9 @@ class StarknetEventService {
           removed: false
         };
 
-        // Only create if blockHash 'PENDING' because we not not want to update (or upsert)
+        // Only create if blockHash 'PRE_CONFIRMED' because we do not want to upsert unstable events.
         // This action will potentially fail due to a unique index constraint but this is expected
-        return (event.blockHash === 'PENDING') ? { insertOne: { filter, document: data } }
+        return (event.blockHash === PRE_CONFIRMED_BLOCK_HASH) ? { insertOne: { filter, document: data } }
           : { updateOne: { filter, update: { ...data, lastProcessed: null }, upsert: true } };
       });
 
@@ -50,20 +51,8 @@ class StarknetEventService {
     return result;
   }
 
-  static updateManyToL1Accepted(blockNumber) {
-    return mongoose.model('Starknet').updateMany(
-      { status: 'ACCEPTED_ON_L2', blockNumber: { $lte: blockNumber } },
-      { status: 'ACCEPTED_ON_L1' }
-    );
-  }
-
   static getLatestEventByBlock() {
     return mongoose.model('Starknet').findOne({ removed: { $ne: true } }).sort({ blockNumber: -1 });
-  }
-
-  static getLatestAcceptedOnL1() {
-    return mongoose.model('Starknet').findOne({ status: 'ACCEPTED_ON_L1', removed: { $ne: true } })
-      .sort({ blockNumber: -1 });
   }
 
   static hasEventsForBlock(blockNumber) {
@@ -74,6 +63,15 @@ class StarknetEventService {
     return mongoose.model('Starknet').countDocuments({ blockNumber, removed: { $ne: true } });
   }
 
+  static getEventsByBlockRange(fromBlock, toBlock) {
+    return mongoose.model('Starknet')
+      .find({
+        blockNumber: { $gte: fromBlock, $lte: toBlock },
+        removed: { $ne: true }
+      })
+      .sort({ blockNumber: 1, transactionIndex: 1, logIndex: 1 });
+  }
+
   /*
     Update event document(s) according to the specified filter.
     Set removed to true and lastProcessed to null to indicate to the event processor that those documents need to be
@@ -81,6 +79,16 @@ class StarknetEventService {
   */
   static updateManyAsRemoved(filter) {
     return mongoose.model('Starknet').updateMany(filter, { removed: true, lastProcessed: null });
+  }
+
+  static resetLastProcessedFromBlock(blockNumber) {
+    return mongoose.model('Starknet').updateMany(
+      {
+        blockNumber: { $gte: blockNumber },
+        removed: { $ne: true }
+      },
+      { lastProcessed: null }
+    );
   }
 }
 

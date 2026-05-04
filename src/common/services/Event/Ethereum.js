@@ -38,6 +38,7 @@ class EthereumEventService {
         id: ethEvent.id,
         event: ethEvent.event,
         signature: ethEvent.signature,
+        lastProcessed: null,
         removed: ethEvent.removed,
         returnValues: ethEvent.returnValues,
         timestamp
@@ -83,6 +84,7 @@ class EthereumEventService {
             blockNumber,
             event,
             id,
+            lastProcessed: null,
             logIndex,
             removed,
             returnValues,
@@ -103,6 +105,29 @@ class EthereumEventService {
 
   static getLatestEventByBlock() {
     return mongoose.model('Ethereum').findOne({}).sort({ blockNumber: -1 });
+  }
+
+  static getEventsByBlockRange(fromBlock, toBlock) {
+    return mongoose.model('Ethereum')
+      .find({
+        blockNumber: { $gte: fromBlock, $lte: toBlock },
+        removed: { $ne: true }
+      })
+      .sort({ blockNumber: 1, transactionIndex: 1, logIndex: 1 });
+  }
+
+  static updateManyAsRemoved(filter) {
+    return mongoose.model('Ethereum').updateMany(filter, { removed: true, lastProcessed: null });
+  }
+
+  static resetLastProcessedFromBlock(blockNumber) {
+    return mongoose.model('Ethereum').updateMany(
+      {
+        blockNumber: { $gte: blockNumber },
+        removed: { $ne: true }
+      },
+      { lastProcessed: null }
+    );
   }
 }
 

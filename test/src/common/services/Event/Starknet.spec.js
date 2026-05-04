@@ -45,13 +45,13 @@ describe('StarknetEventService', function () {
       expect(result.nModified).to.eql(2);
     });
 
-    it('should match on and update matching "pending" documents', async function () {
-      const pendingEvents = sampleEvents.map((e) => ({
-        ...e.toObject(), blockHash: 'PENDING', blockNumber: Number.MAX_SAFE_INTEGER, status: 'PENDING'
+    it('should match on and update matching "pre_confirmed" documents', async function () {
+      const preConfirmedEvents = sampleEvents.map((e) => ({
+        ...e.toObject(), blockHash: 'PRE_CONFIRMED', blockNumber: Number.MAX_SAFE_INTEGER, status: 'PRE_CONFIRMED'
       }));
 
-      await StarknetEventService.updateOrCreateMany(pendingEvents);
-      await StarknetEventService.updateOrCreateMany(pendingEvents);
+      await StarknetEventService.updateOrCreateMany(preConfirmedEvents);
+      await StarknetEventService.updateOrCreateMany(preConfirmedEvents);
       const result = await StarknetEventService.updateOrCreateMany(sampleEvents);
 
       const docs = await mongoose.model('Event').find();
@@ -62,9 +62,9 @@ describe('StarknetEventService', function () {
       expect(docs.map((doc) => doc.status)).to.eql(['ACCEPTED_ON_L2', 'ACCEPTED_ON_L2']);
     });
 
-    it('should update non pending events and fail gracefully on duplicate pending events', async function () {
+    it('should update non pre_confirmed events and handle duplicate pre_confirmed events', async function () {
       const events = sampleEvents.map((e) => ({
-        ...e.toObject(), status: 'PENDING', blockHash: 'PENDING', blockNumber: Number.MAX_SAFE_INTEGER
+        ...e.toObject(), status: 'PRE_CONFIRMED', blockHash: 'PRE_CONFIRMED', blockNumber: Number.MAX_SAFE_INTEGER
       }));
       await StarknetEventService.updateOrCreateMany(events);
 
@@ -77,7 +77,7 @@ describe('StarknetEventService', function () {
       expect(r.nModified).to.eql(1);
       const docs = await EventFactory.getModel().find();
       expect(docs.map((doc) => doc.status)).to.deep.include('ACCEPTED_ON_L2');
-      expect(docs.map((doc) => doc.status)).to.deep.include('PENDING');
+      expect(docs.map((doc) => doc.status)).to.deep.include('PRE_CONFIRMED');
       expect(docs.length).to.eql(2);
     });
   });

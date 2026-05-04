@@ -8,7 +8,7 @@ const { StarknetBlockCache } = require('@common/lib/cache');
 
 const getChainStatus = async (ctx) => {
   const chainInfo = {
-    l1AcceptedBlock: await StarknetBlockCache.getl1AcceptedBlock()
+    l1AcceptedBlock: await StarknetBlockCache.getLastAuditedFinalizedBlock()
   };
 
   ctx.type = 'application/json';

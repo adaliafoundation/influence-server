@@ -69,10 +69,25 @@
   "EventRetriever": {
     "runDelay": 20000,
     "ethereum": {
-      "runDelay": 20000
+      "runDelay": 60000,
+      "blockBatchSize": 10,
+      "bootstrapLookbackBlocks": 10000
     },
     "starknet": {
-      "runDelay": 20000
+      "runDelay": 20000,
+      "blockBatchSize": 1000,
+      "bootstrapLookbackBlocks": 25000,
+      "rpcProvider": null
+    }
+  },
+  "EventAuditor": {
+    "ethereum": {
+      "blockBatchSize": 10,
+      "finalityBlocks": 10
+    },
+    "starknet": {
+      "blockBatchSize": 1000,
+      "bootstrapLookbackBlocks": 5000
     }
   },
   "EventProcessor": {

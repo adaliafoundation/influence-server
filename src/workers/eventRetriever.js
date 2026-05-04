@@ -66,9 +66,6 @@ const main = async function ({ blocks, eventSource, fromBlock, toBlock, runOnce,
   }
 
   try {
-    // initialize event listeners
-    if (retriever.initListeners) await retriever.initListeners();
-
     // run the event retriever
     await retriever.runner();
   } catch (error) {

@@ -1,7 +1,7 @@
 const { Address } = require('@influenceth/sdk');
 const { chain, castArray } = require('lodash');
 const { hex } = require('../../num');
-const { PENDING_BLOCK_NUMBER } = require('./constants');
+const { PRE_CONFIRMED_BLOCK_HASH, PRE_CONFIRMED_BLOCK_NUMBER } = require('./constants');
 const Event = require('./Event');
 
 class TransactionReceipt {
@@ -10,11 +10,16 @@ class TransactionReceipt {
   }
 
   get blockNumber() {
-    return (this._transactionReceiptData.block_number || PENDING_BLOCK_NUMBER);
+    return (
+      typeof this._transactionReceiptData.block_number !== 'undefined'
+      && this._transactionReceiptData.block_number !== null
+    )
+      ? Number(this._transactionReceiptData.block_number)
+      : PRE_CONFIRMED_BLOCK_NUMBER;
   }
 
   get blockHash() {
-    return this._transactionReceiptData.block_hash || 'PENDING';
+    return this._transactionReceiptData.block_hash || PRE_CONFIRMED_BLOCK_HASH;
   }
 
   get transactionHash() {
@@ -29,8 +34,12 @@ class TransactionReceipt {
     return this._transactionReceiptData[attr];
   }
 
+  isBlockPreConfirmed() {
+    return this.blockNumber === PRE_CONFIRMED_BLOCK_NUMBER;
+  }
+
   isBlockPending() {
-    return this.blockNumber === PENDING_BLOCK_NUMBER;
+    return this.isBlockPreConfirmed();
   }
 
   get events() {

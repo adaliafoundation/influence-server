@@ -1,6 +1,6 @@
 const { expect } = require('chai');
 const TransactionReceipt = require('@common/lib/starknet/models/TransactionReceipt');
-const { PENDING_BLOCK_NUMBER } = require('@common/lib/starknet/models/constants');
+const { PRE_CONFIRMED_BLOCK_NUMBER } = require('@common/lib/starknet/models/constants');
 
 describe('Starknet TransactionReceipt model', function () {
   describe('constructor', function () {
@@ -18,10 +18,10 @@ describe('Starknet TransactionReceipt model', function () {
       expect(transactionReceipt.blockNumber).to.equal(1);
     });
 
-    it('should return the pending block number (if empty)', function () {
+    it('should return the pre_confirmed block number (if empty)', function () {
       const transactionReceiptData = {};
       const transactionReceipt = new TransactionReceipt(transactionReceiptData);
-      expect(transactionReceipt.blockNumber).to.equal(PENDING_BLOCK_NUMBER);
+      expect(transactionReceipt.blockNumber).to.equal(PRE_CONFIRMED_BLOCK_NUMBER);
     });
   });
 
@@ -32,10 +32,10 @@ describe('Starknet TransactionReceipt model', function () {
       expect(transactionReceipt.blockHash).to.equal('hash');
     });
 
-    it('should return "PENDING" (if empty)', function () {
+    it('should return "PRE_CONFIRMED" (if empty)', function () {
       const transactionReceiptData = {};
       const transactionReceipt = new TransactionReceipt(transactionReceiptData);
-      expect(transactionReceipt.blockHash).to.equal('PENDING');
+      expect(transactionReceipt.blockHash).to.equal('PRE_CONFIRMED');
     });
   });
 
@@ -58,19 +58,19 @@ describe('Starknet TransactionReceipt model', function () {
     });
   });
 
-  describe('isBlockPending', function () {
-    it('should return true if the block number is pending', function () {
+  describe('isBlockPreConfirmed', function () {
+    it('should return true if the block number is pre_confirmed', function () {
       let transactionReceipt = new TransactionReceipt({});
-      expect(transactionReceipt.isBlockPending()).to.equal(true);
+      expect(transactionReceipt.isBlockPreConfirmed()).to.equal(true);
 
-      transactionReceipt = new TransactionReceipt({ block_number: PENDING_BLOCK_NUMBER });
-      expect(transactionReceipt.isBlockPending()).to.equal(true);
+      transactionReceipt = new TransactionReceipt({ block_number: PRE_CONFIRMED_BLOCK_NUMBER });
+      expect(transactionReceipt.isBlockPreConfirmed()).to.equal(true);
     });
 
-    it('should return false if the block number is not pending', function () {
+    it('should return false if the block number is not pre_confirmed', function () {
       const transactionReceiptData = { block_number: 1 };
       const transactionReceipt = new TransactionReceipt(transactionReceiptData);
-      expect(transactionReceipt.isBlockPending()).to.equal(false);
+      expect(transactionReceipt.isBlockPreConfirmed()).to.equal(false);
     });
   });
 

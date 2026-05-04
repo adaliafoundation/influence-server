@@ -10,7 +10,6 @@ describe('Starknet Provider', function () {
   before(function () {
     configState = appConfig.util.cloneDeep(appConfig);
 
-    appConfig.Starknet.provider = 'FAKE_STARKNET_PROVIDER';
     appConfig.Starknet.rpcProvider = 'FAKE_STARKNET_RPC_PROVIDER';
   });
 
@@ -42,12 +41,12 @@ describe('Starknet Provider', function () {
     it('should set the providers to the default if non provided', function () {
       const starknetProvider = new StarknetProvider();
 
-      expect(starknetProvider.providers).to.have.lengthOf(2);
+      expect(starknetProvider.providers).to.have.lengthOf(1);
     });
   });
 
   describe('getBlockNumber', function () {
-    it('should attempt to call getBlockNumber on all providers until one succeeds', async function () {
+    it('should retry getBlockNumber according to backoff options', async function () {
       const starknetProvider = new StarknetProvider({ backoffOpts: { numOfAttempts: 3 } });
       const fake = function () { throw new Error(); };
       const stub1 = sinon.stub(starknetProvider.providers[0], '_getBlockNumber').callsFake(fake);
@@ -60,7 +59,7 @@ describe('Starknet Provider', function () {
   });
 
   describe('getBlock', function () {
-    it('should attempt to call getBlock on all providers until one succeeds', async function () {
+    it('should retry getBlock according to backoff options', async function () {
       const starknetProvider = new StarknetProvider({ backoffOpts: { numOfAttempts: 3 } });
       const fake = function () { throw new Error(); };
       const stub1 = sinon.stub(starknetProvider.providers[0], '_getBlock').callsFake(fake);
@@ -69,6 +68,23 @@ describe('Starknet Provider', function () {
       } catch (error) {
         expect(stub1.callCount).to.eql(3);
       }
+    });
+  });
+
+  describe('getEvents', function () {
+    it('should pass through options to the underlying provider', async function () {
+      const starknetProvider = new StarknetProvider();
+      const stub = sinon.stub(starknetProvider.providers[0], 'getEvents').resolves([]);
+
+      await starknetProvider.getEvents(
+        { address: '0x1', fromBlock: 1, toBlock: 1 },
+        { withBackOff: false }
+      );
+
+      expect(stub.calledOnceWithExactly(
+        { address: '0x1', addresses: undefined, fromBlock: 1, toBlock: 1 },
+        { withBackOff: false }
+      )).to.eql(true);
     });
   });
 });
