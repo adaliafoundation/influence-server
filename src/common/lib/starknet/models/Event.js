@@ -1,7 +1,6 @@
 const { Address } = require('@influenceth/sdk');
 const { isNil } = require('lodash');
 const { hex } = require('../../num');
-const { PRE_CONFIRMED_BLOCK_HASH, PRE_CONFIRMED_BLOCK_NUMBER } = require('./constants');
 
 class Event {
   constructor(eventData) {
@@ -11,11 +10,11 @@ class Event {
   get blockNumber() {
     return (typeof this._eventData.block_number !== 'undefined' && this._eventData.block_number !== null)
       ? Number(this._eventData.block_number)
-      : PRE_CONFIRMED_BLOCK_NUMBER;
+      : null;
   }
 
   get blockHash() {
-    return this._eventData.block_hash || PRE_CONFIRMED_BLOCK_HASH;
+    return this._eventData.block_hash || null;
   }
 
   get data() {
@@ -42,14 +41,6 @@ class Event {
   get transactionIndex() {
     const index = this._eventData.transaction_index;
     return isNil(index) ? null : Number(index);
-  }
-
-  isBlockPreConfirmed() {
-    return this.blockNumber === PRE_CONFIRMED_BLOCK_NUMBER;
-  }
-
-  isBlockPending() {
-    return this.isBlockPreConfirmed();
   }
 
   toString() {

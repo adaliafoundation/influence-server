@@ -1,5 +1,4 @@
 const { expect } = require('chai');
-const mongoose = require('mongoose');
 const StarknetEventService = require('@common/services/Event/Starknet');
 const { StarknetEventFactory: EventFactory } = require('../../../../factories');
 
@@ -45,40 +44,49 @@ describe('StarknetEventService', function () {
       expect(result.nModified).to.eql(2);
     });
 
-    it('should match on and update matching "pre_confirmed" documents', async function () {
-      const preConfirmedEvents = sampleEvents.map((e) => ({
-        ...e.toObject(), blockHash: 'PRE_CONFIRMED', blockNumber: Number.MAX_SAFE_INTEGER, status: 'PRE_CONFIRMED'
+    it('should upsert repeated Starknet events without creating duplicates', async function () {
+      await StarknetEventService.updateOrCreateMany(sampleEvents);
+
+      const repeatedEvents = sampleEvents.map((e) => ({
+        ...e.toObject(),
+        status: 'ACCEPTED_ON_L1'
       }));
 
-      await StarknetEventService.updateOrCreateMany(preConfirmedEvents);
-      await StarknetEventService.updateOrCreateMany(preConfirmedEvents);
-      const result = await StarknetEventService.updateOrCreateMany(sampleEvents);
+      const result = await StarknetEventService.updateOrCreateMany(repeatedEvents);
+      const docs = await EventFactory.getModel().find();
 
-      const docs = await mongoose.model('Event').find();
       expect(result.nMatched).to.eql(2);
       expect(result.nModified).to.eql(2);
-      expect(docs.map((doc) => doc.blockHash)).to.eql(['0x1', '0x1']);
-      expect(docs.map((doc) => doc.blockNumber)).to.eql([1, 1]);
-      expect(docs.map((doc) => doc.status)).to.eql(['ACCEPTED_ON_L2', 'ACCEPTED_ON_L2']);
-    });
-
-    it('should update non pre_confirmed events and handle duplicate pre_confirmed events', async function () {
-      const events = sampleEvents.map((e) => ({
-        ...e.toObject(), status: 'PRE_CONFIRMED', blockHash: 'PRE_CONFIRMED', blockNumber: Number.MAX_SAFE_INTEGER
-      }));
-      await StarknetEventService.updateOrCreateMany(events);
-
-      // convert one event to ACCEPTED_ON_L2
-      Object.assign(events[0], { blockHash: '0x234234', blockNumber: 1, status: 'ACCEPTED_ON_L2' });
-
-      const r = await StarknetEventService.updateOrCreateMany(events);
-      expect(r.writeErrors.length).to.eql(1);
-      expect(r.nMatched).to.eql(1);
-      expect(r.nModified).to.eql(1);
-      const docs = await EventFactory.getModel().find();
-      expect(docs.map((doc) => doc.status)).to.deep.include('ACCEPTED_ON_L2');
-      expect(docs.map((doc) => doc.status)).to.deep.include('PRE_CONFIRMED');
       expect(docs.length).to.eql(2);
+      expect(docs.map((doc) => doc.status)).to.eql(['ACCEPTED_ON_L1', 'ACCEPTED_ON_L1']);
+    });
+  });
+
+  describe('getLatestEventByBlock', function () {
+    it('should ignore legacy pre_confirmed sentinel rows when finding the latest event block', async function () {
+      await EventFactory.createOne({
+        blockNumber: 100,
+        blockHash: '0x100',
+        status: 'ACCEPTED_ON_L2',
+        event: 'Baz',
+        logIndex: 1,
+        transactionHash: '0x100',
+        transactionIndex: 1
+      });
+      await EventFactory.createOne({
+        blockNumber: Number.MAX_SAFE_INTEGER,
+        blockHash: 'PRE_CONFIRMED',
+        status: 'PRE_CONFIRMED',
+        event: 'Baz',
+        logIndex: 2,
+        transactionHash: '0x200',
+        transactionIndex: 2
+      });
+
+      const latest = await StarknetEventService.getLatestEventByBlock();
+
+      expect(latest.blockNumber).to.eql(100);
+      expect(latest.blockHash).to.eql('0x100');
     });
   });
 });

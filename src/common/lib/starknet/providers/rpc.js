@@ -2,7 +2,6 @@ const { Address } = require('@influenceth/sdk');
 const axios = require('axios');
 const { chain, isString, isObject } = require('lodash');
 const { StarknetRpcCache } = require('@common/lib/cache');
-const logger = require('@common/lib/logger');
 const Block = require('../models/Block');
 const TransactionReceipt = require('../models/TransactionReceipt');
 const Event = require('../models/Event');
@@ -12,7 +11,6 @@ class RpcProvider extends DefaultStarknetProvider {
   _toBlockId(blockNumber) {
     if (isObject(blockNumber) && ('block_number' in blockNumber || 'block_hash' in blockNumber)) return blockNumber;
     if (isString(blockNumber) && !Number.isFinite(Number(blockNumber))) return blockNumber;
-    if (Block.isPreConfirmedBlockNumber(blockNumber)) return 'pre_confirmed';
     return { block_number: blockNumber };
   }
 
@@ -56,27 +54,11 @@ class RpcProvider extends DefaultStarknetProvider {
 
     const block = new Block(response.data.result);
 
-    // Only cache if the block is not pre-confirmed
-    if (cacheEnabled && !block.isPreConfirmed()) {
+    if (cacheEnabled) {
       await StarknetRpcCache.setBlockWithTxHashes({ blockHash, blockNumber, data: response.data.result });
     }
 
     return block;
-  }
-
-  async _getPreConfirmedBlock() {
-    const response = await axios.post(this.endpoint, {
-      jsonrpc: '2.0',
-      method: 'starknet_getBlockWithTxHashes',
-      id: 0,
-      params: { block_id: 'pre_confirmed' }
-    }, { responseType: 'json' });
-
-    if (response.data.error) {
-      throw new Error(`Error getting block: ${JSON.stringify(response.data.error)}`);
-    }
-
-    return new Block(response.data.result);
   }
 
   async _getEvents({ address, chunkSize = 100, fromBlock, toBlock = null, continuationToken = null, acc = [] }) {
@@ -194,8 +176,7 @@ class RpcProvider extends DefaultStarknetProvider {
 
     const txReceipt = new TransactionReceipt(response.data.result);
 
-    // Only cache if the block is not pre-confirmed
-    if (cacheEnabled && !txReceipt.isBlockPreConfirmed()) {
+    if (cacheEnabled) {
       await StarknetRpcCache.setTransactionReceipt(transactionHash, response.data.result);
     }
 
@@ -259,11 +240,8 @@ class RpcProvider extends DefaultStarknetProvider {
     if (rawEvents.length === 0) return [];
 
     const blocksByHash = {};
-    const isPreConfirmedRange = (
-      Block.isPreConfirmedBlockNumber(fromBlock) || Block.isPreConfirmedBlockNumber(toBlock || fromBlock)
-    );
     const confirmedBlockHashes = chain(rawEvents)
-      .filter((event) => !event.isBlockPreConfirmed() && event.blockHash)
+      .filter((event) => event.blockHash)
       .map('blockHash')
       .uniq()
       .value();
@@ -271,39 +249,15 @@ class RpcProvider extends DefaultStarknetProvider {
       blocksByHash[blockHash] = await this._getBlockWithTxHashes({ blockHash, cacheEnabled: true });
     }
 
-    let preConfirmedBlock = null;
-    if (isPreConfirmedRange) {
-      try {
-        preConfirmedBlock = await this._getPreConfirmedBlock();
-      } catch (error) {
-        logger.warn(`RpcProvider::getEvents, unable to load pre_confirmed block metadata: ${error}`);
-      }
-    }
-
     const events = [];
     const transactionEventIndexMap = {};
     for (const event of rawEvents) {
-      const block = event.isBlockPreConfirmed() ? preConfirmedBlock : blocksByHash[event.blockHash];
-
-      if (!block && !event.isBlockPreConfirmed()) {
-        throw new Error(`Block not found for event: ${JSON.stringify(event)}`);
-      }
-      if (!block && event.isBlockPreConfirmed()) {
-        logger.debug(`Skipping pre-confirmed event missing block metadata: ${JSON.stringify(event)}`);
-        continue; // eslint-disable-line no-continue
-      }
+      const block = blocksByHash[event.blockHash];
+      if (!block) throw new Error(`Block not found for event: ${JSON.stringify(event)}`);
 
       let { transactionIndex } = event;
       if (transactionIndex === null && event.transactionHash) {
-        try {
-          transactionIndex = block.getTransactionIndex(event.transactionHash);
-        } catch (error) {
-          if (event.isBlockPreConfirmed()) {
-            logger.debug(`Pre-confirmed transaction ${event.transactionHash} not found on current block.`);
-            continue; // eslint-disable-line no-continue
-          }
-          throw error;
-        }
+        transactionIndex = block.getTransactionIndex(event.transactionHash);
       }
 
       let { logIndex } = event;

@@ -1,6 +1,5 @@
 const { expect } = require('chai');
 const Event = require('@common/lib/starknet/models/Event');
-const { PRE_CONFIRMED_BLOCK_NUMBER } = require('@common/lib/starknet/models/constants');
 
 describe('Starknet Event model', function () {
   describe('constructor', function () {
@@ -18,10 +17,10 @@ describe('Starknet Event model', function () {
       expect(event.blockNumber).to.equal(1);
     });
 
-    it('should return the pre_confirmed block number (if empty)', function () {
+    it('should return null when block number is missing', function () {
       const eventData = {};
       const event = new Event(eventData);
-      expect(event.blockNumber).to.equal(PRE_CONFIRMED_BLOCK_NUMBER);
+      expect(event.blockNumber).to.equal(null);
     });
   });
 
@@ -32,10 +31,10 @@ describe('Starknet Event model', function () {
       expect(event.blockHash).to.equal('hash');
     });
 
-    it('should return "PRE_CONFIRMED" (if empty)', function () {
+    it('should return null when block hash is missing', function () {
       const eventData = {};
       const event = new Event(eventData);
-      expect(event.blockHash).to.equal('PRE_CONFIRMED');
+      expect(event.blockHash).to.equal(null);
     });
   });
 
@@ -85,27 +84,11 @@ describe('Starknet Event model', function () {
     });
   });
 
-  describe('isBlockPreConfirmed', function () {
-    it('should return true if the block number is pre_confirmed', function () {
-      let event = new Event({});
-      expect(event.isBlockPreConfirmed()).to.equal(true);
-
-      event = new Event({ block_number: PRE_CONFIRMED_BLOCK_NUMBER });
-      expect(event.isBlockPreConfirmed()).to.equal(true);
-    });
-
-    it('should return false if the block number is not pre_confirmed', function () {
-      const eventData = { block_number: 1 };
-      const event = new Event(eventData);
-      expect(event.isBlockPreConfirmed()).to.equal(false);
-    });
-  });
-
   describe('toString', function () {
     it('should return a stringified version of the object', function () {
       const eventData = { data: 'data' };
       const event = new Event(eventData);
-      expect(event.toString()).to.equal('{"blockNumber":9007199254740991,"blockHash":"PRE_CONFIRMED","data":"data",'
+      expect(event.toString()).to.equal('{"blockNumber":null,"blockHash":null,"data":"data",'
         + '"fromAddress":null,"keys":null,"logIndex":null,"transactionHash":null,"transactionIndex":null}');
     });
   });

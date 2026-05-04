@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { orderBy } = require('lodash');
-const { PRE_CONFIRMED_BLOCK_HASH } = require('@common/lib/starknet/models/constants');
+
+const LEGACY_PRE_CONFIRMED_BLOCK_HASH = 'PRE_CONFIRMED';
 
 class StarknetEventService {
   static async updateOrCreateMany(events) {
@@ -34,10 +35,7 @@ class StarknetEventService {
           removed: false
         };
 
-        // Only create if blockHash 'PRE_CONFIRMED' because we do not want to upsert unstable events.
-        // This action will potentially fail due to a unique index constraint but this is expected
-        return (event.blockHash === PRE_CONFIRMED_BLOCK_HASH) ? { insertOne: { filter, document: data } }
-          : { updateOne: { filter, update: { ...data, lastProcessed: null }, upsert: true } };
+        return { updateOne: { filter, update: { ...data, lastProcessed: null }, upsert: true } };
       });
 
     try {
@@ -52,7 +50,10 @@ class StarknetEventService {
   }
 
   static getLatestEventByBlock() {
-    return mongoose.model('Starknet').findOne({ removed: { $ne: true } }).sort({ blockNumber: -1 });
+    return mongoose.model('Starknet').findOne({
+      removed: { $ne: true },
+      blockHash: { $ne: LEGACY_PRE_CONFIRMED_BLOCK_HASH }
+    }).sort({ blockNumber: -1 });
   }
 
   static hasEventsForBlock(blockNumber) {

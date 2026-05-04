@@ -1,39 +1,24 @@
 const { isObject, isString } = require('lodash');
 const { hex } = require('../../num');
 const TransactionReceipt = require('./TransactionReceipt');
-const { PRE_CONFIRMED_BLOCK_HASH, PRE_CONFIRMED_BLOCK_NUMBER } = require('./constants');
 
 class Block {
   constructor(blockData) {
     this.blockData = blockData || {};
   }
 
-  static isPreConfirmedBlockNumber(blockNumber) {
-    if (typeof blockNumber === 'undefined' || blockNumber === null) throw new Error('blockNumber is required');
-
-    return (blockNumber.toString().toLowerCase() === 'pre_confirmed') || blockNumber === PRE_CONFIRMED_BLOCK_NUMBER;
-  }
-
-  static isPendingBlockNumber(blockNumber) {
-    return this.isPreConfirmedBlockNumber(blockNumber);
-  }
-
-  // returns the blockNumber if available, if the block is in pre_confirmed status,
-  // return 'Number.MAX_SAFE_INTEGER' as the blockNumber
   get blockNumber() {
     return (typeof this.blockData.block_number !== 'undefined' && this.blockData.block_number !== null)
       ? Number(this.blockData.block_number)
-      : PRE_CONFIRMED_BLOCK_NUMBER;
+      : null;
   }
 
-  // returns the blockHash if available, if the block is in pre_confirmed status,
-  // return 'PRE_CONFIRMED' as the hash
   get blockHash() {
-    return this.blockData.block_hash || PRE_CONFIRMED_BLOCK_HASH;
+    return this.blockData.block_hash || null;
   }
 
   get status() {
-    return this.blockData.status || this.blockData.finality_status || 'PRE_CONFIRMED';
+    return this.blockData.status || this.blockData.finality_status || null;
   }
 
   get timestamp() {
@@ -78,18 +63,7 @@ class Block {
   }
 
   isAborted() {
-    return this.blockData.status === 'ABORTED';
-  }
-
-  isPreConfirmed() {
-    return this.blockData.status === 'PRE_CONFIRMED'
-      || !this.blockData.status
-      || typeof this.blockData.block_number === 'undefined'
-      || this.blockData.block_number === null;
-  }
-
-  isPending() {
-    return this.isPreConfirmed();
+    return this.status === 'ABORTED';
   }
 }
 

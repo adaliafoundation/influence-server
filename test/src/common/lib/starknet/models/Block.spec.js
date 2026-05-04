@@ -1,6 +1,5 @@
 const { expect } = require('chai');
 const Block = require('@common/lib/starknet/models/Block');
-const { PRE_CONFIRMED_BLOCK_NUMBER } = require('@common/lib/starknet/models/constants');
 
 describe('Starknet Block model', function () {
   describe('constructor', function () {
@@ -17,9 +16,9 @@ describe('Starknet Block model', function () {
       expect(block.blockNumber).to.equal(1);
     });
 
-    it('should return PRE_CONFIRMED_BLOCK_NUMBER on pre_confirmed block', function () {
+    it('should return null when block number is missing', function () {
       const block = new Block();
-      expect(block.blockNumber).to.equal(PRE_CONFIRMED_BLOCK_NUMBER);
+      expect(block.blockNumber).to.equal(null);
     });
   });
 
@@ -27,6 +26,11 @@ describe('Starknet Block model', function () {
     it('should return the block hash', function () {
       const block = new Block({ block_hash: '0x123' });
       expect(block.blockHash).to.equal('0x123');
+    });
+
+    it('should return null when block hash is missing', function () {
+      const block = new Block({});
+      expect(block.blockHash).to.equal(null);
     });
   });
 
@@ -36,9 +40,9 @@ describe('Starknet Block model', function () {
       expect(block.status).to.equal('accepted');
     });
 
-    it('should return pre_confirmed if no status defined in block data', function () {
+    it('should return null if no status is defined in block data', function () {
       const block = new Block({ });
-      expect(block.status).to.equal('PRE_CONFIRMED');
+      expect(block.status).to.equal(null);
     });
   });
 
@@ -106,23 +110,6 @@ describe('Starknet Block model', function () {
     it('should return true if the block is aborted', function () {
       const block = new Block({ status: 'ABORTED' });
       expect(block.isAborted()).to.equal(true);
-    });
-  });
-
-  describe('isPreConfirmed', function () {
-    it('should return true if the block is pre_confirmed', function () {
-      const block = new Block({ status: 'PRE_CONFIRMED' });
-      expect(block.isPreConfirmed()).to.equal(true);
-    });
-  });
-
-  describe('isPreConfirmedBlockNumber (static)', function () {
-    it('should return true if the value is equal to pre_confirmed', function () {
-      expect(Block.isPreConfirmedBlockNumber('pre_confirmed')).to.equal(true);
-    });
-
-    it('should return true if the value is equal to PRE_CONFIRMED_BLOCK_NUMBER', function () {
-      expect(Block.isPreConfirmedBlockNumber(Number.MAX_SAFE_INTEGER)).to.equal(true);
     });
   });
 });
