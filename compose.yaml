@@ -1,0 +1,114 @@
+# This base compose file is suitable as-is for starting containers on dev, building the influence-server image from local source files.
+
+# Command examples:
+# docker compose -f compose.yaml up -d
+# docker compose -f compose.yaml --profile indexer up -d
+# docker compose -f compose.yaml run --rm influence-eventauditor
+
+# Common base configuration for all services running from influence-server image
+x-app-base: &app-base
+  image: influence-server    # built by the main service, re-used by the others
+  restart: unless-stopped
+  env_file:
+    - .env
+  networks:
+    - web
+  depends_on:
+    - redis
+    - elasticsearch
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0
+    container_name: elasticsearch
+    networks:
+      - web
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - /influencedata/elasticsearch-data/:/usr/share/elasticsearch/data
+    #ports:
+      #- 9200:9200    # no binding needed, only docker access
+      #- 9300:9300    # not needed, cluster port
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    networks:
+      - web
+    command: ["redis-server", "--appendonly", "yes"]
+    #ports:
+      #- 6379:6379    # no binding needed, only docker access
+    volumes:
+      - /influencedata/redis-data:/data
+
+  influence-server:
+    <<: *app-base
+    build:    # build the app
+      context: .
+      target: runtime
+    container_name: influence-server
+    #ports:
+      #- 3001:3001    # API server    # no binding needed, only docker access
+    volumes:
+      - .:/app    # bind mount to local source code for dev purposes, to reflect changes immediately
+      - /app/node_modules    # do not overwrite the installed dependencies
+    command: ["npm", "run", "watch"]
+
+  influence-indexer:
+    <<: *app-base
+    container_name: influence-indexer
+    command: ["npm", "run", "elasticIndexer"]
+    profiles:
+      - indexer
+
+  influence-ethereumeventretriever:
+    <<: *app-base
+    container_name: influence-ethereumeventretriever
+    command: ["npm", "run", "ethereumEventRetriever"]
+    profiles:
+      - indexer
+
+  influence-starkneteventretriever:
+    <<: *app-base
+    container_name: influence-starkneteventretriever
+    command: ["npm", "run", "starknetEventRetriever"]
+    profiles:
+      - indexer
+
+  influence-eventprocessor:
+    <<: *app-base
+    container_name: influence-eventprocessor
+    command: ["npm", "run", "eventProcessor"]
+    profiles:
+      - indexer
+
+  influence-eventauditor:
+    <<: *app-base
+    container_name: influence-eventauditor
+    command: ["npm", "run", "eventAuditor"]
+    profiles:
+      - auditor
+
+  influence-agreementauditor:
+    <<: *app-base
+    container_name: influence-agreementauditor
+    command: ["node", "./src/workers/agreementAudit.js"]
+    profiles:
+      - auditor
+
+  influence-tools:
+    <<: *app-base
+    entrypoint: ["node"]
+    profiles:
+      - tools
+
+networks:
+  web:
+    external: true    # we create it with Caddy reverse-proxy container

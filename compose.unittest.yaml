@@ -1,0 +1,10 @@
+# docker compose -f compose.unittest.yaml run --rm influence-unittest
+
+services:
+  influence-unittest:
+    build:    # build the specific unit-testing image
+      context: .
+      target: unittest
+    restart: no
+    # no env file, no dependencies
+    command: ["npm", "test"]
