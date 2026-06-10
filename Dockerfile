@@ -5,16 +5,11 @@
 ############################
 FROM node:18-slim AS runtime
 
-ENV NODE_ENV=production
+ARG NODE_ENV=production
+ENV NODE_ENV=$NODE_ENV
+
 ENV BUFFER_GLOBAL=1
 ENV SKIP_PREFLIGHT_CHECK=1
-
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci
-
-COPY . .
 
 # MongoDB database tools
 RUN apt-get update && apt-get install -y curl gnupg \
@@ -24,6 +19,13 @@ RUN apt-get update && apt-get install -y curl gnupg \
   && apt-get update \
   && apt-get install -y mongodb-database-tools \
   && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
 
 EXPOSE 3001
 

@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - docker-support
   pull_request:
     branches:
       - main

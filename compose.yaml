@@ -52,6 +52,8 @@ services:
     <<: *app-base
     build:    # build the app
       context: .
+      args:
+        NODE_ENV: ${NODE_ENV}
       target: runtime
     container_name: influence-server
     #ports:

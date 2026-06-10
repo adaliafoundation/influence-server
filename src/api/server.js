@@ -55,5 +55,5 @@ if (Number(appConfig.get('App.isImagesServer')) === 1) server.use(controllers.im
 socketIoServer.connect()
   .then(() => {
     httpServer.listen(port);
-    logger.info(`API and SocketIO Server listing on ${port}`);
+    logger.info(`API and SocketIO Server listening on ${port}`);
   });

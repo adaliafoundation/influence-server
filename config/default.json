@@ -108,6 +108,9 @@
   "NftCardBuilder": {
     "runDelay": 5000
   },
+  "Redis": {
+    "skipTlsCheck":0
+  },
   "Starknet": {
     "originBlock": 1
   }
