@@ -1,0 +1,38 @@
+# This file is only meant to override image definitions and pull the image from GHCR; the full service definitions are in compose.yaml.
+# The fully merged configuration can be viewed with:
+# docker compose -f compose.yaml -f compose.prod.yaml config
+
+# Command examples:
+# docker compose -f compose.yaml -f compose.prod.yaml up -d
+# docker compose -f compose.yaml -f compose.prod.yaml --profile indexer up -d
+# docker compose -f compose.yaml -f compose.prod.yaml run --rm influence-eventauditor
+
+x-image: &image
+  image: ghcr.io/adaliafoundation/influence-server:production
+
+services:
+  influence-server:
+    <<: *image
+    volumes: !override []    # remove dev binding to source files
+    command: !override ["npm", "run", "start"]
+
+  influence-indexer:
+    <<: *image
+
+  influence-ethereumeventretriever:
+    <<: *image
+
+  influence-starkneteventretriever:
+    <<: *image
+
+  influence-eventprocessor:
+    <<: *image
+
+  influence-eventauditor:
+    <<: *image
+
+  influence-agreementauditor:
+    <<: *image
+
+  influence-tools:
+    <<: *image

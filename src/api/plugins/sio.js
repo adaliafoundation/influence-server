@@ -14,7 +14,7 @@ class SocketIoServer {
     const NODE_ENV = appConfig.util.getEnv('NODE_ENV');
     const REDIS_URL = appConfig.get('Redis.uri');
     const options = { url: REDIS_URL, pingInterval: 60000 };
-    if (NODE_ENV !== 'development') Object.assign(options, { socket: { tls: true, rejectUnauthorized: false } });
+    if (NODE_ENV !== 'development' && appConfig.get('Redis.skipTlsCheck') !== '1') Object.assign(options, { socket: { tls: true, rejectUnauthorized: false } });
     this.pubClient = createClient(options);
     this.subClient = this.pubClient.duplicate();
 

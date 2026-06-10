@@ -88,7 +88,8 @@
     "key": "OPEN_SEA_API_KEY"
   },
   "Redis": {
-    "uri": "REDIS_URL"
+    "uri": "REDIS_URL",
+    "skipTlsCheck": "REDIS_SKIP_TLS_CHECK"
   },
   "SendGrid": {
     "apiKey": "SENDGRID_API_KEY",
