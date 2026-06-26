@@ -207,7 +207,7 @@ class LotService {
       .findOne({
         'entity.uuid': _lotEntity.uuid,
         permission: Permission.IDS.USE_LOT,
-        endTime: { $gt: 0, $lte: now - settings.gracePeriod },
+        endTime: { $gt: 0, $lte: now },
         status: { $exists: false }
       })
       .sort({ endTime: -1 })
@@ -219,7 +219,7 @@ class LotService {
       gracePeriod: settings.gracePeriod,
       mode: settings.mode,
       source: 'auto',
-      startTime: expiredAgreement.endTime + settings.gracePeriod,
+      startTime: expiredAgreement.endTime,
       status: this.AUCTION_STATUSES.ACTIVE
     };
   }

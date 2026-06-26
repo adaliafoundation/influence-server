@@ -204,7 +204,47 @@ describe('LotService', function () {
         gracePeriod: 60,
         mode: 2,
         source: 'auto',
-        startTime: endTime + 60,
+        startTime: endTime,
+        status: 1
+      });
+    });
+
+    it('should return an implicit auto auction during the grace period', async function () {
+      const asteroidEntity = Entity.Asteroid(1);
+      const lotEntity = Entity.lotFromIndex(1, 1);
+      const endTime = moment().unix() - 30;
+      await Promise.all([
+        mongoose.model('BuildingComponent').create({
+          entity: Entity.Building(1),
+          status: 3
+        }),
+        mongoose.model('LocationComponent').create({
+          entity: Entity.Building(1),
+          location: lotEntity
+        }),
+        mongoose.model('PrepaidAgreementAuctionSetComponent').create({
+          entity: asteroidEntity,
+          mode: 2,
+          gracePeriod: 60
+        }),
+        mongoose.model('PrepaidAgreementComponent').create({
+          entity: lotEntity,
+          permission: Permission.IDS.USE_LOT,
+          permitted: Entity.Crew(1),
+          endTime
+        }),
+        mongoose.model('PrepaidPolicyComponent').create({
+          entity: asteroidEntity,
+          permission: Permission.IDS.USE_LOT
+        })
+      ]);
+
+      const result = await LotService.getPrepaidAgreementAuction(lotEntity);
+      expect(result).to.deep.equal({
+        gracePeriod: 60,
+        mode: 2,
+        source: 'auto',
+        startTime: endTime,
         status: 1
       });
     });
