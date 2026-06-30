@@ -87,7 +87,8 @@
     }
   },
   "Redis": {
-    "uri": "redis://localhost:6379"
+    "uri": "redis://localhost:6379",
+    "skipTlsCheck": 1
   },
   "SendGrid": {
     "apiKey": "TEST_SENDGRID_API_KEY",

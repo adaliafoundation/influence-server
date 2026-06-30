@@ -58,3 +58,37 @@ The licensor considers non-commercial use under this license to include deployme
 1. Run `node ./bin/updateCommon.js` with the `findStuck` method uncommented.
 2. Grab the output and run `truffle test ./test/lib/TestScansMock.js` with the output in the contracts project.
 3. Get the output from #2 and run `node ./bin/updateCommon.js` with `updateDatabase` method uncommented.
+
+## Running as a Docker container 🐋
+Notes:
+- The `compose.yaml` file in the project expects a Docker network named `web` for the communication across containers (your mongo, redis, elasticsearch instances, optionally your own Starknet node if you want to run indexers, or a reverse-proxy e.g. Caddy). To create it, run `docker network create web` .
+- By default the application port (3001) is only exposed to the `web` Docker network and not to the host machine. Un-comment the port configuration in `compose.yaml` if needed.
+- The `compose.yaml` file includes the setup of redis and elasticsearch instances; the mongo instance is not included; initialisation of these services is not included.
+
+### Build and run a development image
+1. Download source
+2. Initialize your `.env` file - `NODE_ENV=development`
+3. Build the image from local source: `docker compose build`
+4. Start the container(s) (sample commands in compose.yaml)
+
+### Build and run the unit tests image
+1. Download source
+2. Build the image from local source: `docker compose -f compose.unittest.yaml build`
+3. Start the container to run unit tests: `docker compose -f compose.unittest.yaml up`
+
+### Run an official prerelease or production image
+1. Download `compose.yaml` and `compose.prerelease.yaml` or `compose.prod.yaml`
+2. Initialize your `.env` file - `NODE_ENV=production`; *if running against a local redis instance, set `REDIS_SKIP_TLS_CHECK=1`*
+3. Start the containers (sample commands in `compose.prerelease.yaml` and `compose.prod.yaml`)
+
+### Influence-server services
+- influence-server: the main service, running the API server
+- four indexer services under the `--indexer flag`, designed to run continuously and index the onchain events
+  - influence-indexer
+  - influence-ethereumeventretriever
+  - influence-starkneteventretriever
+  - influence-eventprocessor
+- two auditor services designed to be scheduled in order to catch missed events or reorgs
+  - influence-eventauditor - run every 10 minutes
+  - influence-agreementauditor - run daily
+- influence-tools: a maintenance image running `node` as the default command used to execute initialization scripts
