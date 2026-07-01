@@ -4,6 +4,7 @@ const Entity = require('@common/lib/Entity');
 const {
   ComponentService,
   ElasticSearchService,
+  LotService,
   PackedLotDataService,
   LeaseExpirationNotificationService } = require('@common/services');
 const logger = require('@common/lib/logger');
@@ -61,6 +62,7 @@ class Handler extends BaseHandler {
 
       await Promise.all([
         ElasticSearchService.queueEntitiesForIndexing({ cursor }),
+        LotService.cleanupSupersededExpiredPrepaidLeases(entity),
         PackedLotDataService.updateLotLeaseStatus(entity)
       ]);
     }

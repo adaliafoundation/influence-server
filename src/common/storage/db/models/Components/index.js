@@ -22,6 +22,8 @@ const NftComponent = require('./Nft');
 const OrderComponent = require('./Order');
 const OrbitComponent = require('./Orbit');
 const PrepaidAgreementComponent = require('./Agreements/Prepaid');
+const PrepaidAgreementAuctionComponent = require('./Agreements/PrepaidAuction');
+const PrepaidAgreementAuctionSetComponent = require('./Policies/PrepaidAuctionSet');
 const PrepaidMerklePolicyComponent = require('./Policies/PrepaidMerkle');
 const PrepaidPolicyComponent = require('./Policies/Prepaid');
 const PrivateSaleComponent = require('./PrivateSale');
@@ -57,6 +59,8 @@ module.exports = {
   OrderComponent,
   OrbitComponent,
   PrepaidAgreementComponent,
+  PrepaidAgreementAuctionComponent,
+  PrepaidAgreementAuctionSetComponent,
   PrepaidMerklePolicyComponent,
   PrepaidPolicyComponent,
   PrivateSaleComponent,

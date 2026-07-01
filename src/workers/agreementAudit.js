@@ -35,10 +35,23 @@ const main = async function () {
       if (locationCompDoc) await ElasticSearchService.queueEntityForIndexing(locationCompDoc.entity);
     }
 
-    // if the agreement endTime over 7 days, delete the agreement
+    const retentionDays = (doc.permission === Permission.IDS.USE_LOT)
+      ? null
+      : 7;
+
+    if (doc.permission === Permission.IDS.USE_LOT) {
+      await mongoose.model('PrepaidAgreementComponent').deleteMany({
+        _id: { $ne: doc._id },
+        'entity.uuid': doc.entity.uuid,
+        permission: Permission.IDS.USE_LOT,
+        endTime: { $lt: doc.endTime }
+      });
+    }
+
+    // if the agreement endTime is over the retention window, delete the agreement
     // added `endTime: { $lte: timestamp }` to the filter to ensure we are not deleting agreements
     // that might have been updated after the initial query
-    if (doc.endTime === 0 || (moment().diff(moment.unix(doc.endTime), 'day') > 7)) {
+    if (doc.endTime === 0 || (retentionDays && moment().diff(moment.unix(doc.endTime), 'day') > retentionDays)) {
       logger.verbose(`Deleting expired prepaid agreement: ${doc._id}, permission: ${doc.permission}`);
       await mongoose.model('PrepaidAgreementComponent').deleteOne({ _id: doc._id, endTime: { $lte: timestamp } });
     }

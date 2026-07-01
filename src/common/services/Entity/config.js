@@ -1,5 +1,5 @@
 const moment = require('moment');
-const { Entity } = require('@influenceth/sdk');
+const { Entity, Permission } = require('@influenceth/sdk');
 const { castArray, compact } = require('lodash');
 
 const componentConfig = {
@@ -14,10 +14,18 @@ const componentConfig = {
   DryDock: { isArray: true, name: 'DryDocks' },
   Extractor: { isArray: true, name: 'Extractors' },
   Inventory: { isArray: true, name: 'Inventories' },
+  PrepaidAgreementAuction: { isArray: false },
+  PrepaidAgreementAuctionSet: { isArray: false },
   PrepaidAgreement: {
     isArray: true,
     name: 'PrepaidAgreements',
-    filter() {
+    filter({ label } = {}) {
+      if (Number(label) === Entity.IDS.LOT) {
+        return {
+          $match: { permission: Permission.IDS.USE_LOT }
+        };
+      }
+
       return {
         $match: { endTime: { $gte: moment().subtract(7, 'days').unix() } }
       };
@@ -41,6 +49,7 @@ const config = {
       'Name',
       'Nft',
       'Orbit',
+      'PrepaidAgreementAuctionSet',
       'PrepaidMerklePolicy',
       'PrepaidPolicy',
       'PublicPolicy'
@@ -110,6 +119,7 @@ const config = {
   Lot: {
     components: [
       'ContractAgreement',
+      'PrepaidAgreementAuction',
       'PrepaidAgreement',
       'WhitelistAgreement',
       'WhitelistAccountAgreement'

@@ -127,7 +127,8 @@ class EntityService {
 
       // add additional fiilter(s)
       if (isFunction(compConfig.filter)) {
-        pipeline.push(compConfig.filter());
+        const filter = compConfig.filter({ label: _label });
+        if (filter) pipeline.push(filter);
       } else if (isObject(compConfig.filter)) {
         pipeline.push(compConfig.filter);
       }

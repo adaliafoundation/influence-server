@@ -95,6 +95,7 @@ class LotService {
     const { asteroidEntity, lotIndex } = _lotEntity.unpackLot();
     const [hasPrepaidMerklePolicy, hasContractPolicy, hasPrepaidPolicy, hasPublicPolicy] = await Promise.all([
       mongoose.model('PrepaidMerklePolicyComponent').exists({
+        'entity.uuid': asteroidEntity.uuid,
         lotIndices: { $in: [lotIndex] },
         permission: Permission.IDS.USE_LOT
       }),
@@ -113,6 +114,28 @@ class LotService {
     ]);
 
     return hasPrepaidMerklePolicy || hasContractPolicy || hasPrepaidPolicy || hasPublicPolicy;
+  }
+
+  static async cleanupSupersededExpiredPrepaidLeases(lotEntity) {
+    const _lotEntity = Entity.toEntity(lotEntity);
+    if (!_lotEntity.isLot()) throw new Error('Invalid lot entity');
+
+    const latestAgreement = await mongoose.model('PrepaidAgreementComponent')
+      .findOne({
+        'entity.uuid': _lotEntity.uuid,
+        permission: Permission.IDS.USE_LOT
+      })
+      .sort({ endTime: -1, startTime: -1 })
+      .lean();
+
+    if (!latestAgreement) return { deletedCount: 0 };
+
+    return mongoose.model('PrepaidAgreementComponent').deleteMany({
+      _id: { $ne: latestAgreement._id },
+      'entity.uuid': _lotEntity.uuid,
+      permission: Permission.IDS.USE_LOT,
+      endTime: { $lte: latestAgreement.endTime }
+    });
   }
 
   static async getLotsWithBuildingControlledByAsteroidController(asteroidEntity) {

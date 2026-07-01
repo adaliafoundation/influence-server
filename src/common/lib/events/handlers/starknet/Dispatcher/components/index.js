@@ -23,9 +23,11 @@ const ComponentUpdatedShip = require('./Ship');
 const ComponentUpdatedStation = require('./Station');
 const ComponentUpdatedContractAgreement = require('./agreements/Contract');
 const ComponentUpdatedPrepaidAgreement = require('./agreements/Prepaid');
+const ComponentUpdatedPrepaidAgreementAuction = require('./agreements/PrepaidAuction');
 const ComponentUpdatedWhitelistAgreement = require('./agreements/Whitelist');
 const ComponentUpdatedContractPolicy = require('./policies/Contract');
 const ComponentUpdatedPublicPolicy = require('./policies/Public');
+const ComponentUpdatedPrepaidAgreementAuctionSet = require('./policies/PrepaidAuctionSet');
 const ComponentUpdatedPrepaidMerklePolicy = require('./policies/PrepaidMerkle');
 const ComponentUpdatedPrepaidPolicy = require('./policies/Prepaid');
 const ComponentUpdatedUnique = require('./Unique');
@@ -56,8 +58,10 @@ module.exports = {
   ComponentUpdatedStation,
   ComponentUpdatedContractAgreement,
   ComponentUpdatedPrepaidAgreement,
+  ComponentUpdatedPrepaidAgreementAuction,
   ComponentUpdatedWhitelistAgreement,
   ComponentUpdatedContractPolicy,
+  ComponentUpdatedPrepaidAgreementAuctionSet,
   ComponentUpdatedPrepaidPolicy,
   ComponentUpdatedPrepaidMerklePolicy,
   ComponentUpdatedPublicPolicy,

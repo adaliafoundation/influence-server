@@ -7,7 +7,8 @@ const { LotService } = require('@common/services');
 describe('LotService', function () {
   afterEach(function () {
     return this.utils.resetCollections(['BuildingComponent', 'ContractAgreementComponent', 'ControlComponent', 'Entity',
-      'LocationComponent', 'PrepaidAgreementComponent', 'PrepaidPolicyComponent', 'WhitelistAgreementComponent']);
+      'LocationComponent', 'PrepaidAgreementComponent', 'PrepaidMerklePolicyComponent',
+      'PrepaidPolicyComponent', 'WhitelistAgreementComponent']);
   });
 
   describe('getLeaseStatus', function () {
