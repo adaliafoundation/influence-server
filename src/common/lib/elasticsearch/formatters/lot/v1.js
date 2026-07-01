@@ -1,9 +1,9 @@
 const Entity = require('@common/lib/Entity');
-const { ComponentService, EntityService, LotService } = require('@common/services');
+const moment = require('moment');
+const { ComponentService, EntityService } = require('@common/services');
 
 const components = [
   'ContractAgreement',
-  'PrepaidAgreementAuction',
   'PrepaidAgreement',
   'WhitelistAgreement',
   'WhitelistAccountAgreement'
@@ -12,6 +12,9 @@ const components = [
 const v1 = async function (indexItemDoc) {
   const entity = Entity.toEntity(indexItemDoc.identifier);
   const data = await EntityService.getEntity({ components, uuid: entity.uuid, format: true });
+  data.PrepaidAgreements = data.PrepaidAgreements.filter(({ endTime }) => (
+    endTime >= moment().subtract(7, 'days').unix()
+  ));
 
   // Add in a virutal Location component
   const { asteroidEntity } = entity.unpackLot();
@@ -20,7 +23,6 @@ const v1 = async function (indexItemDoc) {
     locations: [asteroidEntity]
   };
   data.meta = {};
-  data.PrepaidAgreementAuction = await LotService.getPrepaidAgreementAuction(entity);
 
   // get the asteroid controller
   const controlComponentDoc = await ComponentService.findOneByEntity('Control', asteroidEntity);

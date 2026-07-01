@@ -1,6 +1,5 @@
 const { expect } = require('chai');
 const mongoose = require('mongoose');
-const moment = require('moment');
 const { Permission } = require('@influenceth/sdk');
 const Entity = require('@common/lib/Entity');
 const { LotService } = require('@common/services');
@@ -8,9 +7,8 @@ const { LotService } = require('@common/services');
 describe('LotService', function () {
   afterEach(function () {
     return this.utils.resetCollections(['BuildingComponent', 'ContractAgreementComponent', 'ControlComponent', 'Entity',
-      'LocationComponent', 'PrepaidAgreementAuctionComponent', 'PrepaidAgreementAuctionSetComponent',
-      'PrepaidAgreementComponent', 'PrepaidMerklePolicyComponent', 'PrepaidPolicyComponent',
-      'WhitelistAgreementComponent']);
+      'LocationComponent', 'PrepaidAgreementComponent', 'PrepaidMerklePolicyComponent',
+      'PrepaidPolicyComponent', 'WhitelistAgreementComponent']);
   });
 
   describe('getLeaseStatus', function () {
@@ -111,171 +109,6 @@ describe('LotService', function () {
       result = await LotService.getLotOccupation(lotUserEntity, asteroidEntity, buildingControllerEntity);
       expect(result).to.equal('squatter');
       await mongoose.model('ControlComponent').deleteMany();
-    });
-  });
-
-  describe('getPrepaidAgreementAuction', function () {
-    it('should return null if a manual auction exists without an active prepaid policy', async function () {
-      const lotEntity = Entity.lotFromIndex(1, 1);
-      await Promise.all([
-        mongoose.model('BuildingComponent').create({
-          entity: Entity.Building(1),
-          status: 3
-        }),
-        mongoose.model('LocationComponent').create({
-          entity: Entity.Building(1),
-          location: lotEntity
-        }),
-        mongoose.model('PrepaidAgreementAuctionComponent').create({
-          entity: lotEntity,
-          status: 1,
-          startTime: 10
-        })
-      ]);
-
-      const result = await LotService.getPrepaidAgreementAuction(lotEntity);
-      expect(result).to.equal(null);
-    });
-
-    it('should return an active manual auction if the explicit component is active', async function () {
-      const asteroidEntity = Entity.Asteroid(1);
-      const lotEntity = Entity.lotFromIndex(1, 1);
-      await Promise.all([
-        mongoose.model('BuildingComponent').create({
-          entity: Entity.Building(1),
-          status: 3
-        }),
-        mongoose.model('LocationComponent').create({
-          entity: Entity.Building(1),
-          location: lotEntity
-        }),
-        mongoose.model('PrepaidAgreementAuctionComponent').create({
-          entity: lotEntity,
-          status: 1,
-          startTime: 10
-        }),
-        mongoose.model('PrepaidPolicyComponent').create({
-          entity: asteroidEntity,
-          permission: Permission.IDS.USE_LOT
-        })
-      ]);
-
-      const result = await LotService.getPrepaidAgreementAuction(lotEntity);
-      expect(result).to.deep.equal({
-        mode: 1,
-        source: 'manual',
-        startTime: 10,
-        status: 1
-      });
-    });
-
-    it('should return an implicit auto auction for an expired prepaid lease on a building lot', async function () {
-      const asteroidEntity = Entity.Asteroid(1);
-      const lotEntity = Entity.lotFromIndex(1, 1);
-      const endTime = moment().unix() - 100;
-      await Promise.all([
-        mongoose.model('BuildingComponent').create({
-          entity: Entity.Building(1),
-          status: 3
-        }),
-        mongoose.model('LocationComponent').create({
-          entity: Entity.Building(1),
-          location: lotEntity
-        }),
-        mongoose.model('PrepaidAgreementAuctionSetComponent').create({
-          entity: asteroidEntity,
-          mode: 2,
-          gracePeriod: 60
-        }),
-        mongoose.model('PrepaidAgreementComponent').create({
-          entity: lotEntity,
-          permission: Permission.IDS.USE_LOT,
-          permitted: Entity.Crew(1),
-          endTime
-        }),
-        mongoose.model('PrepaidPolicyComponent').create({
-          entity: asteroidEntity,
-          permission: Permission.IDS.USE_LOT
-        })
-      ]);
-
-      const result = await LotService.getPrepaidAgreementAuction(lotEntity);
-      expect(result).to.deep.equal({
-        gracePeriod: 60,
-        mode: 2,
-        source: 'auto',
-        startTime: endTime,
-        status: 1
-      });
-    });
-
-    it('should return an implicit auto auction during the grace period', async function () {
-      const asteroidEntity = Entity.Asteroid(1);
-      const lotEntity = Entity.lotFromIndex(1, 1);
-      const endTime = moment().unix() - 30;
-      await Promise.all([
-        mongoose.model('BuildingComponent').create({
-          entity: Entity.Building(1),
-          status: 3
-        }),
-        mongoose.model('LocationComponent').create({
-          entity: Entity.Building(1),
-          location: lotEntity
-        }),
-        mongoose.model('PrepaidAgreementAuctionSetComponent').create({
-          entity: asteroidEntity,
-          mode: 2,
-          gracePeriod: 60
-        }),
-        mongoose.model('PrepaidAgreementComponent').create({
-          entity: lotEntity,
-          permission: Permission.IDS.USE_LOT,
-          permitted: Entity.Crew(1),
-          endTime
-        }),
-        mongoose.model('PrepaidPolicyComponent').create({
-          entity: asteroidEntity,
-          permission: Permission.IDS.USE_LOT
-        })
-      ]);
-
-      const result = await LotService.getPrepaidAgreementAuction(lotEntity);
-      expect(result).to.deep.equal({
-        gracePeriod: 60,
-        mode: 2,
-        source: 'auto',
-        startTime: endTime,
-        status: 1
-      });
-    });
-
-    it('should not return an implicit auto auction for a ship-used lot', async function () {
-      const asteroidEntity = Entity.Asteroid(1);
-      const lotEntity = Entity.lotFromIndex(1, 1);
-      await Promise.all([
-        mongoose.model('LocationComponent').create({
-          entity: Entity.Ship(1),
-          location: lotEntity
-        }),
-        mongoose.model('PrepaidAgreementAuctionSetComponent').create({
-          entity: asteroidEntity,
-          mode: 2,
-          gracePeriod: 0
-        }),
-        mongoose.model('PrepaidAgreementComponent').create({
-          entity: lotEntity,
-          permission: Permission.IDS.USE_LOT,
-          permitted: Entity.Crew(1),
-          endTime: moment().unix() - 100
-        }),
-        mongoose.model('PrepaidPolicyComponent').create({
-          entity: asteroidEntity,
-          permission: Permission.IDS.USE_LOT
-        })
-      ]);
-
-      const result = await LotService.getPrepaidAgreementAuction(lotEntity);
-      expect(result).to.equal(null);
     });
   });
 

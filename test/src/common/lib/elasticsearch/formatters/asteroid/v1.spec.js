@@ -24,7 +24,6 @@ describe('Asteroid formatter (v1)', function () {
           Name: null,
           Nft: null,
           Orbit: null,
-          PrepaidAgreementAuctionSet: null,
           PrepaidMerklePolicy: null,
           PrepaidPolicies: [],
           PublicPolicies: [],

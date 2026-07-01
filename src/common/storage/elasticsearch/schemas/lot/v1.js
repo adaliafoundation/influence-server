@@ -3,7 +3,6 @@ const Control = require('../../types/control');
 const entity = require('../../types/entity');
 const Location = require('../../types/location');
 const PrepaidAgreement = require('../../types/prepaid_agreement');
-const PrepaidAgreementAuction = require('../../types/prepaid_agreement_auction');
 const WhitelistAgreement = require('../../types/whitelist_agreement');
 const WhitelistAccountAgreement = require('../../types/whitelist_account_agreement');
 
@@ -34,7 +33,6 @@ const schema = {
         type: 'nested',
         ...PrepaidAgreement
       },
-      PrepaidAgreementAuction,
       WhitelistAgreements: {
         type: 'nested',
         ...WhitelistAgreement

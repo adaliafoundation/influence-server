@@ -6,16 +6,6 @@ const Entity = require('@common/lib/Entity');
 const ComponentService = require('./Components/Component');
 
 class LotService {
-  static AUCTION_MODES = {
-    MANUAL: 1,
-    AUTO: 2
-  };
-
-  static AUCTION_STATUSES = {
-    INACTIVE: 0,
-    ACTIVE: 1
-  };
-
   static async getLeaseStatus(lotEntity) {
     const hasAgreement = await this.hasLeaseAgreement(lotEntity);
     if (hasAgreement) return 2;
@@ -105,6 +95,7 @@ class LotService {
     const { asteroidEntity, lotIndex } = _lotEntity.unpackLot();
     const [hasPrepaidMerklePolicy, hasContractPolicy, hasPrepaidPolicy, hasPublicPolicy] = await Promise.all([
       mongoose.model('PrepaidMerklePolicyComponent').exists({
+        'entity.uuid': asteroidEntity.uuid,
         lotIndices: { $in: [lotIndex] },
         permission: Permission.IDS.USE_LOT
       }),
@@ -125,103 +116,26 @@ class LotService {
     return hasPrepaidMerklePolicy || hasContractPolicy || hasPrepaidPolicy || hasPublicPolicy;
   }
 
-  static async hasPrepaidLeasePolicy(lotEntity) {
+  static async cleanupSupersededExpiredPrepaidLeases(lotEntity) {
     const _lotEntity = Entity.toEntity(lotEntity);
     if (!_lotEntity.isLot()) throw new Error('Invalid lot entity');
 
-    const { asteroidEntity, lotIndex } = _lotEntity.unpackLot();
-    const [hasPrepaidMerklePolicy, hasPrepaidPolicy] = await Promise.all([
-      mongoose.model('PrepaidMerklePolicyComponent').exists({
-        lotIndices: { $in: [lotIndex] },
-        permission: Permission.IDS.USE_LOT
-      }),
-      mongoose.model('PrepaidPolicyComponent').exists({
-        'entity.uuid': asteroidEntity.uuid,
-        permission: Permission.IDS.USE_LOT
-      })
-    ]);
-
-    return Boolean(hasPrepaidMerklePolicy || hasPrepaidPolicy);
-  }
-
-  static async hasBuildingOnLot(lotEntity) {
-    const _lotEntity = Entity.toEntity(lotEntity);
-    if (!_lotEntity.isLot()) throw new Error('Invalid lot entity');
-
-    const result = await mongoose.model('LocationComponent').aggregate([
-      { $match: { 'location.uuid': _lotEntity.uuid, 'entity.label': Entity.IDS.BUILDING } },
-      {
-        $lookup: {
-          from: 'Component_Building',
-          localField: 'entity.uuid',
-          foreignField: 'entity.uuid',
-          as: 'Building'
-        }
-      },
-      { $match: { 'Building.status': { $gt: 0 } } },
-      { $limit: 1 }
-    ]);
-
-    return result.length > 0;
-  }
-
-  static async getPrepaidAgreementAuction(lotEntity) {
-    const _lotEntity = Entity.toEntity(lotEntity);
-    if (!_lotEntity.isLot()) throw new Error('Invalid lot entity');
-
-    const [hasPrepaidLeasePolicy, hasBuilding] = await Promise.all([
-      this.hasPrepaidLeasePolicy(_lotEntity),
-      this.hasBuildingOnLot(_lotEntity)
-    ]);
-
-    if (!hasPrepaidLeasePolicy || !hasBuilding) return null;
-
-    const explicitAuction = await ComponentService.findOneByEntity('PrepaidAgreementAuction', _lotEntity);
-    if (explicitAuction?.status === this.AUCTION_STATUSES.ACTIVE) {
-      return {
-        mode: this.AUCTION_MODES.MANUAL,
-        source: 'manual',
-        startTime: explicitAuction.startTime,
-        status: this.AUCTION_STATUSES.ACTIVE
-      };
-    }
-
-    const { asteroidEntity } = _lotEntity.unpackLot();
-    const auctionSet = await ComponentService.findOneByEntity('PrepaidAgreementAuctionSet', asteroidEntity);
-    const settings = {
-      gracePeriod: auctionSet?.gracePeriod || 0,
-      mode: auctionSet?.mode || this.AUCTION_MODES.MANUAL
-    };
-
-    if (settings.mode !== this.AUCTION_MODES.AUTO) return null;
-
-    const now = moment().unix();
-    const activeAgreement = await mongoose.model('PrepaidAgreementComponent').exists({
-      'entity.uuid': _lotEntity.uuid,
-      permission: Permission.IDS.USE_LOT,
-      endTime: { $gt: now }
-    });
-    if (activeAgreement) return null;
-
-    const expiredAgreement = await mongoose.model('PrepaidAgreementComponent')
+    const latestAgreement = await mongoose.model('PrepaidAgreementComponent')
       .findOne({
         'entity.uuid': _lotEntity.uuid,
-        permission: Permission.IDS.USE_LOT,
-        endTime: { $gt: 0, $lte: now },
-        status: { $exists: false }
+        permission: Permission.IDS.USE_LOT
       })
-      .sort({ endTime: -1 })
+      .sort({ endTime: -1, startTime: -1 })
       .lean();
 
-    if (!expiredAgreement) return null;
+    if (!latestAgreement) return { deletedCount: 0 };
 
-    return {
-      gracePeriod: settings.gracePeriod,
-      mode: settings.mode,
-      source: 'auto',
-      startTime: expiredAgreement.endTime,
-      status: this.AUCTION_STATUSES.ACTIVE
-    };
+    return mongoose.model('PrepaidAgreementComponent').deleteMany({
+      _id: { $ne: latestAgreement._id },
+      'entity.uuid': _lotEntity.uuid,
+      permission: Permission.IDS.USE_LOT,
+      endTime: { $lte: latestAgreement.endTime }
+    });
   }
 
   static async getLotsWithBuildingControlledByAsteroidController(asteroidEntity) {

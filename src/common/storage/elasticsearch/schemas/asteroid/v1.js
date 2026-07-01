@@ -5,7 +5,6 @@ const { properties: { id, label, uuid } } = require('../../types/entity');
 const Name = require('../../types/name');
 const Nft = require('../../types/nft');
 const Orbit = require('../../types/orbit');
-const PrepaidAgreementAuctionSet = require('../../types/prepaid_agreement_auction_set');
 const PrepaidPolicy = require('../../types/prepaid_policy');
 const PrepaidMerklePolicy = require('../../types/prepaid_merkle_policy');
 const PublicPolicy = require('../../types/public_policy');
@@ -35,7 +34,6 @@ const schema = {
       Name,
       Nft,
       Orbit,
-      PrepaidAgreementAuctionSet,
       PrepaidMerklePolicy: {
         type: 'nested',
         ...PrepaidMerklePolicy

@@ -67,22 +67,6 @@ const dropAndCreate = async function ({ indices }) {
   process.exit(0);
 };
 
-const putMapping = async function ({ indices }) {
-  for (const index of indices) {
-    const [, type, version] = index.match(/([a-zA-Z]+)_v([1-9]+)/);
-    if (!type || !Object.keys(schemas).includes(type)) throw new Error(`Invalid index: ${index}`);
-    if (!version || !(Number(version) > 0)) throw new Error(`Invalid index: version ${version}`);
-
-    const { mappings } = getSchema({ type, version });
-    if (!mappings) throw new Error(`Missing mappings for ${index}`);
-
-    logger.info(`updating mapping for index: ${index}...`);
-    await client.indices.putMapping({ index, body: mappings });
-  }
-
-  process.exit(0);
-};
-
 const dropAllAndCreate = async function ({ version }) {
   prompt.start();
   const { response } = await prompt.get([
@@ -204,19 +188,6 @@ yargs(process.argv.slice(2))
       });
     },
     handler: dropAndCreate
-  })
-  .command({
-    command: 'putMapping',
-    desc: 'update mappings for the specified indices',
-    builder: (y) => {
-      y.version(false);
-      y.option('indices', {
-        describe: 'indices',
-        type: 'array',
-        demand: true
-      });
-    },
-    handler: putMapping
   })
   .command({
     command: 'dropAllAndCreate',

@@ -1,12 +1,14 @@
 const { expect } = require('chai');
 const mongoose = require('mongoose');
+const { Permission } = require('@influenceth/sdk');
 const Entity = require('@common/lib/Entity');
 const { EntityService } = require('@common/services');
 
 describe('EntityService', function () {
   afterEach(function () {
     return this.utils.resetCollections([
-      'DeliveryComponent', 'Entity', 'LocationComponent', 'NameComponent', 'ContractAgreementComponent'
+      'DeliveryComponent', 'Entity', 'LocationComponent', 'NameComponent', 'ContractAgreementComponent',
+      'PrepaidAgreementComponent'
     ]);
   });
 
@@ -219,6 +221,26 @@ describe('EntityService', function () {
         ['ContractAgreements', 'PrepaidAgreements', 'WhitelistAgreements'].forEach((key) => {
           expect(results[0][key]).to.be.an('array');
         });
+      });
+
+      it('should keep expired USE_LOT prepaid agreements available for Lot details', async function () {
+        const lotEntity = Entity.Lot(1);
+        const now = Math.floor(Date.now() / 1000);
+
+        await mongoose.model('PrepaidAgreementComponent').create({
+          entity: lotEntity,
+          permission: Permission.IDS.USE_LOT,
+          permitted: Entity.Crew(1),
+          rate: 1,
+          initialTerm: 30,
+          noticePeriod: 10,
+          startTime: now - 30 * 24 * 60 * 60,
+          endTime: now - 20 * 24 * 60 * 60,
+          noticeTime: now - 30 * 24 * 60 * 60
+        });
+
+        const results = await EntityService.getEntities({ ...lotEntity, format: true });
+        expect(results[0].PrepaidAgreements).to.have.length(1);
       });
 
       it('should format the data correctly for an Ship (format: true)', async function () {
