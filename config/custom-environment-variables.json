@@ -103,6 +103,9 @@
     "starterPackPrivateKey": "STARKNET_STARTER_PACK_PRIVATE_KEY",
     "starterPackPrivateKeyFile": "STARKNET_STARTER_PACK_PRIVATE_KEY_FILE"
   },
+  "StarterPack": {
+    "provisionerEnabled": "STARTER_PACK_PROVISIONER_ENABLED"
+  },
   "Stripe": {
     "secretKey": "STRIPE_SECRET_KEY",
     "webhookSecret": "STRIPE_WEBHOOK_SECRET",

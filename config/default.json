@@ -114,8 +114,12 @@
   },
   "Starknet": {
     "originBlock": 1,
+    "rpcProvider": null,
     "starterPackPrivateKey": null,
     "starterPackPrivateKeyFile": null
+  },
+  "StarterPack": {
+    "provisionerEnabled": 0
   },
   "Stripe": {
     "checkoutPaymentMethodTypes": [
@@ -137,6 +141,7 @@
         "stripeProductId": null
       }
     },
+    "secretKey": null,
     "webhookSecret": null
   }
 }

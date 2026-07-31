@@ -67,9 +67,9 @@ Notes:
 
 ### Build and run a development image
 1. Download source
-2. Initialize your `.env` file - `NODE_ENV=development`
+2. Initialize your `.env` file from `.env.example` with `NODE_ENV=development` and `COMPOSE_FILE=compose.yaml`
 3. Build the image from local source: `docker compose build`
-4. Start the container(s) (sample commands in compose.yaml)
+4. Start the container(s): `docker compose up -d`
 
 ### Build and run the unit tests image
 1. Download source
@@ -77,22 +77,31 @@ Notes:
 3. Start the container to run unit tests: `docker compose -f compose.unittest.yaml up`
 
 ### Run an official prerelease or production image
-1. Download `compose.yaml` and `compose.prerelease.yaml` or `compose.prod.yaml`
-2. Initialize your `.env` file with the `NODE_ENV` that matches the image (`prerelease` or `production`); *if running against a local redis instance, set `REDIS_DISABLE_TLS=1`*
-3. Start the containers (sample commands in `compose.prerelease.yaml` and `compose.prod.yaml`)
+1. Download the compose files for the deployment role, or download all `compose*.yaml` files.
+2. Initialize your `.env` file from `.env.example` with `NODE_ENV` and `COMPOSE_FILE` for the deployment role; *if running against a local redis instance, set `REDIS_DISABLE_TLS=1`*
+3. Start the containers: `docker compose up -d`
 
 ### Starter pack grant signing key
 The off-chain starter pack grant webhook submits Starknet transactions from a dedicated admin account.
+Starter pack provisioning is disabled by default so open-source nodes can index starter pack activity without holding
+Stripe credentials or the grant signer key.
 
 Prerelease may use a raw private key in `.env`:
 ```
+NODE_ENV=prerelease
+COMPOSE_FILE=compose.yaml:compose.prerelease.yaml:compose.provisioner.yaml
+STARTER_PACK_PROVISIONER_ENABLED=1
 STARKNET_STARTER_PACK_ADMIN=0x...
 STARKNET_CONTRACT_GRANT_OFFCHAIN_STARTER_PACK=0x...
 STARKNET_STARTER_PACK_PRIVATE_KEY=0x...
+STARKNET_RPC_PROVIDER=https://...
+STRIPE_SECRET_KEY=sk_...
+STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_STARTER_PACK_EXPLORER_PRODUCT_ID=prod_...
 STRIPE_STARTER_PACK_STRATEGIST_PRODUCT_ID=prod_...
 STRIPE_STARTER_PACK_INDUSTRIALIST_PRODUCT_ID=prod_...
 ```
+Run with `docker compose up -d`.
 
 Production should use a key file mounted read-only into the API container. Do not put the production private key in
 `.env`.
@@ -105,17 +114,24 @@ Production should use a key file mounted read-only into the API container. Do no
     ```
 2. Set the non-secret values in `.env`:
     ```
+    NODE_ENV=production
+    COMPOSE_FILE=compose.yaml:compose.prod.yaml:compose.provisioner-keyfile.yaml
+    STARTER_PACK_PROVISIONER_ENABLED=1
     STARKNET_STARTER_PACK_ADMIN=0x...
     STARKNET_CONTRACT_GRANT_OFFCHAIN_STARTER_PACK=0x...
+    STARKNET_RPC_PROVIDER=https://...
+    STRIPE_SECRET_KEY=sk_...
+    STRIPE_WEBHOOK_SECRET=whsec_...
     STRIPE_STARTER_PACK_EXPLORER_PRODUCT_ID=prod_...
     STRIPE_STARTER_PACK_STRATEGIST_PRODUCT_ID=prod_...
     STRIPE_STARTER_PACK_INDUSTRIALIST_PRODUCT_ID=prod_...
     ```
-3. Start production with `compose.prod.yaml`. It mounts the host file at
+3. `compose.provisioner-keyfile.yaml` mounts the host file at
    `/run/secrets/starter_pack_admin_private_key` and sets:
     ```
     STARKNET_STARTER_PACK_PRIVATE_KEY_FILE=/run/secrets/starter_pack_admin_private_key
     ```
+   Run with `docker compose up -d`.
 
 Use a dedicated Starknet account for this signer, authorize it only for starter pack grants, and keep only enough ETH
 on it for transaction fees.

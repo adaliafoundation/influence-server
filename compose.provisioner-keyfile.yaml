@@ -1,0 +1,9 @@
+# Optional override for a production provisioner that keeps the starter pack admin key in a host file.
+
+services:
+  influence-server:
+    environment:
+      STARTER_PACK_PROVISIONER_ENABLED: 1
+      STARKNET_STARTER_PACK_PRIVATE_KEY_FILE: /run/secrets/starter_pack_admin_private_key
+    volumes:
+      - /etc/influence/secrets/starter_pack_admin_private_key:/run/secrets/starter_pack_admin_private_key:ro

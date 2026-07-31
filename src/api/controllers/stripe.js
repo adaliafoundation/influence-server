@@ -8,7 +8,29 @@ const { allowedOrigin } = require('@api/plugins/origin');
 const { StarterPackPurchaseService } = require('@common/services');
 const Stripe = require('stripe');
 
+const isProvisionerEnabled = () => Number(appConfig.get('StarterPack.provisionerEnabled')) === 1;
 const stripeInstance = () => Stripe(appConfig.get('Stripe.secretKey'));
+
+const validateProvisionerConfig = () => {
+  const missingPaths = [
+    'Contracts.starknet.grantOffchainStarterPack',
+    'Contracts.starknet.starterPackAdmin',
+    'Starknet.rpcProvider',
+    'Stripe.secretKey',
+    'Stripe.webhookSecret',
+    'Stripe.starterPackProducts.explorer.stripeProductId',
+    'Stripe.starterPackProducts.strategist.stripeProductId',
+    'Stripe.starterPackProducts.industrialist.stripeProductId'
+  ].filter((path) => !appConfig.get(path));
+
+  if (!appConfig.get('Starknet.starterPackPrivateKey') && !appConfig.get('Starknet.starterPackPrivateKeyFile')) {
+    missingPaths.push('Starknet.starterPackPrivateKey or Starknet.starterPackPrivateKeyFile');
+  }
+
+  if (missingPaths.length > 0) {
+    throw new Error(`Starter pack provisioner enabled with missing config: ${missingPaths.join(', ')}`);
+  }
+};
 
 const readRawBody = async (req) => new Promise((resolve, reject) => {
   const chunks = [];
@@ -85,12 +107,18 @@ const handleWebhook = async function (ctx) {
 };
 
 // Setup routes
-const router = new KoaRouter()
-  .post('/v2/stripe/webhook', handleWebhook)
-  .use(koaJwt({ secret: appConfig.get('App.jwtSecret'), passthrough: true }))
-  .use(cors({ origin: allowedOrigin }))
-  .use(corsOrJwt)
-  .get('/v2/stripe', getProducts)
-  .post('/v2/stripe/:product/checkout', bodyParser(), createCheckoutSession);
+const router = new KoaRouter();
+
+if (isProvisionerEnabled()) {
+  validateProvisionerConfig();
+
+  router
+    .post('/v2/stripe/webhook', handleWebhook)
+    .use(koaJwt({ secret: appConfig.get('App.jwtSecret'), passthrough: true }))
+    .use(cors({ origin: allowedOrigin }))
+    .use(corsOrJwt)
+    .get('/v2/stripe', getProducts)
+    .post('/v2/stripe/:product/checkout', bodyParser(), createCheckoutSession);
+}
 
 module.exports = router;
