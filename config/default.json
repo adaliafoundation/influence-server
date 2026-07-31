@@ -9,6 +9,8 @@
   },
   "Contracts": {
     "starknet": {
+      "grantOffchainStarterPack": null,
+      "starterPackAdmin": null,
       "udc": "0x041a78e741e5af2fec34b695679bc6891742439f7afb8484ecd7766661ad02bf"
     }
   },
@@ -111,6 +113,30 @@
     "disableTls":0
   },
   "Starknet": {
-    "originBlock": 1
+    "originBlock": 1,
+    "starterPackPrivateKey": null,
+    "starterPackPrivateKeyFile": null
+  },
+  "Stripe": {
+    "checkoutPaymentMethodTypes": [
+      "card",
+      "ideal",
+      "wero"
+    ],
+    "starterPackProducts": {
+      "explorer": {
+        "productId": 1,
+        "stripeProductId": null
+      },
+      "strategist": {
+        "productId": 2,
+        "stripeProductId": null
+      },
+      "industrialist": {
+        "productId": 3,
+        "stripeProductId": null
+      }
+    },
+    "webhookSecret": null
   }
 }

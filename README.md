@@ -81,6 +81,48 @@ Notes:
 2. Initialize your `.env` file with the `NODE_ENV` that matches the image (`prerelease` or `production`); *if running against a local redis instance, set `REDIS_DISABLE_TLS=1`*
 3. Start the containers (sample commands in `compose.prerelease.yaml` and `compose.prod.yaml`)
 
+### Starter pack grant signing key
+The off-chain starter pack grant webhook submits Starknet transactions from a dedicated admin account.
+
+Prerelease may use a raw private key in `.env`:
+```
+STARKNET_STARTER_PACK_ADMIN=0x...
+STARKNET_CONTRACT_GRANT_OFFCHAIN_STARTER_PACK=0x...
+STARKNET_STARTER_PACK_PRIVATE_KEY=0x...
+STRIPE_STARTER_PACK_EXPLORER_PRODUCT_ID=prod_...
+STRIPE_STARTER_PACK_STRATEGIST_PRODUCT_ID=prod_...
+STRIPE_STARTER_PACK_INDUSTRIALIST_PRODUCT_ID=prod_...
+```
+
+Production should use a key file mounted read-only into the API container. Do not put the production private key in
+`.env`.
+
+1. Create the key file on the host:
+    ```
+    sudo mkdir -p /etc/influence/secrets
+    sudo install -m 0400 -o root -g root starter_pack_admin_private_key \
+      /etc/influence/secrets/starter_pack_admin_private_key
+    ```
+2. Set the non-secret values in `.env`:
+    ```
+    STARKNET_STARTER_PACK_ADMIN=0x...
+    STARKNET_CONTRACT_GRANT_OFFCHAIN_STARTER_PACK=0x...
+    STRIPE_STARTER_PACK_EXPLORER_PRODUCT_ID=prod_...
+    STRIPE_STARTER_PACK_STRATEGIST_PRODUCT_ID=prod_...
+    STRIPE_STARTER_PACK_INDUSTRIALIST_PRODUCT_ID=prod_...
+    ```
+3. Start production with `compose.prod.yaml`. It mounts the host file at
+   `/run/secrets/starter_pack_admin_private_key` and sets:
+    ```
+    STARKNET_STARTER_PACK_PRIVATE_KEY_FILE=/run/secrets/starter_pack_admin_private_key
+    ```
+
+Use a dedicated Starknet account for this signer, authorize it only for starter pack grants, and keep only enough ETH
+on it for transaction fees.
+
+Configure log alerts for these starter pack provisioning markers:
+- `STARTER_PACK_GRANT_FAILED`: Stripe payment completed, but the Starknet grant transaction was not submitted.
+
 ### Influence-server services
 - influence-server: the main service, running the API server
 - four indexer services under the `--indexer flag`, designed to run continuously and index the onchain events

@@ -13,7 +13,11 @@ x-image: &image
 services:
   influence-server:
     <<: *image
-    volumes: !override []    # remove dev binding to source files
+    environment:
+      NODE_ENV: production
+      STARKNET_STARTER_PACK_PRIVATE_KEY_FILE: /run/secrets/starter_pack_admin_private_key
+    volumes: !override
+      - /etc/influence/secrets/starter_pack_admin_private_key:/run/secrets/starter_pack_admin_private_key:ro
     command: !override ["npm", "run", "start"]
 
   influence-indexer:

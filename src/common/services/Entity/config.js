@@ -34,6 +34,7 @@ const componentConfig = {
   PrepaidPolicy: { isArray: true, name: 'PrepaidPolicies' },
   Processor: { isArray: true, name: 'Processors' },
   PublicPolicy: { isArray: true, name: 'PublicPolicies' },
+  StarterPackLotLease: { isArray: true, name: 'StarterPackLotLeases' },
   WhitelistAgreement: { isArray: true, name: 'WhitelistAgreements' },
   WhitelistAccountAgreement: { isArray: true, name: 'WhitelistAccountAgreements' }
 };
@@ -73,6 +74,7 @@ const config = {
       'PrepaidPolicy',
       'Processor',
       'PublicPolicy',
+      'StarterPackBuildingFunding',
       'Station',
       'WhitelistAgreement',
       'WhitelistAccountAgreement'
@@ -86,7 +88,8 @@ const config = {
       'Inventory',
       'Name',
       'Nft',
-      'Ship'
+      'Ship',
+      'StarterPack'
     ],
     type: Entity.IDS.CREW
   },
@@ -95,7 +98,8 @@ const config = {
       'Control',
       'Crewmate',
       'Name',
-      'Nft'
+      'Nft',
+      'StarterPackCrewmate'
     ],
     type: Entity.IDS.CREWMATE
   },
@@ -121,6 +125,7 @@ const config = {
       'ContractAgreement',
       'PrepaidAgreementAuction',
       'PrepaidAgreement',
+      'StarterPackLotLease',
       'WhitelistAgreement',
       'WhitelistAccountAgreement'
     ],

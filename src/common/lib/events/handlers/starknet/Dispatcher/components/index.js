@@ -21,6 +21,9 @@ const ComponentUpdatedProcessor = require('./Processor/v0');
 const ComponentUpdatedProcessorV1 = require('./Processor/v1');
 const ComponentUpdatedShip = require('./Ship');
 const ComponentUpdatedStation = require('./Station');
+const ComponentUpdatedStarterPack = require('./StarterPack');
+const ComponentUpdatedStarterPackBuildingFunding = require('./StarterPackBuildingFunding');
+const ComponentUpdatedStarterPackLotLease = require('./StarterPackLotLease');
 const ComponentUpdatedContractAgreement = require('./agreements/Contract');
 const ComponentUpdatedPrepaidAgreement = require('./agreements/Prepaid');
 const ComponentUpdatedPrepaidAgreementAuction = require('./agreements/PrepaidAuction');
@@ -56,6 +59,9 @@ module.exports = {
   ComponentUpdatedProcessorV1,
   ComponentUpdatedShip,
   ComponentUpdatedStation,
+  ComponentUpdatedStarterPack,
+  ComponentUpdatedStarterPackBuildingFunding,
+  ComponentUpdatedStarterPackLotLease,
   ComponentUpdatedContractAgreement,
   ComponentUpdatedPrepaidAgreement,
   ComponentUpdatedPrepaidAgreementAuction,

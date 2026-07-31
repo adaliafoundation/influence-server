@@ -31,6 +31,10 @@ const ProcessorComponent = require('./Processor');
 const PublicPolicyComponent = require('./Policies/Public');
 const ShipComponent = require('./Ship');
 const StationComponent = require('./Station');
+const StarterPackComponent = require('./StarterPack');
+const StarterPackBuildingFundingComponent = require('./StarterPackBuildingFunding');
+const StarterPackCrewmateComponent = require('./StarterPackCrewmate');
+const StarterPackLotLeaseComponent = require('./StarterPackLotLease');
 const WhitelistAgreementComponent = require('./Agreements/Whitelist');
 const WhitelistAccountAgreementComponent = require('./Agreements/WhitelistAccount');
 
@@ -68,6 +72,10 @@ module.exports = {
   PublicPolicyComponent,
   ShipComponent,
   StationComponent,
+  StarterPackComponent,
+  StarterPackBuildingFundingComponent,
+  StarterPackCrewmateComponent,
+  StarterPackLotLeaseComponent,
   WhitelistAgreementComponent,
   WhitelistAccountAgreementComponent
 };

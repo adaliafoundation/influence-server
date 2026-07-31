@@ -57,6 +57,7 @@ const MaterialProcessingStarted = require('./MaterialProcessingStarted/v0');
 const MaterialProcessingStartedV1 = require('./MaterialProcessingStarted/v1');
 const NameChanged = require('./NameChanged');
 const OrderCreated = require('./OrderCreated');
+const OffchainStarterPackGranted = require('./OffchainStarterPackGranted');
 const PrepaidAgreementAccepted = require('./agreements/PrepaidAgreementAccepted');
 const PrepaidAgreementAuctionCancelled = require('./agreements/PrepaidAgreementAuctionCancelled');
 const PrepaidAgreementAuctionConfigured = require('./agreements/PrepaidAgreementAuctionConfigured');
@@ -161,6 +162,7 @@ module.exports = {
   MaterialProcessingStartedV1,
   NameChanged,
   OrderCreated,
+  OffchainStarterPackGranted,
   PrepaidAgreementAccepted,
   PrepaidAgreementAuctionCancelled,
   PrepaidAgreementAuctionConfigured,

@@ -69,7 +69,7 @@ describe('AuthService', function () {
       const nonce = 'nonce';
       const message = AuthService.getTypedMessage(nonce);
       expect(message).to.deep.equal({
-        domain: { name: 'Influence', chainId: 1, version: '1.1.0' },
+        domain: { name: 'Influence', version: '1.1.0', chainId: 1 },
         message: { message: 'Login to Influence', nonce },
         primaryType: 'Message',
         types: {
@@ -79,8 +79,8 @@ describe('AuthService', function () {
           ],
           StarkNetDomain: [
             { name: 'name', type: 'felt' },
-            { name: 'chainId', type: 'felt' },
-            { name: 'version', type: 'felt' }
+            { name: 'version', type: 'felt' },
+            { name: 'chainId', type: 'felt' }
           ]
         }
       });
