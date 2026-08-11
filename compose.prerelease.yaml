@@ -3,9 +3,9 @@
 # docker compose -f compose.yaml -f compose.prerelease.yaml config
 
 # Command examples:
-# docker compose -f compose.yaml -f compose.prerelease.yaml up -d
-# docker compose -f compose.yaml -f compose.prerelease.yaml --profile indexer up -d
-# docker compose -f compose.yaml -f compose.prerelease.yaml run --rm influence-eventauditor
+# COMPOSE_FILE=compose.yaml:compose.prerelease.yaml docker compose up -d
+# docker compose --profile indexer up -d
+# docker compose run --rm influence-eventauditor
 
 x-image: &image
   image: ghcr.io/adaliafoundation/influence-server:prerelease
@@ -15,8 +15,7 @@ x-image: &image
 services:
   influence-server:
     <<: *image
-    volumes: !override []    # remove dev binding to source files
-    command: !override ["npm", "run", "start"]
+    command: ["npm", "run", "start"]
 
   influence-indexer:
     <<: *image

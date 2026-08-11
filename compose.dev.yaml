@@ -1,0 +1,8 @@
+# Local development override. Mounts source files and starts nodemon.
+
+services:
+  influence-server:
+    volumes:
+      - .:/app    # bind mount local source code to reflect changes immediately
+      - /app/node_modules    # do not overwrite installed dependencies
+    command: ["npm", "run", "watch"]

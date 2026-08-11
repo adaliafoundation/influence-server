@@ -67,7 +67,7 @@ Notes:
 
 ### Build and run a development image
 1. Download source
-2. Initialize your `.env` file from `.env.example` with `NODE_ENV=development` and `COMPOSE_FILE=compose.yaml`
+2. Initialize your `.env` file from `.env.example` with `NODE_ENV=development` and `COMPOSE_FILE=compose.yaml:compose.dev.yaml`
 3. Build the image from local source: `docker compose build`
 4. Start the container(s): `docker compose up -d`
 

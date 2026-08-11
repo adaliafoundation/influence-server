@@ -6,4 +6,9 @@ services:
       STARTER_PACK_PROVISIONER_ENABLED: 1
       STARKNET_STARTER_PACK_PRIVATE_KEY_FILE: /run/secrets/starter_pack_admin_private_key
     volumes:
-      - /etc/influence/secrets/starter_pack_admin_private_key:/run/secrets/starter_pack_admin_private_key:ro
+      - type: bind
+        source: /etc/influence/secrets/starter_pack_admin_private_key
+        target: /run/secrets/starter_pack_admin_private_key
+        read_only: true
+        bind:
+          create_host_path: false
