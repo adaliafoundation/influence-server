@@ -3,9 +3,9 @@
 # docker compose -f compose.yaml -f compose.prod.yaml config
 
 # Command examples:
-# COMPOSE_FILE=compose.yaml:compose.prod.yaml docker compose up -d
-# docker compose --profile indexer up -d
-# docker compose run --rm influence-eventauditor
+# docker compose -f compose.yaml -f compose.prod.yaml up -d
+# docker compose -f compose.yaml -f compose.prod.yaml --profile indexer up -d
+# docker compose -f compose.yaml -f compose.prod.yaml run --rm influence-eventauditor
 
 x-image: &image
   image: ghcr.io/adaliafoundation/influence-server:production
@@ -15,6 +15,7 @@ services:
     <<: *image
     environment:
       NODE_ENV: production
+    volumes: !override []    # remove dev binding to source files
     command: ["npm", "run", "start"]
 
   influence-indexer:

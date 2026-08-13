@@ -1,9 +1,9 @@
-# This base compose file contains the shared service definitions. Use compose.dev.yaml for local source mounts.
+# This base compose file is suitable as-is for starting containers on dev, building the influence-server image from local source files.
 
 # Command examples:
-# COMPOSE_FILE=compose.yaml:compose.dev.yaml docker compose up -d
-# docker compose --profile indexer up -d
-# docker compose run --rm influence-eventauditor
+# docker compose -f compose.yaml up -d
+# docker compose -f compose.yaml --profile indexer up -d
+# docker compose -f compose.yaml run --rm influence-eventauditor
 
 # Common base configuration for all services running from influence-server image
 x-app-base: &app-base
@@ -58,7 +58,10 @@ services:
     container_name: influence-server
     #ports:
       #- 3001:3001    # API server    # no binding needed, only docker access
-    command: ["npm", "run", "start"]
+    volumes:
+      - .:/app    # bind mount to local source code for dev purposes, to reflect changes immediately
+      - /app/node_modules    # do not overwrite the installed dependencies
+    command: ["npm", "run", "watch"]
 
   influence-indexer:
     <<: *app-base

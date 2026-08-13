@@ -1,8 +1,0 @@
-# Optional override for an official starter pack provisioner node.
-# Use with compose.prod.yaml or compose.prerelease.yaml when this deployment should create Stripe Checkout
-# sessions, receive Stripe webhooks, and submit GrantOffchainStarterPack transactions.
-
-services:
-  influence-server:
-    environment:
-      STARTER_PACK_PROVISIONER_ENABLED: 1
