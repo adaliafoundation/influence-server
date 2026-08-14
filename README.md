@@ -82,8 +82,8 @@ Notes:
 3. Start prerelease: `./bin/start-container.sh prerelease`
 4. Start production: `./bin/start-container.sh production`
 
-The deploy script renders the merged compose config before starting containers and refuses to deploy if the app service
-would bind-mount local source files into `/app`.
+The deploy script renders the merged compose config before starting containers, refuses to deploy if the app service
+would bind-mount local source files into `/app`, pulls the latest configured image, and then runs `docker compose up -d`.
 
 ### Starter pack grant signing key
 The off-chain starter pack grant webhook submits Starknet transactions from a dedicated admin account.
@@ -134,6 +134,9 @@ Production should use a key file mounted read-only into the API container. Do no
     STARKNET_STARTER_PACK_PRIVATE_KEY_FILE=/run/secrets/starter_pack_admin_private_key
    ```
    Run with `./bin/start-container.sh production --provisioner-keyfile`.
+
+For production without starter pack provisioning, leave `STARTER_PACK_PROVISIONER_ENABLED=0` and run
+`./bin/start-container.sh production`.
 
 Use a dedicated Starknet account for this signer, authorize it only for starter pack grants, and keep only enough ETH
 on it for transaction fees.

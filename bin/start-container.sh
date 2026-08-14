@@ -76,7 +76,9 @@ if [ "$check_only" -eq 1 ]; then
 fi
 
 if [ "${#compose_args[@]}" -gt 0 ]; then
+  docker compose "${compose_files[@]}" "${compose_args[@]}" pull
   docker compose "${compose_files[@]}" "${compose_args[@]}" up -d
 else
+  docker compose "${compose_files[@]}" pull
   docker compose "${compose_files[@]}" up -d
 fi

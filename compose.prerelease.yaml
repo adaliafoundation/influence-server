@@ -16,7 +16,7 @@ services:
   influence-server:
     <<: *image
     volumes: !override []    # remove dev binding to source files
-    command: ["npm", "run", "start"]
+    command: !override ["npm", "run", "start"]
 
   influence-indexer:
     <<: *image
