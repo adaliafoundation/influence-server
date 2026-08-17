@@ -18,7 +18,7 @@ class AuthService {
     if (!chainId) logger.warn('Starknet.chainId not found in config');
 
     return {
-      domain: { name: 'Influence', chainId, version: '1.1.0' },
+      domain: { name: 'Influence', version: '1.1.0', chainId },
       message: { message: 'Login to Influence', nonce },
       primaryType: 'Message',
       types: {
@@ -28,8 +28,8 @@ class AuthService {
         ],
         StarkNetDomain: [
           { name: 'name', type: 'felt' },
-          { name: 'chainId', type: 'felt' },
-          { name: 'version', type: 'felt' }
+          { name: 'version', type: 'felt' },
+          { name: 'chainId', type: 'felt' }
         ]
       }
     };

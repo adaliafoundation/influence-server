@@ -13,6 +13,8 @@ x-image: &image
 services:
   influence-server:
     <<: *image
+    environment:
+      NODE_ENV: production
     volumes: !override []    # remove dev binding to source files
     command: !override ["npm", "run", "start"]
 

@@ -99,9 +99,32 @@
   "Starknet": {
     "originBlock": "STARKNET_ORIGIN_BLOCK",
     "rpcProvider": "STARKNET_RPC_PROVIDER",
-    "faucetPrivateKey": "STARKNET_FAUCET_PRIVATE_KEY"
+    "faucetPrivateKey": "STARKNET_FAUCET_PRIVATE_KEY",
+    "starterPackPrivateKey": "STARKNET_STARTER_PACK_PRIVATE_KEY",
+    "starterPackPrivateKeyFile": "STARKNET_STARTER_PACK_PRIVATE_KEY_FILE"
+  },
+  "StarterPack": {
+    "provisionerEnabled": "STARTER_PACK_PROVISIONER_ENABLED"
   },
   "Stripe": {
-    "secretKey": "STRIPE_SECRET_KEY"
+    "secretKey": "STRIPE_SECRET_KEY",
+    "webhookSecret": "STRIPE_WEBHOOK_SECRET",
+    "starterPackProducts": {
+      "explorer": {
+        "stripeProductId": "STRIPE_STARTER_PACK_EXPLORER_PRODUCT_ID"
+      },
+      "strategist": {
+        "stripeProductId": "STRIPE_STARTER_PACK_STRATEGIST_PRODUCT_ID"
+      },
+      "industrialist": {
+        "stripeProductId": "STRIPE_STARTER_PACK_INDUSTRIALIST_PRODUCT_ID"
+      }
+    }
+  },
+  "Contracts": {
+    "starknet": {
+      "grantOffchainStarterPack": "STARKNET_CONTRACT_GRANT_OFFCHAIN_STARTER_PACK",
+      "starterPackAdmin": "STARKNET_STARTER_PACK_ADMIN"
+    }
   }
 }
