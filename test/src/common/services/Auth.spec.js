@@ -178,6 +178,39 @@ describe('AuthService', function () {
       expect(result).to.deep.equal(expectedUser);
     });
 
+    it('should verify Cartridge session signatures against the login challenge message', async function () {
+      const provider = {
+        getClassAt: this._sandbox.stub().resolves({}),
+        callContract: this._sandbox.stub().resolves(['1'])
+      };
+      const expectedUser = { address: this.GLOBALS.TEST_STARKNET_WALLET, isDeployed: true };
+      appConfig.Starknet.chainId = 1;
+
+      this._sandbox.stub(AuthCache, 'getLoginMessage').resolves('nonce');
+      this._sandbox.stub(AuthCache, 'deleteLoginMessage').resolves();
+      this._sandbox.stub(starknetClient, 'createRpcProvider').resolves(provider);
+      this._sandbox.stub(starknetClient.starknet.typedData, 'getMessageHash').returns('0x123');
+      this._sandbox.stub(starknetClient.starknet.CallData, 'compile').returns(['compiled']);
+      this._sandbox.stub(UserService, 'findOrCreateByAddress').resolves(expectedUser);
+      const getTypedMessageSpy = this._sandbox.spy(AuthService, 'getTypedMessage');
+
+      await AuthService.verifyChallenge({
+        address: this.GLOBALS.TEST_STARKNET_WALLET,
+        message: {
+          domain: {
+            chainId: 1,
+            name: 'SessionAccount.session'
+          },
+          message: { 'Expires At': Math.floor(Date.now() / 1000) + 60 }
+        },
+        signature: '1,2'
+      });
+
+      expect(provider.getClassAt.calledOnce).to.equal(true);
+      expect(provider.callContract.calledOnce).to.equal(true);
+      expect(getTypedMessageSpy.calledOnceWithExactly('nonce')).to.equal(true);
+    });
+
     it('should reject invalid deployed account signatures', async function () {
       const provider = {
         getClassAt: this._sandbox.stub().resolves({}),
