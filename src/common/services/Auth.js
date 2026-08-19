@@ -116,7 +116,7 @@ class AuthService {
           throw new Error('Invalid session message');
         }
 
-        messageToHash = message;
+        messageToHash = this.getTypedMessage(nonce);
       } else {
         messageToHash = this.getTypedMessage(nonce);
       }
