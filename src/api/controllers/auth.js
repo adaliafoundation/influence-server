@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const { allowedOrigin } = require('@api/plugins/origin');
 const ApiKeyService = require('@common/services/ApiKey');
 const AuthService = require('@common/services/Auth');
+const logger = require('@common/lib/logger');
 
 // Returns a challenge message valid for a short period of time
 const getAuthChallenge = async (ctx) => {
@@ -30,6 +31,7 @@ const verifyAuthChallenge = async (ctx) => {
     ctx.body = { token };
     ctx.status = 200;
   } catch (error) {
+    logger.warn(`Auth challenge failed for ${address}: ${error.message}`);
     ctx.status = 401;
     ctx.body = { error: error.message };
   }

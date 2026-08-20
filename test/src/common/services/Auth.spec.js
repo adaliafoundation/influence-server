@@ -69,7 +69,7 @@ describe('AuthService', function () {
       const nonce = 'nonce';
       const message = AuthService.getTypedMessage(nonce);
       expect(message).to.deep.equal({
-        domain: { name: 'Influence', version: '1.1.0', chainId: 1 },
+        domain: { name: 'Influence', version: '1.1.0', chainId: '1', revision: '1' },
         message: { message: 'Login to Influence', nonce },
         primaryType: 'Message',
         types: {
@@ -77,13 +77,18 @@ describe('AuthService', function () {
             { name: 'message', type: 'string' },
             { name: 'nonce', type: 'string' }
           ],
-          StarkNetDomain: [
-            { name: 'name', type: 'felt' },
-            { name: 'version', type: 'felt' },
-            { name: 'chainId', type: 'felt' }
+          StarknetDomain: [
+            { name: 'name', type: 'shortstring' },
+            { name: 'version', type: 'shortstring' },
+            { name: 'chainId', type: 'shortstring' },
+            { name: 'revision', type: 'shortstring' }
           ]
         }
       });
+      expect(starknetClient.starknet.typedData.getMessageHash(
+        message,
+        this.GLOBALS.TEST_STARKNET_WALLET
+      )).to.be.a('string');
     });
   });
 
@@ -202,12 +207,13 @@ describe('AuthService', function () {
       this._sandbox.stub(AuthCache, 'deleteLoginMessage').resolves();
       this._sandbox.stub(starknetClient, 'createRpcProvider').resolves(provider);
       this._sandbox.stub(UserService, 'findOrCreateByAddress').resolves(expectedUser);
-      const expectedCalldata = AuthService.cartridgeSessionCalldata(AuthService.getTypedMessage('nonce'), signature);
+      const message = AuthService.getTypedMessage('nonce');
+      const expectedCalldata = AuthService.cartridgeSessionCalldata(message, signature);
       const expectedScopeHash = starknetClient.starknet.hash.computePoseidonHash('2', '3');
       const expectedTypedDataHash = starknetClient.starknet.typedData.getStructHash(
-        AuthService.getTypedMessage('nonce').types,
-        AuthService.getTypedMessage('nonce').primaryType,
-        AuthService.getTypedMessage('nonce').message,
+        message.types,
+        message.primaryType,
+        message.message,
         '1'
       );
 
