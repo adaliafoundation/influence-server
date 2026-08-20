@@ -9,8 +9,51 @@ const logger = require('@common/lib/logger');
 class AuthService {
   static CHALLENGE_TIME_LIMIT = 3 * 60e3;
 
+  static CARTRIDGE_SESSION_SIGNATURE_MARKER = 'session-typed-data';
+
+  static CARTRIDGE_SESSION_TOKEN_START = 7;
+
   static isEnvCheckEnabled(value) {
     return Number(value) === 1 || value === 'true';
+  }
+
+  static signatureToFelts(signature) {
+    return signature.split(',').map((x) => BigInt(x).toString());
+  }
+
+  static isCartridgeSessionSignature(signature) {
+    const [marker] = signature.split(',');
+    if (!marker) return false;
+
+    const encodedMarker = starknetClient.starknet.shortString.encodeShortString(
+      this.CARTRIDGE_SESSION_SIGNATURE_MARKER
+    );
+    return BigInt(marker) === BigInt(encodedMarker);
+  }
+
+  static cartridgeSessionCalldata(message, signature) {
+    const domainHash = starknetClient.starknet.typedData.getStructHash(
+      message.types,
+      'StarkNetDomain',
+      message.domain,
+      '1'
+    );
+    const typeHash = starknetClient.starknet.typedData.getTypeHash(message.types, message.primaryType, '1');
+    const scopeHash = starknetClient.starknet.hash.computePoseidonHash(domainHash, typeHash);
+    const typedDataHash = starknetClient.starknet.typedData.getStructHash(
+      message.types,
+      message.primaryType,
+      message.message,
+      '1'
+    );
+    const sessionToken = this.signatureToFelts(signature).slice(this.CARTRIDGE_SESSION_TOKEN_START);
+
+    return [
+      1,
+      scopeHash,
+      typedDataHash,
+      ...sessionToken
+    ];
   }
 
   static getTypedMessage(nonce) {
@@ -100,51 +143,82 @@ class AuthService {
     // check that signature is valid
     // (i.e. signed by the passedAddress on the expected network, valid for the nonce'd payload)
     if (isDeployed) {
-      let valid;
-
-      let messageToHash;
-
       // If there's a session message passed, verify the chain and expiration
       if (message && message.domain?.name === 'ArgentSession') {
         if (message.domain?.chainId !== chainId || message.message?.expirationTime < Date.now() / 1000) {
           throw new Error('Invalid session message');
         }
 
-        messageToHash = message;
-      } else if (message && message.domain?.name === 'SessionAccount.session') {
-        if (message.domain?.chainId !== chainId || message.message?.['Expires At'] < Date.now() / 1000) {
-          throw new Error('Invalid session message');
-        }
-
-        messageToHash = this.getTypedMessage(nonce);
+        await this.verifyStarknetSignature({ address: _address, message, provider, signature });
+      } else if (this.isCartridgeSessionSignature(signature)) {
+        await this.verifyCartridgeSessionSignature({
+          address: _address,
+          message: this.getTypedMessage(nonce),
+          provider,
+          signature
+        });
       } else {
-        messageToHash = this.getTypedMessage(nonce);
-      }
-
-      try {
-        const hash = starknetClient.starknet.typedData.getMessageHash(messageToHash, _address);
-        const compiled = starknetClient.starknet.CallData.compile({
-          hash: BigInt(hash).toString(),
-          signature: signature.split(',').map((x) => BigInt(x).toString())
+        await this.verifyStarknetSignature({
+          address: _address,
+          message: this.getTypedMessage(nonce),
+          provider,
+          signature
         });
-
-        const result = await provider.callContract({
-          contractAddress: _address,
-          entrypoint: 'is_valid_signature',
-          calldata: compiled
-        });
-
-        valid = BigInt(result[0]) > 0n;
-      } catch (e) {
-        logger.warn(e);
-        logger.warn('verifyMessage error', e);
       }
-
-      if (!valid) throw new Error('Signature invalid.');
     }
 
     // Use the passed address which is properly standardized
     return UserService.findOrCreateByAddress({ address: _address, isDeployed, referredBy });
+  }
+
+  static async verifyCartridgeSessionSignature({
+    address,
+    message,
+    provider,
+    signature
+  }) {
+    try {
+      const result = await provider.callContract({
+        contractAddress: address,
+        entrypoint: 'is_session_signature_valid',
+        calldata: this.cartridgeSessionCalldata(message, signature)
+      });
+
+      if (BigInt(result[0]) > 0n) return;
+    } catch (e) {
+      logger.warn(e);
+      logger.warn('verifyCartridgeSessionSignature error', e);
+    }
+
+    throw new Error('Signature invalid.');
+  }
+
+  static async verifyStarknetSignature({
+    address,
+    message,
+    provider,
+    signature
+  }) {
+    try {
+      const hash = starknetClient.starknet.typedData.getMessageHash(message, address);
+      const compiled = starknetClient.starknet.CallData.compile({
+        hash: BigInt(hash).toString(),
+        signature: this.signatureToFelts(signature)
+      });
+
+      const result = await provider.callContract({
+        contractAddress: address,
+        entrypoint: 'is_valid_signature',
+        calldata: compiled
+      });
+
+      if (BigInt(result[0]) > 0n) return;
+    } catch (e) {
+      logger.warn(e);
+      logger.warn('verifyMessage error', e);
+    }
+
+    throw new Error('Signature invalid.');
   }
 }
 
