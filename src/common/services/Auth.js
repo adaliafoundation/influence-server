@@ -13,6 +13,10 @@ class AuthService {
 
   static CARTRIDGE_SESSION_TOKEN_START = 7;
 
+  static CARTRIDGE_SESSION_DOMAIN_HASH_INDEX = 2;
+
+  static CARTRIDGE_SESSION_TYPE_HASH_INDEX = 3;
+
   static isEnvCheckEnabled(value) {
     return Number(value) === 1 || value === 'true';
   }
@@ -32,13 +36,9 @@ class AuthService {
   }
 
   static cartridgeSessionCalldata(message, signature) {
-    const domainHash = starknetClient.starknet.typedData.getStructHash(
-      message.types,
-      'StarkNetDomain',
-      message.domain,
-      '1'
-    );
-    const typeHash = starknetClient.starknet.typedData.getTypeHash(message.types, message.primaryType, '1');
+    const felts = this.signatureToFelts(signature);
+    const domainHash = felts[this.CARTRIDGE_SESSION_DOMAIN_HASH_INDEX];
+    const typeHash = felts[this.CARTRIDGE_SESSION_TYPE_HASH_INDEX];
     const scopeHash = starknetClient.starknet.hash.computePoseidonHash(domainHash, typeHash);
     const typedDataHash = starknetClient.starknet.typedData.getStructHash(
       message.types,
@@ -46,7 +46,7 @@ class AuthService {
       message.message,
       '1'
     );
-    const sessionToken = this.signatureToFelts(signature).slice(this.CARTRIDGE_SESSION_TOKEN_START);
+    const sessionToken = felts.slice(this.CARTRIDGE_SESSION_TOKEN_START);
 
     return [
       1,

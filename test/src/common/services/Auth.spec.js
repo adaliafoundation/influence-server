@@ -203,6 +203,13 @@ describe('AuthService', function () {
       this._sandbox.stub(starknetClient, 'createRpcProvider').resolves(provider);
       this._sandbox.stub(UserService, 'findOrCreateByAddress').resolves(expectedUser);
       const expectedCalldata = AuthService.cartridgeSessionCalldata(AuthService.getTypedMessage('nonce'), signature);
+      const expectedScopeHash = starknetClient.starknet.hash.computePoseidonHash('2', '3');
+      const expectedTypedDataHash = starknetClient.starknet.typedData.getStructHash(
+        AuthService.getTypedMessage('nonce').types,
+        AuthService.getTypedMessage('nonce').primaryType,
+        AuthService.getTypedMessage('nonce').message,
+        '1'
+      );
 
       const result = await AuthService.verifyChallenge({
         address: this.GLOBALS.TEST_STARKNET_WALLET,
@@ -216,6 +223,8 @@ describe('AuthService', function () {
         contractAddress: this.GLOBALS.TEST_STARKNET_WALLET,
         entrypoint: 'is_session_signature_valid'
       });
+      expect(expectedCalldata[1]).to.equal(expectedScopeHash);
+      expect(expectedCalldata[2]).to.equal(expectedTypedDataHash);
       expect(expectedCalldata.slice(-2)).to.deep.equal(['7', '8']);
       expect(result).to.deep.equal(expectedUser);
     });
