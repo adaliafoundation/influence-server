@@ -14,6 +14,81 @@ const STARTER_PACK_COUNTS = {
   3: 5
 };
 
+const STARTER_PACK_DEFINITIONS = {
+  explorer: {
+    buildings: [
+      { id: 1, name: 'Warehouse' },
+      { id: 2, name: 'Extractor' }
+    ],
+    coreSampleAllowance: 5,
+    features: [
+      '2 crewmates',
+      '2 starter lots',
+      '1 food reload',
+      '5 core samples',
+      'Warehouse and Extractor starter funding'
+    ],
+    flavor: 'A lean foothold for learning the belt and claiming your first productive ground.',
+    foodReloadAllowance: 1,
+    lotAllowance: 2,
+    name: 'Explorer',
+    productId: 1,
+    sortOrder: 1
+  },
+  strategist: {
+    buildings: [
+      { id: 1, name: 'Warehouse' },
+      { id: 2, name: 'Extractor' },
+      { id: 3, name: 'Refinery' }
+    ],
+    coreSampleAllowance: 8,
+    features: [
+      '3 crewmates',
+      '3 starter lots',
+      '1 food reload',
+      '8 core samples',
+      'Warehouse, Extractor, and Refinery starter funding'
+    ],
+    flavor: 'A balanced crew with enough room to scout, extract, and start refining quickly.',
+    foodReloadAllowance: 1,
+    lotAllowance: 3,
+    name: 'Strategist',
+    productId: 2,
+    sortOrder: 2
+  },
+  industrialist: {
+    buildings: [
+      { id: 1, name: 'Warehouse' },
+      { id: 2, name: 'Extractor' },
+      { id: 3, name: 'Refinery' },
+      { id: 4, name: 'Bioreactor' },
+      { id: 5, name: 'Factory' }
+    ],
+    coreSampleAllowance: 12,
+    features: [
+      '5 crewmates',
+      '5 starter lots',
+      '1 food reload',
+      '12 core samples',
+      'Full starter production chain funding'
+    ],
+    flavor: 'The widest opening position, built for players who want production online fast.',
+    foodReloadAllowance: 1,
+    lotAllowance: 5,
+    name: 'Industrialist',
+    productId: 3,
+    sortOrder: 3
+  }
+};
+
+const PENDING_PURCHASE_STATUSES = [
+  'checkout_created',
+  'paid_pending_customization',
+  'grant_submitting',
+  'grant_submitted',
+  'grant_failed'
+];
+
 const asNumberArray = (values = []) => values.map(Number);
 
 const asFelt = (value) => {
@@ -38,6 +113,11 @@ class StarterPackPurchaseService {
     return num.toHex(hash.starknetKeccak(sessionId));
   }
 
+  static packTypeForProductId(productId) {
+    return Object.entries(STARTER_PACK_DEFINITIONS)
+      .find(([, definition]) => definition.productId === productId)?.[0] || null;
+  }
+
   static starterPackProductConfig(product) {
     const configs = appConfig.get('Stripe.starterPackProducts');
     const starterPackConfig = configs[product]
@@ -46,6 +126,52 @@ class StarterPackPurchaseService {
     if (!starterPackConfig?.stripeProductId) throw new ValidationError('Invalid starter pack product');
     if (!STARTER_PACK_COUNTS[starterPackConfig.productId]) throw new ValidationError('Invalid starter pack product id');
     return starterPackConfig;
+  }
+
+  static starterPackProductConfigForCheckout({ packType, productId }) {
+    if (packType && productId) {
+      const config = this.starterPackProductConfig(packType);
+      if (config.productId !== Number(productId)) throw new ValidationError('Starter pack product mismatch');
+      return config;
+    }
+
+    if (packType) return this.starterPackProductConfig(packType);
+
+    const resolvedPackType = this.packTypeForProductId(Number(productId));
+    if (!resolvedPackType) throw new ValidationError('Invalid starter pack product');
+    return this.starterPackProductConfig(resolvedPackType);
+  }
+
+  static async listProducts({ stripe }) {
+    const products = await Promise.all(Object.entries(STARTER_PACK_DEFINITIONS).map(async ([packType, definition]) => {
+      const config = this.starterPackProductConfig(packType);
+      const stripeProduct = await stripe.products.retrieve(config.stripeProductId);
+      const price = stripeProduct.default_price
+        ? await stripe.prices.retrieve(stripeProduct.default_price)
+        : null;
+
+      return {
+        amount: price?.unit_amount ?? null,
+        buildings: definition.buildings,
+        coreSampleAllowance: definition.coreSampleAllowance,
+        currency: price?.currency ?? null,
+        description: stripeProduct.description || null,
+        enabled: Boolean(stripeProduct.active && price?.active),
+        features: definition.features,
+        flavor: definition.flavor,
+        foodReloadAllowance: definition.foodReloadAllowance,
+        lotAllowance: definition.lotAllowance,
+        name: stripeProduct.name || definition.name,
+        packType,
+        productId: definition.productId,
+        requiredCrewmates: STARTER_PACK_COUNTS[definition.productId],
+        sortOrder: definition.sortOrder,
+        stripePriceId: price?.id ?? null,
+        stripeProductId: stripeProduct.id
+      };
+    }));
+
+    return products.sort((a, b) => a.sortOrder - b.sortOrder);
   }
 
   static validateGrantRequest({ productId, grantRequest }) {
@@ -70,16 +196,24 @@ class StarterPackPurchaseService {
 
   static async createCheckoutSession({
     cancelUrl,
-    grantRequest,
     purchaser,
     product,
+    productId: requestedProductId,
+    recipient,
     stripe,
     successUrl
   }) {
     if (!successUrl) throw new ValidationError('Missing successUrl');
     if (!cancelUrl) throw new ValidationError('Missing cancelUrl');
 
-    const starterPackProduct = this.starterPackProductConfig(product);
+    const purchaserAddress = Address.toStandard(purchaser);
+    const recipientAddress = Address.toStandard(recipient || purchaser);
+    if (recipientAddress !== purchaserAddress) throw new ValidationError('Recipient must match purchaser');
+
+    const starterPackProduct = this.starterPackProductConfigForCheckout({
+      packType: product,
+      productId: requestedProductId
+    });
     const stripeProduct = await stripe.products.retrieve(starterPackProduct.stripeProductId);
     if (!stripeProduct?.active) throw new ValidationError('Invalid product');
 
@@ -87,12 +221,11 @@ class StarterPackPurchaseService {
     if (!price?.active) throw new ValidationError('Invalid price');
 
     const { productId } = starterPackProduct;
-    this.validateGrantRequest({ productId, grantRequest });
 
     const purchase = await mongoose.model('StarterPackPurchase').create({
-      grantRequest,
       productId,
-      purchaser,
+      purchaser: purchaserAddress,
+      recipient: recipientAddress,
       status: 'checkout_created',
       stripePriceId: price.id,
       stripeProductId: stripeProduct.id
@@ -100,11 +233,20 @@ class StarterPackPurchaseService {
 
     const session = await stripe.checkout.sessions.create({
       cancel_url: cancelUrl,
+      client_reference_id: purchase.id,
       line_items: [{ price: price.id, quantity: 1 }],
-      metadata: { purchaseId: purchase.id },
+      metadata: {
+        purchaseId: purchase.id,
+        productId,
+        recipient: recipientAddress
+      },
       mode: 'payment',
       payment_intent_data: {
-        metadata: { purchaseId: purchase.id }
+        metadata: {
+          purchaseId: purchase.id,
+          productId,
+          recipient: recipientAddress
+        }
       },
       payment_method_types: appConfig.get('Stripe.checkoutPaymentMethodTypes'),
       success_url: successUrl
@@ -116,8 +258,90 @@ class StarterPackPurchaseService {
 
     return {
       id: session.id,
+      purchase: this.serializePurchase(purchase),
+      purchaseId: purchase.id,
       url: session.url
     };
+  }
+
+  static serializePurchase(purchase) {
+    if (!purchase) return null;
+    const doc = purchase.toObject ? purchase.toObject() : purchase;
+    const packType = this.packTypeForProductId(doc.productId);
+    return {
+      canCustomize: doc.status === 'paid_pending_customization' || doc.status === 'grant_failed',
+      id: doc._id?.toString() || doc.id,
+      externalRef: doc.externalRef,
+      grantedAt: doc.grantedAt,
+      grantedCrew: doc.grantedCrew,
+      grantError: doc.grantError,
+      hasGrantRequest: Boolean(doc.grantRequest),
+      packType,
+      productId: doc.productId,
+      purchaser: doc.purchaser,
+      recipient: doc.recipient,
+      requiredCrewmates: STARTER_PACK_COUNTS[doc.productId],
+      status: doc.status,
+      stripeCheckoutSessionId: doc.stripeCheckoutSessionId,
+      txHash: doc.txHash
+    };
+  }
+
+  static async pendingPurchaseForPurchaser({ purchaser }) {
+    const purchaserAddress = Address.toStandard(purchaser);
+    const purchase = await mongoose.model('StarterPackPurchase').findOne({
+      purchaser: purchaserAddress,
+      status: { $in: PENDING_PURCHASE_STATUSES }
+    }).sort({ createdAt: -1 });
+
+    return this.serializePurchase(purchase);
+  }
+
+  static async purchaseForCheckoutSession({
+    checkoutSessionId,
+    purchaser
+  }) {
+    const purchaserAddress = Address.toStandard(purchaser);
+    const purchase = await mongoose.model('StarterPackPurchase').findOne({
+      purchaser: purchaserAddress,
+      stripeCheckoutSessionId: checkoutSessionId
+    });
+
+    return this.serializePurchase(purchase);
+  }
+
+  static async completeGrantRequest({
+    grantRequest,
+    purchaseId,
+    purchaser
+  }) {
+    if (!purchaseId) throw new ValidationError('Missing purchaseId');
+
+    const purchaserAddress = Address.toStandard(purchaser);
+    const purchase = await mongoose.model('StarterPackPurchase').findById(purchaseId);
+    if (!purchase) throw new ValidationError('Purchase not found');
+    if (purchase.purchaser !== purchaserAddress) throw new ValidationError('Purchase does not belong to purchaser');
+
+    if (purchase.status === 'checkout_created') throw new ValidationError('Payment not completed');
+    if (purchase.status === 'grant_submitted' || purchase.status === 'grant_confirmed') {
+      return this.serializePurchase(purchase);
+    }
+    if (!['paid_pending_customization', 'grant_failed'].includes(purchase.status)) {
+      throw new ValidationError('Purchase is not ready for grant');
+    }
+
+    const request = {
+      ...grantRequest,
+      recipient: purchase.recipient
+    };
+    this.validateGrantRequest({ productId: purchase.productId, grantRequest: request });
+
+    purchase.grantRequest = request;
+    await purchase.save();
+
+    await this.submitGrant(purchase);
+    const updatedPurchase = await mongoose.model('StarterPackPurchase').findById(purchase._id);
+    return this.serializePurchase(updatedPurchase);
   }
 
   static calldataFromPurchase(purchase) {
@@ -166,23 +390,24 @@ class StarterPackPurchaseService {
     const claim = await mongoose.model('StarterPackPurchase').findOneAndUpdate(
       {
         _id: purchase._id,
-        status: { $in: ['paid', 'grant_failed'] },
+        status: { $in: ['paid_pending_customization', 'grant_failed'] },
         txHash: { $in: [null, undefined] }
       },
-      { $set: { grantError: null, status: 'submitting' } },
+      { $set: { grantError: null, status: 'grant_submitting' } },
       { new: true }
     );
 
     if (claim) return claim;
 
     const current = await mongoose.model('StarterPackPurchase').findById(purchase._id);
-    if (current?.status === 'submitted' || current?.status === 'granted') return current;
+    if (current?.status === 'grant_submitted' || current?.status === 'grant_confirmed') return current;
     return null;
   }
 
   static async submitGrant(purchase) {
-    if (purchase.status === 'submitted' || purchase.status === 'granted') return purchase.txHash;
+    if (purchase.status === 'grant_submitted' || purchase.status === 'grant_confirmed') return purchase.txHash;
     if (!purchase.externalRef) throw new ValidationError('Missing externalRef');
+    if (!purchase.grantRequest) throw new ValidationError('Missing starter pack customization');
     const grantPurchase = await this.claimPurchaseForSubmission(purchase);
     if (!grantPurchase) return null;
 
@@ -201,7 +426,7 @@ class StarterPackPurchaseService {
       });
 
       grantPurchase.txHash = response.transaction_hash;
-      grantPurchase.status = 'submitted';
+      grantPurchase.status = 'grant_submitted';
       grantPurchase.grantError = null;
       await grantPurchase.save();
       return grantPurchase.txHash;
@@ -238,10 +463,10 @@ class StarterPackPurchaseService {
     const stripeProductId = lineItems.data[0]?.price?.product;
     if (stripeProductId !== purchase.stripeProductId) throw new ValidationError('Starter pack product mismatch');
 
-    if (purchase.status === 'checkout_created') purchase.status = 'paid';
+    if (purchase.status === 'checkout_created') purchase.status = 'paid_pending_customization';
     await purchase.save();
 
-    return this.submitGrant(purchase);
+    return this.serializePurchase(purchase);
   }
 }
 

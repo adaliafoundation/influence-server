@@ -25,12 +25,20 @@ const schema = new mongoose.Schema({
   stripeProductId: { type: String, required: true },
   stripePriceId: { type: String, required: true },
   purchaser: { type: String, set: Address.toStandard, required: true },
+  recipient: { type: String, set: Address.toStandard, required: true },
   productId: { type: Number, required: true },
   externalRef: { type: String },
-  grantRequest: { type: StarterPackGrantRequestSchema, required: true },
+  grantRequest: { type: StarterPackGrantRequestSchema },
   status: {
     type: String,
-    enum: ['checkout_created', 'paid', 'submitting', 'submitted', 'granted', 'grant_failed'],
+    enum: [
+      'checkout_created',
+      'paid_pending_customization',
+      'grant_submitting',
+      'grant_submitted',
+      'grant_confirmed',
+      'grant_failed'
+    ],
     default: 'checkout_created'
   },
   txHash: { type: String },
@@ -41,6 +49,8 @@ const schema = new mongoose.Schema({
 
 schema
   .index({ status: 1 })
+  .index({ purchaser: 1, status: 1 })
+  .index({ recipient: 1, status: 1 })
   .index({ externalRef: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('StarterPackPurchase', schema);

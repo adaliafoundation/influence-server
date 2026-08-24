@@ -18,6 +18,7 @@ const metadata = require('./metadata');
 const referrals = require('./referrals');
 const sales = require('./sales');
 const search = require('./search');
+const starterPacks = require('./starterPacks');
 const stripe = require('./stripe');
 const users = require('./users');
 
@@ -42,6 +43,7 @@ module.exports = {
   referrals,
   sales,
   search,
+  starterPacks,
   stripe,
   users
 };

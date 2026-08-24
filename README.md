@@ -86,9 +86,23 @@ The deploy script renders the merged compose config before starting containers, 
 would bind-mount local source files into `/app`, pulls the latest configured image, and then runs `docker compose up -d`.
 
 ### Starter pack grant signing key
-The off-chain starter pack grant webhook submits Starknet transactions from a dedicated admin account.
+The off-chain starter pack flow submits Starknet transactions from a dedicated admin account after Stripe confirms
+payment and the player submits their completed crewmate customization.
 Starter pack provisioning is disabled by default so open-source nodes can index starter pack activity without holding
 Stripe credentials or the grant signer key.
+
+The API flow is:
+1. Authenticated client creates a Checkout Session with
+   `POST /v2/starter-packs/checkout`, passing `productId` or `packType`, `successUrl`, `cancelUrl`, and optionally
+   `recipient`.
+   The recipient must match the authenticated purchaser address.
+2. Stripe sends `checkout.session.completed`; the webhook verifies the event, confirms `payment_status=paid`, and
+   stores the purchase as `paid_pending_customization`.
+3. Client resumes with `GET /v2/starter-packs/pending` or
+   `GET /v2/starter-packs/checkout/:checkoutSessionId`.
+4. After the player creates all required crewmates, client submits the grant payload with
+   `POST /v2/starter-packs/customization`.
+5. Client waits for the indexer to observe `OffchainStarterPackGranted` and the related starter pack components.
 
 Prerelease may use a raw private key in `.env`:
 ```
@@ -142,7 +156,8 @@ Use a dedicated Starknet account for this signer, authorize it only for starter 
 on it for transaction fees.
 
 Configure log alerts for these starter pack provisioning markers:
-- `STARTER_PACK_GRANT_FAILED`: Stripe payment completed, but the Starknet grant transaction was not submitted.
+- `STARTER_PACK_GRANT_FAILED`: Stripe payment completed and customization was submitted, but the Starknet grant
+  transaction was not submitted.
 
 ### Influence-server services
 - influence-server: the main service, running the API server
