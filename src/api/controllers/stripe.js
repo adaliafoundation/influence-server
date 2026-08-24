@@ -1,10 +1,5 @@
 const appConfig = require('config');
 const KoaRouter = require('@koa/router');
-const koaJwt = require('koa-jwt');
-const cors = require('@koa/cors');
-const bodyParser = require('koa-bodyparser');
-const corsOrJwt = require('@api/plugins/corsOrJwt');
-const { allowedOrigin } = require('@api/plugins/origin');
 const { StarterPackPurchaseService } = require('@common/services');
 const Stripe = require('stripe');
 
@@ -38,45 +33,6 @@ const readRawBody = async (req) => new Promise((resolve, reject) => {
   req.on('end', () => resolve(Buffer.concat(chunks)));
   req.on('error', reject);
 });
-
-const getProducts = async function (ctx) {
-  const instance = stripeInstance();
-
-  const [products, prices] = await Promise.all([
-    instance.products.list({ active: true, limit: 100 }),
-    instance.prices.list({ active: true, limit: 100 })
-  ]);
-
-  ctx.body = products.data.map((product) => {
-    const productPrice = prices.data.find((p) => p.product === product.id);
-    return {
-      id: product.id,
-      amount: productPrice?.unit_amount,
-      currency: productPrice?.currency,
-      name: product.name,
-      description: product.description,
-      metadata: product.metadata
-    };
-  });
-};
-
-const createCheckoutSession = async function (ctx) {
-  const { params: { product }, state: { user: { sub: purchaser } }, request: { body } } = ctx;
-  if (!purchaser) ctx.throw(401, 'Not authorized');
-
-  try {
-    ctx.body = await StarterPackPurchaseService.createCheckoutSession({
-      cancelUrl: body.cancelUrl,
-      grantRequest: body.grantRequest,
-      purchaser,
-      product,
-      stripe: stripeInstance(),
-      successUrl: body.successUrl
-    });
-  } catch (error) {
-    ctx.throw(400, error.message);
-  }
-};
 
 const handleWebhook = async function (ctx) {
   const signature = ctx.get('stripe-signature');
@@ -113,12 +69,7 @@ if (isProvisionerEnabled()) {
   validateProvisionerConfig();
 
   router
-    .post('/v2/stripe/webhook', handleWebhook)
-    .use(koaJwt({ secret: appConfig.get('App.jwtSecret'), passthrough: true }))
-    .use(cors({ origin: allowedOrigin }))
-    .use(corsOrJwt)
-    .get('/v2/stripe', getProducts)
-    .post('/v2/stripe/:product/checkout', bodyParser(), createCheckoutSession);
+    .post('/v2/stripe/webhook', handleWebhook);
 }
 
 module.exports = router;

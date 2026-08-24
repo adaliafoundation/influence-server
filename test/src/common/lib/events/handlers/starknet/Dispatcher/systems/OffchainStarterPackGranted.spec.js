@@ -38,7 +38,8 @@ describe('OffchainStarterPackGranted Handler', function () {
       },
       productId: 1,
       purchaser: event.returnValues.recipient,
-      status: 'submitted',
+      recipient: event.returnValues.recipient,
+      status: 'grant_submitted',
       stripePriceId: 'price_123',
       stripeProductId: 'prod_123'
     });
@@ -64,7 +65,7 @@ describe('OffchainStarterPackGranted Handler', function () {
 
       expect(crewmateDocs).to.have.lengthOf(2);
       expect(crewmateDocs.map((doc) => doc.entity.id)).to.have.members([10, 11]);
-      expect(purchaseDoc.status).to.equal('granted');
+      expect(purchaseDoc.status).to.equal('grant_confirmed');
       expect(purchaseDoc.grantedCrew.id).to.equal(5);
     });
 

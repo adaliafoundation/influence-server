@@ -46,7 +46,7 @@ class Handler extends StarknetBaseHandler {
         $set: {
           grantedAt: new Date(this.eventDoc.timestamp * 1000),
           grantedCrew: crew,
-          status: 'granted'
+          status: 'grant_confirmed'
         }
       }
     );
