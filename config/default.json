@@ -124,8 +124,7 @@
   "Stripe": {
     "checkoutPaymentMethodTypes": [
       "card",
-      "ideal",
-      "wero"
+      "ideal"
     ],
     "starterPackProducts": {
       "explorer": {
