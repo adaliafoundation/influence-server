@@ -158,11 +158,30 @@ describe('StarterPackPurchaseService', function () {
   });
 
   describe('createCheckoutSession', function () {
+    it('should require a return URL for redirect-based payment methods', async function () {
+      let error;
+      try {
+        await StarterPackPurchaseService.createCheckoutSession({
+          purchaser: '0x789',
+          product: 'explorer',
+          stripe: {}
+        });
+      } catch (e) {
+        error = e;
+      }
+
+      expect(error).to.be.an('error');
+      expect(error.message).to.equal('Missing returnUrl');
+    });
+
     it('should create a durable purchase intent without a grant request', async function () {
       const stripe = {
         checkout: {
           sessions: {
-            create: this._sandbox.stub().resolves({ id: 'cs_123', url: 'https://stripe.test/checkout' })
+            create: this._sandbox.stub().resolves({
+              client_secret: 'cs_123_secret_abc',
+              id: 'cs_123'
+            })
           }
         },
         prices: {
@@ -178,16 +197,15 @@ describe('StarterPackPurchaseService', function () {
       };
 
       const result = await StarterPackPurchaseService.createCheckoutSession({
-        cancelUrl: 'https://example.com/cancel',
         purchaser: '0x789',
         product: 'explorer',
         recipient: '0x789',
-        stripe,
-        successUrl: 'https://example.com/success'
+        returnUrl: 'https://example.com/checkout/return?session_id={CHECKOUT_SESSION_ID}',
+        stripe
       });
 
       const purchase = await mongoose.model('StarterPackPurchase').findById(result.purchaseId).lean();
-      expect(result).to.deep.include({ id: 'cs_123', url: 'https://stripe.test/checkout' });
+      expect(result).to.deep.include({ clientSecret: 'cs_123_secret_abc', id: 'cs_123' });
       expect(result.purchase).to.deep.include({
         canCustomize: false,
         packType: 'explorer',
@@ -204,18 +222,24 @@ describe('StarterPackPurchaseService', function () {
         productId: 1,
         recipient: '0x0000000000000000000000000000000000000789'
       });
+      expect(stripe.checkout.sessions.create.firstCall.args[0]).to.deep.include({
+        redirect_on_completion: 'if_required',
+        return_url: 'https://example.com/checkout/return?session_id={CHECKOUT_SESSION_ID}',
+        ui_mode: 'embedded'
+      });
+      expect(stripe.checkout.sessions.create.firstCall.args[0]).to.not.have.property('cancel_url');
+      expect(stripe.checkout.sessions.create.firstCall.args[0]).to.not.have.property('success_url');
     });
 
     it('should reject purchases for a different recipient', async function () {
       let error;
       try {
         await StarterPackPurchaseService.createCheckoutSession({
-          cancelUrl: 'https://example.com/cancel',
           purchaser: '0x789',
           product: 'explorer',
           recipient: '0xabc',
-          stripe: {},
-          successUrl: 'https://example.com/success'
+          returnUrl: 'https://example.com/checkout/return?session_id={CHECKOUT_SESSION_ID}',
+          stripe: {}
         });
       } catch (e) {
         error = e;
@@ -251,6 +275,66 @@ describe('StarterPackPurchaseService', function () {
         status: 'paid_pending_customization',
         stripeCheckoutSessionId: 'cs_123'
       });
+    });
+  });
+
+  describe('resumeCheckoutSession', function () {
+    it('should retrieve the client secret for an open purchase owned by the purchaser', async function () {
+      await mongoose.model('StarterPackPurchase').create({
+        productId: 1,
+        purchaser: '0x789',
+        recipient: '0x789',
+        status: 'checkout_created',
+        stripeCheckoutSessionId: 'cs_open',
+        stripePriceId: 'price_123',
+        stripeProductId: 'prod_explorer'
+      });
+      const stripe = {
+        checkout: {
+          sessions: {
+            retrieve: this._sandbox.stub().resolves({ client_secret: 'cs_open_secret_abc' })
+          }
+        }
+      };
+
+      const result = await StarterPackPurchaseService.resumeCheckoutSession({
+        checkoutSessionId: 'cs_open',
+        purchaser: '0x789',
+        stripe
+      });
+
+      expect(result.clientSecret).to.equal('cs_open_secret_abc');
+      expect(result.purchase.status).to.equal('checkout_created');
+      expect(stripe.checkout.sessions.retrieve.calledOnceWithExactly('cs_open')).to.equal(true);
+    });
+
+    it('should not retrieve a client secret after checkout is complete', async function () {
+      await mongoose.model('StarterPackPurchase').create({
+        productId: 1,
+        purchaser: '0x789',
+        recipient: '0x789',
+        status: 'paid_pending_customization',
+        stripeCheckoutSessionId: 'cs_paid',
+        stripePriceId: 'price_123',
+        stripeProductId: 'prod_explorer'
+      });
+      const stripe = {
+        checkout: {
+          sessions: {
+            retrieve: this._sandbox.stub()
+          }
+        }
+      };
+
+      const result = await StarterPackPurchaseService.resumeCheckoutSession({
+        checkoutSessionId: 'cs_paid',
+        purchaser: '0x789',
+        stripe
+      });
+
+      expect(result.clientSecret).to.equal(null);
+      expect(result.purchase.status).to.equal('paid_pending_customization');
+      expect(stripe.checkout.sessions.retrieve.called).to.equal(false);
     });
   });
 

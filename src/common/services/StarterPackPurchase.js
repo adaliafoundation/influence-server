@@ -167,16 +167,14 @@ class StarterPackPurchaseService {
   }
 
   static async createCheckoutSession({
-    cancelUrl,
     purchaser,
     product,
     productId: requestedProductId,
     recipient,
-    stripe,
-    successUrl
+    returnUrl,
+    stripe
   }) {
-    if (!successUrl) throw new ValidationError('Missing successUrl');
-    if (!cancelUrl) throw new ValidationError('Missing cancelUrl');
+    if (!returnUrl) throw new ValidationError('Missing returnUrl');
 
     const purchaserAddress = Address.toStandard(purchaser);
     const recipientAddress = Address.toStandard(recipient || purchaser);
@@ -204,7 +202,6 @@ class StarterPackPurchaseService {
     });
 
     const session = await stripe.checkout.sessions.create({
-      cancel_url: cancelUrl,
       client_reference_id: purchase.id,
       line_items: [{ price: price.id, quantity: 1 }],
       metadata: {
@@ -221,7 +218,9 @@ class StarterPackPurchaseService {
         }
       },
       payment_method_types: appConfig.get('Stripe.checkoutPaymentMethodTypes'),
-      success_url: successUrl
+      redirect_on_completion: 'if_required',
+      return_url: returnUrl,
+      ui_mode: 'embedded'
     });
 
     purchase.stripeCheckoutSessionId = session.id;
@@ -229,10 +228,10 @@ class StarterPackPurchaseService {
     await purchase.save();
 
     return {
+      clientSecret: session.client_secret,
       id: session.id,
       purchase: this.serializePurchase(purchase),
-      purchaseId: purchase.id,
-      url: session.url
+      purchaseId: purchase.id
     };
   }
 
@@ -280,6 +279,21 @@ class StarterPackPurchaseService {
     });
 
     return this.serializePurchase(purchase);
+  }
+
+  static async resumeCheckoutSession({
+    checkoutSessionId,
+    purchaser,
+    stripe
+  }) {
+    const purchase = await this.purchaseForCheckoutSession({ checkoutSessionId, purchaser });
+    if (!purchase || purchase.status !== 'checkout_created') return { clientSecret: null, purchase };
+
+    const session = await stripe.checkout.sessions.retrieve(checkoutSessionId);
+    return {
+      clientSecret: session.client_secret,
+      purchase
+    };
   }
 
   static async completeGrantRequest({
