@@ -143,6 +143,8 @@ describe('StarterPackPurchaseService', function () {
         { id: 1, name: 'Warehouse' },
         { id: 2, name: 'Extractor' }
       ]);
+      expect(products[0]).to.not.have.property('features');
+      expect(products[0]).to.not.have.property('flavor');
     });
   });
 
