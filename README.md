@@ -97,13 +97,19 @@ canonical starter pack definitions.
 
 The purchase flow is:
 1. Authenticated client creates a Checkout Session with
-   `POST /v2/starter-packs/checkout`, passing `productId` or `packType`, `successUrl`, `cancelUrl`, and optionally
-   `recipient`.
+   `POST /v2/starter-packs/checkout`, passing `productId` or `packType`, `returnUrl`, and optionally `recipient`.
    The recipient must match the authenticated purchaser address.
+   `returnUrl` should include the literal `{CHECKOUT_SESSION_ID}` template variable so the client can resume the
+   correct purchase after a redirect-based authorization flow.
+   The response contains `clientSecret` for mounting Stripe Embedded Checkout, plus `checkoutSessionId` and the
+   persisted `purchase`. Stripe redirects to `returnUrl` only for payment methods that require an external
+   authorization flow.
 2. Stripe sends `checkout.session.completed`; the webhook verifies the event, confirms `payment_status=paid`, and
    stores the purchase as `paid_pending_customization`.
 3. Client resumes with `GET /v2/starter-packs/pending` or
    `GET /v2/starter-packs/checkout/:checkoutSessionId`.
+   The checkout lookup also returns `clientSecret` while the purchase is still `checkout_created`, allowing the client
+   to remount the same Embedded Checkout after a refresh or an incomplete redirect-based payment.
 4. After the player creates all required crewmates, client submits the grant payload with
    `POST /v2/starter-packs/customization`.
 5. Client waits for the indexer to observe `OffchainStarterPackGranted` and the related starter pack components.

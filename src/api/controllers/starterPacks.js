@@ -23,19 +23,18 @@ const createCheckoutSession = async function (ctx) {
 
   try {
     const result = await StarterPackPurchaseService.createCheckoutSession({
-      cancelUrl: body.cancelUrl,
       product: body.packType,
       productId: body.productId,
       purchaser,
       recipient: body.recipient,
-      stripe: stripeInstance(),
-      successUrl: body.successUrl
+      returnUrl: body.returnUrl,
+      stripe: stripeInstance()
     });
 
     ctx.body = {
       checkoutSessionId: result.id,
-      purchase: result.purchase,
-      url: result.url
+      clientSecret: result.clientSecret,
+      purchase: result.purchase
     };
   } catch (error) {
     ctx.throw(400, error.message);
@@ -55,12 +54,11 @@ const getPurchaseByCheckoutSession = async function (ctx) {
   const { params: { checkoutSessionId }, state: { user: { sub: purchaser } } } = ctx;
   if (!purchaser) ctx.throw(401, 'Not authorized');
 
-  ctx.body = {
-    purchase: await StarterPackPurchaseService.purchaseForCheckoutSession({
-      checkoutSessionId,
-      purchaser
-    })
-  };
+  ctx.body = await StarterPackPurchaseService.resumeCheckoutSession({
+    checkoutSessionId,
+    purchaser,
+    stripe: stripeInstance()
+  });
 };
 
 const completeCustomization = async function (ctx) {
