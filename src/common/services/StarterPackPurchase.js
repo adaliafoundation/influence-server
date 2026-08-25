@@ -23,7 +23,6 @@ const STARTER_PACK_DEFINITIONS = {
     coreSampleAllowance: 5,
     foodReloadAllowance: 1,
     lotAllowance: 2,
-    name: 'Explorer',
     productId: 1,
     sortOrder: 1
   },
@@ -36,7 +35,6 @@ const STARTER_PACK_DEFINITIONS = {
     coreSampleAllowance: 8,
     foodReloadAllowance: 1,
     lotAllowance: 3,
-    name: 'Strategist',
     productId: 2,
     sortOrder: 2
   },
@@ -51,7 +49,6 @@ const STARTER_PACK_DEFINITIONS = {
     coreSampleAllowance: 12,
     foodReloadAllowance: 1,
     lotAllowance: 5,
-    name: 'Industrialist',
     productId: 3,
     sortOrder: 3
   }
@@ -133,9 +130,10 @@ class StarterPackPurchaseService {
         currency: price?.currency ?? null,
         description: stripeProduct.description || null,
         enabled: Boolean(stripeProduct.active && price?.active),
+        features: (stripeProduct.marketing_features || []).map(({ name }) => name).filter(Boolean),
         foodReloadAllowance: definition.foodReloadAllowance,
         lotAllowance: definition.lotAllowance,
-        name: stripeProduct.name || definition.name,
+        name: stripeProduct.name,
         packType,
         productId: definition.productId,
         requiredCrewmates: STARTER_PACK_COUNTS[definition.productId],
