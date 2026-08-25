@@ -91,7 +91,11 @@ payment and the player submits their completed crewmate customization.
 Starter pack provisioning is disabled by default so open-source nodes can index starter pack activity without holding
 Stripe credentials or the grant signer key.
 
-The API flow is:
+The client retrieves the available products with `GET /v2/starter-packs/products`. Product `name`, `description`, and
+`features` come from the corresponding Stripe Product; entitlement counts and buildings come from the server's
+canonical starter pack definitions.
+
+The purchase flow is:
 1. Authenticated client creates a Checkout Session with
    `POST /v2/starter-packs/checkout`, passing `productId` or `packType`, `successUrl`, `cancelUrl`, and optionally
    `recipient`.

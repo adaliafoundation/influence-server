@@ -100,6 +100,10 @@ describe('StarterPackPurchaseService', function () {
           default_price: 'price_explorer',
           description: 'Explorer description',
           id: 'prod_explorer',
+          marketing_features: [
+            { name: 'Two crewmates' },
+            { name: 'Warehouse and Extractor starter funding' }
+          ],
           name: 'Explorer'
         },
         prod_industrialist: {
@@ -132,6 +136,7 @@ describe('StarterPackPurchaseService', function () {
       expect(products[0]).to.deep.include({
         amount: 2500,
         currency: 'usd',
+        description: 'Explorer description',
         enabled: true,
         name: 'Explorer',
         packType: 'explorer',
@@ -143,7 +148,11 @@ describe('StarterPackPurchaseService', function () {
         { id: 1, name: 'Warehouse' },
         { id: 2, name: 'Extractor' }
       ]);
-      expect(products[0]).to.not.have.property('features');
+      expect(products[0].features).to.deep.equal([
+        'Two crewmates',
+        'Warehouse and Extractor starter funding'
+      ]);
+      expect(products[1].features).to.deep.equal([]);
       expect(products[0]).to.not.have.property('flavor');
     });
   });
