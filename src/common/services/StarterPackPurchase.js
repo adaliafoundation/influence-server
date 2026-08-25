@@ -21,14 +21,6 @@ const STARTER_PACK_DEFINITIONS = {
       { id: 2, name: 'Extractor' }
     ],
     coreSampleAllowance: 5,
-    features: [
-      '2 crewmates',
-      '2 starter lots',
-      '1 food reload',
-      '5 core samples',
-      'Warehouse and Extractor starter funding'
-    ],
-    flavor: 'A lean foothold for learning the belt and claiming your first productive ground.',
     foodReloadAllowance: 1,
     lotAllowance: 2,
     name: 'Explorer',
@@ -42,14 +34,6 @@ const STARTER_PACK_DEFINITIONS = {
       { id: 3, name: 'Refinery' }
     ],
     coreSampleAllowance: 8,
-    features: [
-      '3 crewmates',
-      '3 starter lots',
-      '1 food reload',
-      '8 core samples',
-      'Warehouse, Extractor, and Refinery starter funding'
-    ],
-    flavor: 'A balanced crew with enough room to scout, extract, and start refining quickly.',
     foodReloadAllowance: 1,
     lotAllowance: 3,
     name: 'Strategist',
@@ -65,14 +49,6 @@ const STARTER_PACK_DEFINITIONS = {
       { id: 5, name: 'Factory' }
     ],
     coreSampleAllowance: 12,
-    features: [
-      '5 crewmates',
-      '5 starter lots',
-      '1 food reload',
-      '12 core samples',
-      'Full starter production chain funding'
-    ],
-    flavor: 'The widest opening position, built for players who want production online fast.',
     foodReloadAllowance: 1,
     lotAllowance: 5,
     name: 'Industrialist',
@@ -157,8 +133,6 @@ class StarterPackPurchaseService {
         currency: price?.currency ?? null,
         description: stripeProduct.description || null,
         enabled: Boolean(stripeProduct.active && price?.active),
-        features: definition.features,
-        flavor: definition.flavor,
         foodReloadAllowance: definition.foodReloadAllowance,
         lotAllowance: definition.lotAllowance,
         name: stripeProduct.name || definition.name,

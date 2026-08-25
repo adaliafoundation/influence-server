@@ -29,7 +29,7 @@ describe('StarterPackPurchaseService', function () {
     appConfig.Contracts.starknet.grantOffchainStarterPack = '0x456';
     appConfig.Starknet.starterPackPrivateKey = '0xabc';
     appConfig.Starknet.starterPackPrivateKeyFile = null;
-    appConfig.Stripe.checkoutPaymentMethodTypes = ['card', 'ideal', 'wero'];
+    appConfig.Stripe.checkoutPaymentMethodTypes = ['card', 'ideal'];
     appConfig.Stripe.starterPackProducts = {
       explorer: { productId: 1, stripeProductId: 'prod_explorer' },
       strategist: { productId: 2, stripeProductId: 'prod_strategist' },
@@ -143,6 +143,8 @@ describe('StarterPackPurchaseService', function () {
         { id: 1, name: 'Warehouse' },
         { id: 2, name: 'Extractor' }
       ]);
+      expect(products[0]).to.not.have.property('features');
+      expect(products[0]).to.not.have.property('flavor');
     });
   });
 
