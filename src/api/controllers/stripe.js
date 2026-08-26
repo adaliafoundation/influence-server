@@ -8,7 +8,7 @@ const stripeInstance = () => Stripe(appConfig.get('Stripe.secretKey'));
 
 const validateProvisionerConfig = () => {
   const missingPaths = [
-    'Contracts.starknet.grantOffchainStarterPack',
+    'Contracts.starknet.dispatcher',
     'Contracts.starknet.starterPackAdmin',
     'Starknet.rpcProvider',
     'Stripe.secretKey',

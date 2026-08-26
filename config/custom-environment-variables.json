@@ -123,7 +123,6 @@
   },
   "Contracts": {
     "starknet": {
-      "grantOffchainStarterPack": "STARKNET_CONTRACT_GRANT_OFFCHAIN_STARTER_PACK",
       "starterPackAdmin": "STARKNET_STARTER_PACK_ADMIN"
     }
   }

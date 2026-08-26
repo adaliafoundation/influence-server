@@ -397,17 +397,16 @@ class StarterPackPurchaseService {
     const grantPurchase = await this.claimPurchaseForSubmission(purchase);
     if (!grantPurchase) return null;
 
-    const provider = await starknetClient.createRpcProvider({ nodeUrl: appConfig.get('Starknet.rpcProvider') });
-    const account = starknetClient.createAccount({
-      provider,
-      address: appConfig.get('Contracts.starknet.starterPackAdmin'),
-      signer: await readStarterPackPrivateKey()
-    });
-
     try {
+      const provider = await starknetClient.createRpcProvider({ nodeUrl: appConfig.get('Starknet.rpcProvider') });
+      const account = starknetClient.createAccount({
+        provider,
+        address: appConfig.get('Contracts.starknet.starterPackAdmin'),
+        signer: await readStarterPackPrivateKey()
+      });
       const response = await account.execute({
         calldata: this.calldataFromPurchase(grantPurchase),
-        contractAddress: appConfig.get('Contracts.starknet.grantOffchainStarterPack'),
+        contractAddress: appConfig.get('Contracts.starknet.dispatcher'),
         entrypoint: 'run'
       });
 

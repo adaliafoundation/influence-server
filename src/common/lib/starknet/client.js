@@ -15,20 +15,14 @@ const createAccount = ({
   cairoVersion,
   transactionVersion,
   ...props
-} = {}) => {
-  try {
-    return new starknet.Account({
-      provider,
-      address,
-      signer,
-      cairoVersion,
-      transactionVersion,
-      ...props
-    });
-  } catch (error) {
-    return new starknet.Account(provider, address, signer, cairoVersion, transactionVersion);
-  }
-};
+} = {}) => new starknet.Account({
+  provider,
+  address,
+  signer,
+  cairoVersion,
+  transactionVersion,
+  ...props
+});
 
 const createContract = ({ abi, address, providerOrAccount, ...props } = {}) => {
   try {
