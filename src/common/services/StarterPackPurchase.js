@@ -62,6 +62,8 @@ const PENDING_PURCHASE_STATUSES = [
   'grant_failed'
 ];
 
+const GRANT_SYSTEM_NAME = 'GrantOffchainStarterPack';
+
 const asNumberArray = (values = []) => values.map(Number);
 
 const asFelt = (value) => {
@@ -370,6 +372,16 @@ class StarterPackPurchaseService {
     ];
   }
 
+  static callFromPurchase(purchase) {
+    const calldata = this.calldataFromPurchase(purchase);
+
+    return {
+      calldata: [shortString.encodeShortString(GRANT_SYSTEM_NAME), calldata.length, ...calldata],
+      contractAddress: appConfig.get('Contracts.starknet.dispatcher'),
+      entrypoint: 'run_system'
+    };
+  }
+
   static async claimPurchaseForSubmission(purchase) {
     if (!purchase._id) return purchase;
 
@@ -404,11 +416,7 @@ class StarterPackPurchaseService {
         address: appConfig.get('Contracts.starknet.starterPackAdmin'),
         signer: await readStarterPackPrivateKey()
       });
-      const response = await account.execute({
-        calldata: this.calldataFromPurchase(grantPurchase),
-        contractAddress: appConfig.get('Contracts.starknet.dispatcher'),
-        entrypoint: 'run'
-      });
+      const response = await account.execute(this.callFromPurchase(grantPurchase));
 
       grantPurchase.txHash = response.transaction_hash;
       grantPurchase.status = 'grant_submitted';
