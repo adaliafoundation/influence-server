@@ -25,8 +25,8 @@ const validGrantRequest = () => ({
 
 describe('StarterPackPurchaseService', function () {
   beforeEach(function () {
+    appConfig.Contracts.starknet.dispatcher = '0x456';
     appConfig.Contracts.starknet.starterPackAdmin = '0x123';
-    appConfig.Contracts.starknet.grantOffchainStarterPack = '0x456';
     appConfig.Starknet.starterPackPrivateKey = '0xabc';
     appConfig.Starknet.starterPackPrivateKeyFile = null;
     appConfig.Stripe.checkoutPaymentMethodTypes = ['card', 'ideal'];
@@ -379,6 +379,7 @@ describe('StarterPackPurchaseService', function () {
       expect(purchase.status).to.equal('grant_submitted');
       expect(purchase.txHash).to.equal('0xtx');
       expect(executeStub.calledOnce).to.equal(true);
+      expect(executeStub.firstCall.args[0].contractAddress).to.equal('0x456');
     });
 
     it('should prefer the configured private key file', async function () {
@@ -403,6 +404,33 @@ describe('StarterPackPurchaseService', function () {
       await fs.unlink(keyFile);
 
       expect(createAccountStub.firstCall.args[0].signer).to.equal('0xfilekey');
+    });
+
+    it('should persist account setup failures as retryable grant failures', async function () {
+      this._sandbox.stub(starknetClient, 'createRpcProvider').resolves({});
+      this._sandbox.stub(starknetClient, 'createAccount').throws(new Error('Invalid signer'));
+
+      const purchase = {
+        externalRef: '0xabc',
+        productId: 1,
+        status: 'paid_pending_customization',
+        grantRequest: validGrantRequest(),
+        save: this._sandbox.stub().resolves(),
+        stripeCheckoutSessionId: 'cs_123'
+      };
+
+      let error;
+      try {
+        await StarterPackPurchaseService.submitGrant(purchase);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(error).to.be.an('error');
+      expect(error.message).to.equal('Failed to submit starter pack grant');
+      expect(purchase.grantError).to.equal('Invalid signer');
+      expect(purchase.status).to.equal('grant_failed');
+      expect(purchase.save.calledOnce).to.equal(true);
     });
   });
 
