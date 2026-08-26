@@ -379,7 +379,14 @@ describe('StarterPackPurchaseService', function () {
       expect(purchase.status).to.equal('grant_submitted');
       expect(purchase.txHash).to.equal('0xtx');
       expect(executeStub.calledOnce).to.equal(true);
-      expect(executeStub.firstCall.args[0].contractAddress).to.equal('0x456');
+      const call = executeStub.firstCall.args[0];
+      expect(call.contractAddress).to.equal('0x456');
+      expect(call.entrypoint).to.equal('run_system');
+      expect(call.calldata[0]).to.equal(shortString.encodeShortString('GrantOffchainStarterPack'));
+      expect(call.calldata[1]).to.equal(call.calldata.length - 2);
+      expect(call.calldata[2]).to.equal(
+        '0x0000000000000000000000000000000000000000000000000000000000000789'
+      );
     });
 
     it('should prefer the configured private key file', async function () {

@@ -88,6 +88,7 @@ would bind-mount local source files into `/app`, pulls the latest configured ima
 ### Starter pack grant signing key
 The off-chain starter pack flow submits Starknet transactions from a dedicated admin account after Stripe confirms
 payment and the player submits their completed crewmate customization.
+Provisioning calls the configured Dispatcher entrypoint `run_system` with `GrantOffchainStarterPack` as the system name.
 Starter pack provisioning is disabled by default so open-source nodes can index starter pack activity without holding
 Stripe credentials or the grant signer key.
 
