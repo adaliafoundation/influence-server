@@ -355,7 +355,11 @@ describe('StarterPackPurchaseService', function () {
         1
       ]);
       expect(calldata).to.include(shortString.encodeShortString('Ada'));
-      expect(calldata).to.include('0x0000000000000000000000000000000000000000000000000000000000000123');
+      expect(calldata).to.have.length(40);
+      expect(calldata.slice(-2)).to.deep.equal([
+        shortString.encodeShortString('Ada'),
+        shortString.encodeShortString('Bea')
+      ]);
     });
   });
 
