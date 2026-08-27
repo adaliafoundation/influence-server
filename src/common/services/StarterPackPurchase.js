@@ -335,8 +335,6 @@ class StarterPackPurchaseService {
   static calldataFromPurchase(purchase) {
     const { grantRequest, productId } = purchase;
     const station = Entity.toEntity(grantRequest.station);
-    const adminAddress = Address.toStandard(appConfig.get('Contracts.starknet.starterPackAdmin'), 'starknet');
-    const now = Math.floor(Date.now() / 1000);
 
     return [
       Address.toStandard(grantRequest.recipient, 'starknet'),
@@ -364,11 +362,7 @@ class StarterPackPurchaseService {
       grantRequest.clothes.length,
       ...asNumberArray(grantRequest.clothes),
       grantRequest.names.length,
-      ...grantRequest.names.map(asFelt),
-      adminAddress,
-      now,
-      0,
-      0
+      ...grantRequest.names.map(asFelt)
     ];
   }
 
