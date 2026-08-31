@@ -7,8 +7,18 @@
   "Argent": {
     "relayerPath": "/v1/relayer/execute"
   },
+  "Avnu": {
+    "paymasterEnabled": 0,
+    "paymasterApiKey": null,
+    "paymasterMaxStarterPackBudgetStrk": 100,
+    "paymasterReservationTtlSeconds": 300,
+    "paymasterUrl": null,
+    "rateLimitPerMinute": 120,
+    "requestTimeoutMs": 10000
+  },
   "Contracts": {
     "starknet": {
+      "escrow": null,
       "starterPackAdmin": null,
       "udc": "0x041a78e741e5af2fec34b695679bc6891742439f7afb8484ecd7766661ad02bf"
     }

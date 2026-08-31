@@ -26,6 +26,8 @@ const schema = new mongoose.Schema({
   stripePriceId: { type: String, required: true },
   purchaser: { type: String, set: Address.toStandard, required: true },
   recipient: { type: String, set: Address.toStandard, required: true },
+  chainId: { type: String },
+  chainSlug: { type: String },
   productId: { type: Number, required: true },
   externalRef: { type: String },
   grantRequest: { type: StarterPackGrantRequestSchema },
@@ -43,8 +45,11 @@ const schema = new mongoose.Schema({
   },
   txHash: { type: String },
   grantError: { type: String },
+  grantSubmittedAt: { type: Date },
   grantedCrew: { type: EntitySchema },
-  grantedAt: { type: Date }
+  grantedAt: { type: Date },
+  paidAt: { type: Date },
+  paymasterReservedMilliStrk: { type: Number, default: 0 }
 }, { timestamps: true });
 
 schema

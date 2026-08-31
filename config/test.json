@@ -14,6 +14,12 @@
     "uri": "http://null.localhost",
     "apiKey": "ARGENT_API_KEY"
   },
+  "Avnu": {
+    "paymasterEnabled": 1,
+    "paymasterApiKey": "TEST_AVNU_PAYMASTER_API_KEY",
+    "paymasterUrl": "https://paymaster.localhost",
+    "requestTimeoutMs": 10000
+  },
   "Contracts": {
     "ethereum": {
       "arvadCrewSale": "0xe24021388601dBd07Dbd99e1f6D8199061c10892",

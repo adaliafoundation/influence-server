@@ -5,10 +5,10 @@ const cors = require('@koa/cors');
 const bodyParser = require('koa-bodyparser');
 const corsOrJwt = require('@api/plugins/corsOrJwt');
 const { allowedOrigin } = require('@api/plugins/origin');
+const { isStarterPackProvisionerEnabled } = require('@common/lib/officialFeatures');
 const { StarterPackPurchaseService } = require('@common/services');
 const Stripe = require('stripe');
 
-const isProvisionerEnabled = () => Number(appConfig.get('StarterPack.provisionerEnabled')) === 1;
 const stripeInstance = () => Stripe(appConfig.get('Stripe.secretKey'));
 
 const getProducts = async function (ctx) {
@@ -80,7 +80,7 @@ const completeCustomization = async function (ctx) {
 
 const router = new KoaRouter();
 
-if (isProvisionerEnabled()) {
+if (isStarterPackProvisionerEnabled()) {
   router
     .use(koaJwt({ secret: appConfig.get('App.jwtSecret'), passthrough: true }))
     .use(cors({ origin: allowedOrigin }))

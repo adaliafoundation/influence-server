@@ -13,6 +13,15 @@
   "Argent": {
     "apiKey": "ARGENT_API_KEY"
   },
+  "Avnu": {
+    "paymasterEnabled": "AVNU_PAYMASTER_ENABLED",
+    "paymasterApiKey": "AVNU_PAYMASTER_API_KEY",
+    "paymasterMaxStarterPackBudgetStrk": "AVNU_PAYMASTER_MAX_STARTER_PACK_BUDGET_STRK",
+    "paymasterReservationTtlSeconds": "AVNU_PAYMASTER_RESERVATION_TTL_SECONDS",
+    "paymasterUrl": "AVNU_PAYMASTER_URL",
+    "rateLimitPerMinute": "AVNU_PAYMASTER_RATE_LIMIT_PER_MINUTE",
+    "requestTimeoutMs": "AVNU_PAYMASTER_REQUEST_TIMEOUT_MS"
+  },
   "Elasticsearch": {
     "uri": "ELASTICSEARCH_URL",
     "indexer": {

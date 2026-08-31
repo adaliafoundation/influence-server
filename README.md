@@ -89,8 +89,15 @@ would bind-mount local source files into `/app`, pulls the latest configured ima
 The off-chain starter pack flow submits Starknet transactions from a dedicated admin account after Stripe confirms
 payment and the player submits their completed crewmate customization.
 Provisioning calls the configured Dispatcher entrypoint `run_system` with `GrantOffchainStarterPack` as the system name.
-Starter pack provisioning is disabled by default so open-source nodes can index starter pack activity without holding
-Stripe credentials or the grant signer key.
+Starter pack purchasing, Stripe webhooks, grant provisioning, and AVNU fee subsidies are disabled by default so
+open-source nodes can index starter pack activity without holding official payment credentials, AVNU credentials, or
+the grant signer key.
+
+Community-run nodes should leave these unset or disabled:
+```
+STARTER_PACK_PROVISIONER_ENABLED=0
+AVNU_PAYMASTER_ENABLED=0
+```
 
 The client retrieves the available products with `GET /v2/starter-packs/products`. Product `name`, `description`, and
 `features` come from the corresponding Stripe Product; entitlement counts and buildings come from the server's
@@ -114,6 +121,12 @@ The purchase flow is:
 4. After the player creates all required crewmates, client submits the grant payload with
    `POST /v2/starter-packs/customization`.
 5. Client waits for the indexer to observe `OffchainStarterPackGranted` and the related starter pack components.
+
+The purchase refund window and starter pack subsidy window are separate. The refund window closes when the server
+submits the starter pack grant transaction, or 14 days after Stripe payment if customization never completes. The
+subsidized Starknet fee window starts from the indexed `OffchainStarterPackGranted` timestamp and lasts 14 days. The
+server also owns the `restrictedUntil` value sent to the grant transaction so on-chain starter restrictions are based
+on grant submission timing, not client-supplied payment timing.
 
 Prerelease may use a raw private key in `.env`:
 ```
@@ -167,6 +180,71 @@ on it for transaction fees.
 Configure log alerts for these starter pack provisioning markers:
 - `STARTER_PACK_GRANT_FAILED`: Stripe payment completed and customization was submitted, but the Starknet grant
   transaction was not submitted.
+
+### AVNU gasfree paymaster proxy
+The authenticated `POST /v2/paymaster` endpoint proxies Starknet.js SNIP-29 JSON-RPC requests to AVNU while keeping
+the sponsorship API key on the server. Prerelease uses `https://sepolia.paymaster.avnu.fi`; production uses
+`https://starknet.paymaster.avnu.fi`. Set `AVNU_PAYMASTER_ENABLED=1` and `AVNU_PAYMASTER_API_KEY` only on official
+servers that should sponsor gas. The compose configuration already loads `.env` into the API container, so no
+additional compose file is required. Separate prerelease and production API keys are recommended for independent usage
+tracking and rotation. Requests are limited per authenticated user; the default is 120 requests per minute and can be
+changed with
+`AVNU_PAYMASTER_RATE_LIMIT_PER_MINUTE`.
+
+Each starter pack has a default sponsored fee budget of 100 STRK across account deployment and the 14-day post-grant
+subsidy window. The server reserves AVNU's `suggested_max_fee_in_strk` from `paymaster_buildTransaction`, rounded up to
+the nearest milliSTRK, and `paymaster_executeTransaction` must match a recent reserved build response. The budget can be
+changed with `AVNU_PAYMASTER_MAX_STARTER_PACK_BUDGET_STRK`; the reservation TTL defaults to 300 seconds and can be
+changed with `AVNU_PAYMASTER_RESERVATION_TTL_SECONDS`.
+
+The proxy permits `paymaster_isAvailable`, `paymaster_getSupportedTokens`, `paymaster_buildTransaction`, and
+`paymaster_executeTransaction`. Transaction requests must use sponsored mode. The proxy validates the transaction
+before forwarding it to AVNU.
+
+Starter account deployment sponsorship is allowed only when:
+- the requester is authenticated to Influence
+- `transaction.type` is `deploy`
+- `transaction.deployment.address` matches the authenticated user
+- the recipient has a paid starter pack purchase in the current Starknet environment with status
+  `paid_pending_customization`
+- the account is not yet deployed on Starknet
+- the deployment uses Ready v0.5 class hash
+  `0x073414441639dcd11d1846f287650a00c60c416b9d3ba45d31c651672125b2c2`
+- the deployment constructor calldata is `[guardian, publicKey, signerCount]`, with `guardian = 0x0`,
+  `signerCount = 0x1`, `salt = publicKey`, and the recomputed address matching `deployment.address`
+
+Sponsored invoke transactions are allowed only for confirmed starter pack recipients in the current Starknet
+environment. The 14-day sponsorship window starts at the indexed `OffchainStarterPackGranted` timestamp, not the
+Stripe payment timestamp. Multicalls are supported, but every call in the multicall must target one of:
+- `Contracts.starknet.dispatcher` with entrypoint `run_system`
+- `Contracts.starknet.sway` with entrypoint `transfer_with_confirmation`
+- `Contracts.starknet.sway` with entrypoint `approve`
+- `Contracts.starknet.escrow` with entrypoint `deposit`
+- `Contracts.starknet.escrow` with entrypoint `withdraw`
+- `Contracts.starknet.escrow` with entrypoint `start_force_withdraw`
+- `Contracts.starknet.escrow` with entrypoint `finish_force_withdraw`
+
+Client setup with Starknet.js:
+```js
+const paymaster = new PaymasterRpc({
+  nodeUrl: `${apiUrl}/v2/paymaster`,
+  headers: { Authorization: `Bearer ${authToken}` }
+});
+
+const result = await account.execute(calls, {
+  paymaster: {
+    provider: paymaster,
+    params: {
+      version: '0x1',
+      feeMode: { mode: 'sponsored' }
+    }
+  }
+});
+```
+
+The proxy does not sponsor requests for a wallet other than the authenticated user. AVNU may still decline sponsorship
+due to credits, rate limits, unsupported calls, or its abuse controls; the client should surface the paymaster error and
+allow the player to retry with normal gas payment.
 
 ### Influence-server services
 - influence-server: the main service, running the API server

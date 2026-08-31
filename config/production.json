@@ -2,6 +2,9 @@
   "Argent": {
     "uri": ""
   },
+  "Avnu": {
+    "paymasterUrl": "https://starknet.paymaster.avnu.fi"
+  },
   "Contracts": {
     "ethereum": {
       "arvadCrewSale": "0x258432C72A28DD11318FC0373e75e87Ce65765E3",
@@ -31,7 +34,8 @@
       "crewmate": "0x241b9c4ce12c06f49fee2ec7c16337386fa5185168f538a7631aacecdf3df74",
       "dispatcher": "0x422d33a3638dcc4c62e72e1d6942cd31eb643ef596ccac2351e0e21f6cd4bf4",
       "ship": "0x04369e47e647ab5fc4d36cee26590276b99a89a83fc3306462d21d366611fde3",
-      "sway": "0x004878d1148318a31829523ee9c6a5ee563af6cd87f90a30809e5b0d27db8a9b"
+      "sway": "0x004878d1148318a31829523ee9c6a5ee563af6cd87f90a30809e5b0d27db8a9b",
+      "escrow": "0x0487a1c4d61c05d79e22ed90d4811b32277961707338c78d563a245749f57618"
     }
   },
   "Ethereum": {
