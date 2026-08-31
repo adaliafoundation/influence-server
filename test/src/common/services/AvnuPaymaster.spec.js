@@ -356,6 +356,93 @@ describe('AvnuPaymasterService', function () {
     expect(sponsorship.txHash).to.equal('0xtx');
   });
 
+  it('should match invoke execute requests after AVNU converts calls to typed data', async function () {
+    const body = paymasterRequest({
+      params: {
+        parameters: { fee_mode: { mode: 'sponsored' }, version: '0x1' },
+        transaction: {
+          invoke: {
+            calls: [
+              {
+                calldata: ['0x4163636570745072657061696441677265656d656e74', '0x8'],
+                selector: hash.getSelectorFromName('run_system'),
+                to: `0x0${Address.toStandard(appConfig.get('Contracts.starknet.dispatcher'), 'starknet').slice(2)}`
+              }
+            ],
+            user_address: USER_ADDRESS
+          },
+          type: 'invoke'
+        }
+      }
+    });
+    const typedData = {
+      domain: {
+        chainId: 'SN_SEPOLIA',
+        name: 'Account.execute_from_outside',
+        revision: '1',
+        version: '2'
+      },
+      message: {
+        Calls: [
+          {
+            Calldata: ['0x4163636570745072657061696441677265656d656e74', '0x8'],
+            Selector: hash.getSelectorFromName('run_system'),
+            To: Address.toStandard(appConfig.get('Contracts.starknet.dispatcher'), 'starknet')
+          }
+        ],
+        Caller: '0x75a180e18e56da1b1cae181c92a288f586f5fe22c18df21cf97886f1e4b316c',
+        'Execute After': '0x1',
+        'Execute Before': '0x6a9587e7',
+        Nonce: '0xbee2b5ac6c92f993dc479e76ea991129'
+      },
+      primaryType: 'OutsideExecution',
+      types: {}
+    };
+    const executeBody = paymasterRequest({
+      method: 'paymaster_executeTransaction',
+      params: {
+        parameters: { fee_mode: { mode: 'sponsored' }, version: '0x1' },
+        transaction: {
+          invoke: {
+            signature: ['0x1', '0x2'],
+            typed_data: typedData,
+            user_address: USER_ADDRESS
+          },
+          type: 'invoke'
+        }
+      }
+    });
+    const postStub = this._sandbox.stub(axios, 'post');
+    postStub.onFirstCall().resolves({
+      data: {
+        id: 5,
+        jsonrpc: '2.0',
+        result: buildResponse({
+          parameters: {
+            fee_mode: { mode: 'sponsored', tip: 'normal' },
+            time_bounds: null,
+            version: '0x1'
+          },
+          typed_data: typedData,
+          type: 'invoke'
+        }).data.result
+      },
+      status: 200
+    });
+    postStub.onSecondCall().resolves({
+      data: { id: 6, jsonrpc: '2.0', result: { transaction_hash: '0xinvoketx' } },
+      status: 200
+    });
+    await createPurchase();
+
+    await AvnuPaymasterService.forward({ body, userAddress: USER_ADDRESS });
+    await AvnuPaymasterService.forward({ body: executeBody, userAddress: USER_ADDRESS });
+
+    const sponsorship = await mongoose.model('PaymasterSponsorship').findOne().lean();
+    expect(sponsorship.status).to.equal('submitted');
+    expect(sponsorship.txHash).to.equal('0xinvoketx');
+  });
+
   it('should match deploy execute requests when AVNU normalizes felts and omits tip', async function () {
     const publicKey = '0x5d880ad7abc2e3eb9080a10a2b1d60732b2e002364d5f90449a8e5438962c96';
     const transaction = readyDeployTransaction({ publicKey });
