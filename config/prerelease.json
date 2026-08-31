@@ -2,6 +2,9 @@
   "Argent": {
     "uri": "https://api.hydrogen.argent47.net"
   },
+  "Avnu": {
+    "paymasterUrl": "https://sepolia.paymaster.avnu.fi"
+  },
   "Contracts": {
     "ethereum": {
       "arvadCrewSale": "0x4E928EB49d83E84dB40cFDb226ca6ff1B2bEA767",
@@ -33,7 +36,8 @@
       "ether": "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
       "faucet": "0x6730c211d67bb7c463190f10baa95529c82de2e32d79dd4cb3b185b6d0ddf86",
       "ship": "0x61645ea472d543200c28291c92d54066b1088de67069c1ff0ad2c4c05ef2ed8",
-      "sway": "0x0030058f19ed447208015f6430f0102e8ab82d6c291566d7e73fe8e613c3d2ed"
+      "sway": "0x0030058f19ed447208015f6430f0102e8ab82d6c291566d7e73fe8e613c3d2ed",
+      "escrow": "0x04541d894b5c0476d620e62c3a9be4719ba2dc652df84148be382a89619864e2"
     }
   },
   "Ethereum": {

@@ -15,6 +15,7 @@ const images = require('./images');
 const lots = require('./lots');
 const messages = require('./messages');
 const metadata = require('./metadata');
+const paymaster = require('./paymaster');
 const referrals = require('./referrals');
 const sales = require('./sales');
 const search = require('./search');
@@ -40,6 +41,7 @@ module.exports = {
   lots,
   messages,
   metadata,
+  paymaster,
   referrals,
   sales,
   search,

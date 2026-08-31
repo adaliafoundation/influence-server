@@ -1,6 +1,7 @@
 const ActivityService = require('./Activity');
 const ApiKeyService = require('./ApiKey');
 const ArgentService = require('./Argent');
+const AvnuPaymasterService = require('./AvnuPaymaster');
 const AsteroidSaleService = require('./AsteroidSale');
 const AsteroidService = require('./Asteroid');
 const AuthService = require('./Auth');
@@ -38,6 +39,7 @@ module.exports = {
   ActivityService,
   ApiKeyService,
   ArgentService,
+  AvnuPaymasterService,
   AsteroidSaleService,
   AsteroidService,
   AuthService,

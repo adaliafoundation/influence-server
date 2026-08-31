@@ -211,6 +211,8 @@ describe('StarterPackPurchaseService', function () {
         packType: 'explorer',
         productId: 1,
         requiredCrewmates: 2,
+        refundWindowOpen: false,
+        sponsorshipEndsAt: null,
         status: 'checkout_created',
         stripeCheckoutSessionId: 'cs_123'
       });
@@ -382,6 +384,7 @@ describe('StarterPackPurchaseService', function () {
       expect(txHash).to.equal('0xtx');
       expect(purchase.status).to.equal('grant_submitted');
       expect(purchase.txHash).to.equal('0xtx');
+      expect(purchase.grantSubmittedAt).to.be.a('date');
       expect(executeStub.calledOnce).to.equal(true);
       const call = executeStub.firstCall.args[0];
       expect(call.contractAddress).to.equal('0x456');
@@ -541,7 +544,13 @@ describe('StarterPackPurchaseService', function () {
       const submitGrantStub = this._sandbox.stub(StarterPackPurchaseService, 'submitGrant').callsFake(async (doc) => {
         await mongoose.model('StarterPackPurchase').updateOne(
           { _id: doc._id },
-          { $set: { status: 'grant_submitted', txHash: '0xtx' } }
+          {
+            $set: {
+              grantSubmittedAt: new Date('2026-01-01T00:00:00.000Z'),
+              status: 'grant_submitted',
+              txHash: '0xtx'
+            }
+          }
         );
         return '0xtx';
       });
@@ -555,7 +564,9 @@ describe('StarterPackPurchaseService', function () {
       const updatedPurchase = await mongoose.model('StarterPackPurchase').findById(purchase.id).lean();
       expect(result.status).to.equal('grant_submitted');
       expect(result.txHash).to.equal('0xtx');
+      expect(result.refundWindowClosesAt.toISOString()).to.equal('2026-01-01T00:00:00.000Z');
       expect(updatedPurchase.grantRequest.names).to.deep.equal(['Ada', 'Bea']);
+      expect(updatedPurchase.grantRequest.restrictedUntil).to.be.greaterThan(Math.floor(Date.now() / 1000));
       expect(submitGrantStub.calledOnce).to.equal(true);
     });
 

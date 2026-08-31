@@ -63,6 +63,8 @@ const PENDING_PURCHASE_STATUSES = [
 ];
 
 const GRANT_SYSTEM_NAME = 'GrantOffchainStarterPack';
+const STARTER_PACK_WINDOW_DAYS = 14;
+const STARTER_PACK_WINDOW_SECONDS = STARTER_PACK_WINDOW_DAYS * 24 * 60 * 60;
 
 const asNumberArray = (values = []) => values.map(Number);
 
@@ -80,6 +82,23 @@ const readStarterPackPrivateKey = async () => {
   const privateKey = appConfig.get('Starknet.starterPackPrivateKey');
   if (!privateKey) throw new ValidationError('Missing starter pack private key');
   return privateKey;
+};
+
+const starknetEnvironment = () => ({
+  chainId: appConfig.get('Starknet.chainId')?.toString(),
+  chainSlug: appConfig.has('Starknet.chainSlug') ? appConfig.get('Starknet.chainSlug') : null
+});
+
+const addStarterPackWindow = (date) => {
+  if (!date) return null;
+  return new Date(new Date(date).getTime() + STARTER_PACK_WINDOW_SECONDS * 1000);
+};
+
+const starterPackRestrictedUntil = () => Math.floor(Date.now() / 1000) + STARTER_PACK_WINDOW_SECONDS;
+
+const refundWindowClosesAt = (purchase) => {
+  if (purchase.grantSubmittedAt) return purchase.grantSubmittedAt;
+  return addStarterPackWindow(purchase.paidAt);
 };
 
 class StarterPackPurchaseService {
@@ -195,6 +214,7 @@ class StarterPackPurchaseService {
     const { productId } = starterPackProduct;
 
     const purchase = await mongoose.model('StarterPackPurchase').create({
+      ...starknetEnvironment(),
       productId,
       purchaser: purchaserAddress,
       recipient: recipientAddress,
@@ -241,19 +261,27 @@ class StarterPackPurchaseService {
     if (!purchase) return null;
     const doc = purchase.toObject ? purchase.toObject() : purchase;
     const packType = this.packTypeForProductId(doc.productId);
+    const refundClosesAt = refundWindowClosesAt(doc);
     return {
       canCustomize: doc.status === 'paid_pending_customization' || doc.status === 'grant_failed',
+      chainId: doc.chainId,
+      chainSlug: doc.chainSlug,
       id: doc._id?.toString() || doc.id,
       externalRef: doc.externalRef,
+      grantSubmittedAt: doc.grantSubmittedAt,
       grantedAt: doc.grantedAt,
       grantedCrew: doc.grantedCrew,
       grantError: doc.grantError,
       hasGrantRequest: Boolean(doc.grantRequest),
+      paidAt: doc.paidAt,
       packType,
       productId: doc.productId,
       purchaser: doc.purchaser,
       recipient: doc.recipient,
       requiredCrewmates: STARTER_PACK_COUNTS[doc.productId],
+      refundWindowClosesAt: refundClosesAt,
+      refundWindowOpen: Boolean(refundClosesAt && new Date(refundClosesAt) > new Date()),
+      sponsorshipEndsAt: addStarterPackWindow(doc.grantedAt),
       status: doc.status,
       stripeCheckoutSessionId: doc.stripeCheckoutSessionId,
       txHash: doc.txHash
@@ -320,7 +348,8 @@ class StarterPackPurchaseService {
 
     const request = {
       ...grantRequest,
-      recipient: purchase.recipient
+      recipient: purchase.recipient,
+      restrictedUntil: starterPackRestrictedUntil()
     };
     this.validateGrantRequest({ productId: purchase.productId, grantRequest: request });
 
@@ -415,6 +444,7 @@ class StarterPackPurchaseService {
       grantPurchase.txHash = response.transaction_hash;
       grantPurchase.status = 'grant_submitted';
       grantPurchase.grantError = null;
+      grantPurchase.grantSubmittedAt = new Date();
       await grantPurchase.save();
       return grantPurchase.txHash;
     } catch (error) {
@@ -450,7 +480,11 @@ class StarterPackPurchaseService {
     const stripeProductId = lineItems.data[0]?.price?.product;
     if (stripeProductId !== purchase.stripeProductId) throw new ValidationError('Starter pack product mismatch');
 
-    if (purchase.status === 'checkout_created') purchase.status = 'paid_pending_customization';
+    if (purchase.status === 'checkout_created') {
+      purchase.status = 'paid_pending_customization';
+      purchase.paidAt = purchase.paidAt || new Date();
+      Object.assign(purchase, starknetEnvironment());
+    }
     await purchase.save();
 
     return this.serializePurchase(purchase);

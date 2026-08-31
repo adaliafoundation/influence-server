@@ -1,9 +1,9 @@
 const appConfig = require('config');
 const KoaRouter = require('@koa/router');
+const { isStarterPackProvisionerEnabled } = require('@common/lib/officialFeatures');
 const { StarterPackPurchaseService } = require('@common/services');
 const Stripe = require('stripe');
 
-const isProvisionerEnabled = () => Number(appConfig.get('StarterPack.provisionerEnabled')) === 1;
 const stripeInstance = () => Stripe(appConfig.get('Stripe.secretKey'));
 
 const validateProvisionerConfig = () => {
@@ -65,7 +65,7 @@ const handleWebhook = async function (ctx) {
 // Setup routes
 const router = new KoaRouter();
 
-if (isProvisionerEnabled()) {
+if (isStarterPackProvisionerEnabled()) {
   validateProvisionerConfig();
 
   router

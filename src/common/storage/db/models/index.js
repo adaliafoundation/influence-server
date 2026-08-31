@@ -13,6 +13,7 @@ const Faucet = require('./Faucet');
 const IndexItem = require('./IndexItem');
 const Notification = require('./Notification');
 const NotificationModels = require('./Notifications');
+const PaymasterSponsorship = require('./PaymasterSponsorship');
 const Referral = require('./Referral');
 const StarterPackPurchase = require('./StarterPackPurchase');
 const SwayClaim = require('./SwayClaim');
@@ -36,6 +37,7 @@ module.exports = {
   IndexItem,
   Notification,
   ...NotificationModels,
+  PaymasterSponsorship,
   Referral,
   StarterPackPurchase,
   SwayClaim,
