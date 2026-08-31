@@ -102,18 +102,19 @@ const canonicalDeployTransaction = (transaction) => {
 };
 
 const canonicalInvokeCall = (call) => ({
-  calldata: normalizeCalldata(call.calldata),
-  contract_address: Address.toStandard(callContractAddress(call), 'starknet'),
-  entry_point_selector: normalizeSelector(callSelector(call))
+  calldata: normalizeCalldata(call.calldata || call.Calldata),
+  contract_address: Address.toStandard(callContractAddress(call) || call.To, 'starknet'),
+  entry_point_selector: normalizeSelector(callSelector(call) || call.Selector)
 });
 
 const canonicalInvokeTransaction = (transaction) => {
-  if (transaction.invoke?.calls) {
+  const calls = transaction.invoke?.calls
+    || transaction.invoke?.typed_data?.message?.Calls
+    || transaction.typed_data?.message?.Calls;
+
+  if (calls) {
     return {
-      invoke: {
-        calls: transaction.invoke.calls.map(canonicalInvokeCall),
-        user_address: Address.toStandard(transaction.invoke.user_address, 'starknet')
-      },
+      calls: calls.map(canonicalInvokeCall),
       type: 'invoke'
     };
   }
