@@ -355,4 +355,72 @@ describe('AvnuPaymasterService', function () {
     expect(sponsorship.status).to.equal('submitted');
     expect(sponsorship.txHash).to.equal('0xtx');
   });
+
+  it('should match deploy execute requests when AVNU normalizes felts and omits tip', async function () {
+    const publicKey = '0x5d880ad7abc2e3eb9080a10a2b1d60732b2e002364d5f90449a8e5438962c96';
+    const transaction = readyDeployTransaction({ publicKey });
+    transaction.deployment.address = hash.calculateContractAddressFromHash(
+      transaction.deployment.salt,
+      transaction.deployment.class_hash,
+      transaction.deployment.calldata,
+      0
+    );
+    await createPurchase({
+      recipient: transaction.deployment.address,
+      status: 'paid_pending_customization'
+    });
+    this._sandbox.stub(starknetClient, 'createRpcProvider').resolves({
+      getClassAt: this._sandbox.stub().rejects(new Error('Requested contract address is not deployed'))
+    });
+
+    const body = paymasterRequest({
+      params: {
+        parameters: { fee_mode: { mode: 'sponsored' }, version: '0x1' },
+        transaction
+      }
+    });
+    const preparedDeploy = {
+      deployment: {
+        ...transaction.deployment,
+        class_hash: Address.toStandard(transaction.deployment.class_hash, 'starknet'),
+        sigdata: null
+      },
+      fee: {
+        estimated_fee_in_gas_token: '0x1',
+        estimated_fee_in_strk: '0x1',
+        gas_token_price_in_strk: '0x1',
+        suggested_max_fee_in_gas_token: '0x1',
+        suggested_max_fee_in_strk: '0x38d7ea4c68000'
+      },
+      parameters: {
+        fee_mode: { mode: 'sponsored', tip: 'normal' },
+        time_bounds: null,
+        version: '0x1'
+      },
+      type: 'deploy'
+    };
+    const executeBody = paymasterRequest({
+      method: 'paymaster_executeTransaction',
+      params: {
+        parameters: { fee_mode: { mode: 'sponsored' }, version: '0x1' },
+        transaction: {
+          deployment: preparedDeploy.deployment,
+          type: 'deploy'
+        }
+      }
+    });
+    const postStub = this._sandbox.stub(axios, 'post');
+    postStub.onFirstCall().resolves({ data: { id: 1, jsonrpc: '2.0', result: preparedDeploy }, status: 200 });
+    postStub.onSecondCall().resolves({
+      data: { id: 2, jsonrpc: '2.0', result: { transaction_hash: '0xdeploytx' } },
+      status: 200
+    });
+
+    await AvnuPaymasterService.forward({ body, userAddress: transaction.deployment.address });
+    await AvnuPaymasterService.forward({ body: executeBody, userAddress: transaction.deployment.address });
+
+    const sponsorship = await mongoose.model('PaymasterSponsorship').findOne().lean();
+    expect(sponsorship.status).to.equal('submitted');
+    expect(sponsorship.txHash).to.equal('0xdeploytx');
+  });
 });

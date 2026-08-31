@@ -31,7 +31,13 @@ const normalizeSelector = (selector) => {
   return selector?.toString();
 };
 
-const normalizeCalldata = (calldata = []) => calldata.map((value) => value.toString());
+const normalizeFelt = (value) => {
+  if (typeof value === 'number' || typeof value === 'bigint') return `0x${BigInt(value).toString(16)}`;
+  if (typeof value === 'string' && value.startsWith('0x')) return `0x${BigInt(value).toString(16)}`;
+  return value?.toString();
+};
+
+const normalizeCalldata = (calldata = []) => calldata.map(normalizeFelt);
 
 const callContractAddress = (call) => call.contract_address || call.contractAddress || call.to;
 const callSelector = (call) => call.entry_point_selector || call.entrypoint || call.selector;
@@ -74,14 +80,69 @@ const fingerprint = (value) => crypto
   .update(JSON.stringify(stableNormalize(value)))
   .digest('hex');
 
+const canonicalParameters = (parameters = {}) => ({
+  fee_mode: {
+    mode: parameters.fee_mode?.mode
+  },
+  version: normalizeFelt(parameters.version)
+});
+
+const canonicalDeployTransaction = (transaction) => {
+  const { deployment } = transaction;
+  return {
+    deployment: {
+      address: Address.toStandard(deployment.address, 'starknet'),
+      calldata: normalizeCalldata(deployment.calldata),
+      class_hash: normalizeFelt(deployment.class_hash),
+      salt: normalizeFelt(deployment.salt),
+      version: Number(deployment.version)
+    },
+    type: 'deploy'
+  };
+};
+
+const canonicalInvokeCall = (call) => ({
+  calldata: normalizeCalldata(call.calldata),
+  contract_address: Address.toStandard(callContractAddress(call), 'starknet'),
+  entry_point_selector: normalizeSelector(callSelector(call))
+});
+
+const canonicalInvokeTransaction = (transaction) => {
+  if (transaction.invoke?.calls) {
+    return {
+      invoke: {
+        calls: transaction.invoke.calls.map(canonicalInvokeCall),
+        user_address: Address.toStandard(transaction.invoke.user_address, 'starknet')
+      },
+      type: 'invoke'
+    };
+  }
+
+  return {
+    transaction: stableNormalize(transaction),
+    type: 'invoke'
+  };
+};
+
+const canonicalTransaction = (transaction = {}) => {
+  if (transaction.type === 'deploy') return canonicalDeployTransaction(transaction);
+  if (transaction.type === 'invoke') return canonicalInvokeTransaction(transaction);
+  return stableNormalize(transaction);
+};
+
+const reservationIdentity = ({ parameters, transaction }) => ({
+  parameters: canonicalParameters(parameters),
+  transaction: canonicalTransaction(transaction)
+});
+
 const preparedPayloadForBuildResult = (result) => ({
   parameters: result.parameters,
-  transaction: stableNormalize(result)
+  transaction: result
 });
 
 const preparedPayloadForExecuteRequest = (body) => ({
   parameters: body.params?.parameters,
-  transaction: stableNormalize(body.params?.transaction)
+  transaction: body.params?.transaction
 });
 
 const feeFriFromBuildResult = (result) => {
@@ -256,7 +317,7 @@ class AvnuPaymasterService {
   }
 
   static async validateExecuteRequest({ body, transaction, userAddress }) {
-    const preparedFingerprint = fingerprint(preparedPayloadForExecuteRequest(body));
+    const preparedFingerprint = fingerprint(reservationIdentity(preparedPayloadForExecuteRequest(body)));
     const sponsorship = await mongoose.model('PaymasterSponsorship').findOne({
       chainId: chainId(),
       createdAt: { $gte: reservationCutoff() },
@@ -285,11 +346,11 @@ class AvnuPaymasterService {
 
     const purchaseModel = mongoose.model('StarterPackPurchase');
     const sponsorshipModel = mongoose.model('PaymasterSponsorship');
-    const requestFingerprint = fingerprint({
+    const requestFingerprint = fingerprint(reservationIdentity({
       parameters: body.params.parameters,
       transaction: body.params.transaction
-    });
-    const preparedFingerprint = fingerprint(preparedPayloadForBuildResult(result));
+    }));
+    const preparedFingerprint = fingerprint(reservationIdentity(preparedPayloadForBuildResult(result)));
 
     const existing = await sponsorshipModel.findOne({ requestFingerprint });
     if (existing) return;
@@ -331,7 +392,7 @@ class AvnuPaymasterService {
     await mongoose.model('PaymasterSponsorship').updateOne(
       {
         chainId: chainId(),
-        preparedFingerprint: fingerprint(preparedPayloadForExecuteRequest(body)),
+        preparedFingerprint: fingerprint(reservationIdentity(preparedPayloadForExecuteRequest(body))),
         status: 'reserved',
         userAddress: Address.toStandard(userAddress, 'starknet')
       },
