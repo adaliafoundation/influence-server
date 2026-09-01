@@ -39,8 +39,8 @@ const normalizeFelt = (value) => {
 
 const normalizeCalldata = (calldata = []) => calldata.map(normalizeFelt);
 
-const callContractAddress = (call) => call.contract_address || call.contractAddress || call.to;
-const callSelector = (call) => call.entry_point_selector || call.entrypoint || call.selector;
+const callContractAddress = (call) => call.contract_address || call.contractAddress || call.to || call.To;
+const callSelector = (call) => call.entry_point_selector || call.entrypoint || call.selector || call.Selector;
 
 const paidSinceCutoff = () => new Date(Date.now() - STARTER_PACK_SPONSORSHIP_DAYS * 24 * 60 * 60 * 1000);
 
@@ -103,15 +103,16 @@ const canonicalDeployTransaction = (transaction) => {
 
 const canonicalInvokeCall = (call) => ({
   calldata: normalizeCalldata(call.calldata || call.Calldata),
-  contract_address: Address.toStandard(callContractAddress(call) || call.To, 'starknet'),
-  entry_point_selector: normalizeSelector(callSelector(call) || call.Selector)
+  contract_address: Address.toStandard(callContractAddress(call), 'starknet'),
+  entry_point_selector: normalizeSelector(callSelector(call))
 });
 
-const canonicalInvokeTransaction = (transaction) => {
-  const calls = transaction.invoke?.calls
-    || transaction.invoke?.typed_data?.message?.Calls
-    || transaction.typed_data?.message?.Calls;
+const invokeCalls = (transaction) => transaction.invoke?.calls
+  || transaction.invoke?.typed_data?.message?.Calls
+  || transaction.typed_data?.message?.Calls;
 
+const canonicalInvokeTransaction = (transaction) => {
+  const calls = invokeCalls(transaction);
   if (calls) {
     return {
       calls: calls.map(canonicalInvokeCall),
@@ -172,11 +173,12 @@ class AvnuPaymasterService {
       throw new ValidationError('Only sponsored paymaster transactions are supported');
     }
 
-    if (isExecuteMethod(body.method)) {
-      const purchase = await this.validateExecuteRequest({ body, transaction, userAddress });
-      return purchase;
-    }
+    const purchase = await this.validateSponsoredTransaction({ transaction, userAddress });
+    if (isExecuteMethod(body.method)) await this.validateExecuteRequest({ body, purchase, transaction, userAddress });
+    return purchase;
+  }
 
+  static async validateSponsoredTransaction({ transaction, userAddress }) {
     if (transaction?.type === 'deploy') {
       const purchase = await this.validateDeployTransaction({ transaction, userAddress });
       return purchase;
@@ -311,13 +313,13 @@ class AvnuPaymasterService {
       statuses: INVOKE_PURCHASE_STATUSES
     });
 
-    const calls = transaction.invoke.calls || [];
+    const calls = invokeCalls(transaction) || [];
     if (!Array.isArray(calls) || calls.length === 0) throw new ValidationError('Missing invoke calls');
     calls.forEach(this.validateAllowedInvokeCall);
     return purchase;
   }
 
-  static async validateExecuteRequest({ body, transaction, userAddress }) {
+  static async validateExecuteRequest({ body, purchase, transaction, userAddress }) {
     const preparedFingerprint = fingerprint(reservationIdentity(preparedPayloadForExecuteRequest(body)));
     const sponsorship = await mongoose.model('PaymasterSponsorship').findOne({
       chainId: chainId(),
@@ -330,8 +332,9 @@ class AvnuPaymasterService {
     if (sponsorship.transactionType !== transaction?.type) {
       throw new ValidationError('Paymaster transaction type mismatch');
     }
-
-    if (transaction.type === 'deploy') await this.validateAccountUndeployed(userAddress);
+    if (sponsorship.purchase._id.toString() !== purchase._id.toString()) {
+      throw new ValidationError('Paymaster sponsorship purchase mismatch');
+    }
     return sponsorship.purchase;
   }
 

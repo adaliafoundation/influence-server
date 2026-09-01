@@ -309,6 +309,8 @@ describe('AvnuPaymasterService', function () {
   });
 
   it('should reject execute requests without a matching reservation', async function () {
+    await createPurchase();
+
     await expectReject(AvnuPaymasterService.validateRequest({
       body: paymasterRequest({ method: 'paymaster_executeTransaction' }),
       userAddress: USER_ADDRESS
@@ -317,6 +319,17 @@ describe('AvnuPaymasterService', function () {
 
   it('should mark matching execute reservations submitted', async function () {
     const body = paymasterRequest();
+    const typedData = {
+      message: {
+        Calls: [
+          {
+            Calldata: allowedDispatcherCall().calldata,
+            Selector: allowedDispatcherCall().entry_point_selector,
+            To: allowedDispatcherCall().contract_address
+          }
+        ]
+      }
+    };
     const result = {
       fee: {
         estimated_fee_in_gas_token: '0x1',
@@ -327,16 +340,18 @@ describe('AvnuPaymasterService', function () {
       },
       parameters: body.params.parameters,
       type: 'invoke',
-      typed_data: { message: 'typed data' }
+      typed_data: typedData
     };
     const executeBody = paymasterRequest({
       method: 'paymaster_executeTransaction',
       params: {
         parameters: body.params.parameters,
         transaction: {
-          parameters: body.params.parameters,
-          type: 'invoke',
-          typed_data: { message: 'typed data' }
+          invoke: {
+            typed_data: typedData,
+            user_address: USER_ADDRESS
+          },
+          type: 'invoke'
         }
       }
     });
@@ -354,6 +369,62 @@ describe('AvnuPaymasterService', function () {
     const sponsorship = await mongoose.model('PaymasterSponsorship').findOne().lean();
     expect(sponsorship.status).to.equal('submitted');
     expect(sponsorship.txHash).to.equal('0xtx');
+  });
+
+  it('should validate execute invoke calls before checking reservations', async function () {
+    await createPurchase();
+
+    await expectReject(AvnuPaymasterService.validateRequest({
+      body: paymasterRequest({
+        method: 'paymaster_executeTransaction',
+        params: {
+          parameters: { fee_mode: { mode: 'sponsored' }, version: '0x1' },
+          transaction: {
+            invoke: {
+              calls: [
+                {
+                  calldata: [],
+                  contract_address: appConfig.get('Contracts.starknet.crew'),
+                  entry_point_selector: hash.getSelectorFromName('approve')
+                }
+              ],
+              user_address: USER_ADDRESS
+            },
+            type: 'invoke'
+          }
+        }
+      }),
+      userAddress: USER_ADDRESS
+    }), 'Unsupported sponsored invoke call');
+  });
+
+  it('should validate execute deploys before checking reservations', async function () {
+    const transaction = readyDeployTransaction({ publicKey: '0x789' });
+    transaction.deployment.address = hash.calculateContractAddressFromHash(
+      transaction.deployment.salt,
+      transaction.deployment.class_hash,
+      transaction.deployment.calldata,
+      0
+    );
+    transaction.deployment.class_hash = '0x456';
+    await createPurchase({
+      recipient: transaction.deployment.address,
+      status: 'paid_pending_customization'
+    });
+    this._sandbox.stub(starknetClient, 'createRpcProvider').resolves({
+      getClassAt: this._sandbox.stub().rejects(new Error('Requested contract address is not deployed'))
+    });
+
+    await expectReject(AvnuPaymasterService.validateRequest({
+      body: paymasterRequest({
+        method: 'paymaster_executeTransaction',
+        params: {
+          parameters: { fee_mode: { mode: 'sponsored' }, version: '0x1' },
+          transaction
+        }
+      }),
+      userAddress: transaction.deployment.address
+    }), 'Unsupported account class hash');
   });
 
   it('should match invoke execute requests after AVNU converts calls to typed data', async function () {
