@@ -36,7 +36,11 @@ const orderIdFromWebhook = (payload) => (
 
 const banxaBaseUrl = () => appConfig.get('Banxa.baseUrl').replace(/\/+$/, '');
 const buyUrl = () => `${banxaBaseUrl()}/${appConfig.get('Banxa.partnerRef')}/v2/buy`;
+const orderUrl = (orderId) => `${banxaBaseUrl()}/${appConfig.get('Banxa.partnerRef')}/v2/orders/${orderId}`;
 const webhookPath = () => '/v2/banxa/webhook';
+
+const cryptoId = (order) => order.crypto?.id || order.crypto;
+const cryptoBlockchain = (order) => order.crypto?.blockchain || order.blockchain;
 
 class BanxaService {
   static isConfigured() {
@@ -146,11 +150,11 @@ class BanxaService {
 
     const persisted = await mongoose.model('BanxaOrder').create({
       banxaOrderId: order.id,
-      blockchain: order.blockchain || requestBody.blockchain,
+      blockchain: cryptoBlockchain(order) || requestBody.blockchain,
       checkoutUrl: order.checkoutUrl,
-      crypto: order.crypto || requestBody.crypto,
+      crypto: cryptoId(order) || requestBody.crypto,
       cryptoAmount: order.cryptoAmount || requestBody.cryptoAmount,
-      externalOrderId: order.externalOrderId || externalOrderId,
+      externalOrderId: order.externalOrderId || order.externalId || externalOrderId,
       fiat: order.fiat || requestBody.fiat,
       fiatAmount: order.fiatAmount || requestBody.fiatAmount,
       rawOrder: order,
@@ -161,12 +165,35 @@ class BanxaService {
     return this.serializeOrder(persisted);
   }
 
-  static async orderForUser({ orderId, userAddress }) {
-    const order = await mongoose.model('BanxaOrder').findOne({
+  static async refreshOrder(order) {
+    const response = await axios.get(orderUrl(order.banxaOrderId), {
+      headers: { 'x-api-key': appConfig.get('Banxa.apiKey') },
+      responseType: 'json',
+      timeout: Number(appConfig.get('Banxa.requestTimeoutMs'))
+    });
+    const banxaOrder = response.data;
+
+    order.set({
+      blockchain: cryptoBlockchain(banxaOrder) || order.blockchain,
+      crypto: cryptoId(banxaOrder) || order.crypto,
+      cryptoAmount: banxaOrder.cryptoAmount || order.cryptoAmount,
+      fiat: banxaOrder.fiat || order.fiat,
+      fiatAmount: banxaOrder.fiatAmount || order.fiatAmount,
+      rawOrder: banxaOrder,
+      status: banxaStatus(banxaOrder.status)
+    });
+    await order.save();
+    return order;
+  }
+
+  static async orderForUser({ orderId, refresh = true, userAddress }) {
+    this.validateConfigured();
+    let order = await mongoose.model('BanxaOrder').findOne({
       banxaOrderId: orderId,
       userAddress: Address.toStandard(userAddress, 'starknet')
     });
     if (!order) throw new ValidationError('Banxa order not found');
+    if (refresh) order = await this.refreshOrder(order);
     return this.serializeOrder(order);
   }
 

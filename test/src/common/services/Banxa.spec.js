@@ -128,6 +128,41 @@ describe('BanxaService', function () {
     expect(persisted.rawWebhookEvents).to.have.length(1);
   });
 
+  it('should refresh order status from Banxa order lookup', async function () {
+    await mongoose.model('BanxaOrder').create({
+      banxaOrderId: 'banxa_123',
+      checkoutUrl: 'https://checkout.banxa.local/order',
+      crypto: 'USDC',
+      externalOrderId: 'external_123',
+      fiat: 'EUR',
+      fiatAmount: '25',
+      userAddress: this.GLOBALS.user.address,
+      walletAddress: this.GLOBALS.user.address
+    });
+    const getStub = this._sandbox.stub(axios, 'get').resolves({
+      data: {
+        crypto: { blockchain: 'STARKNET', id: 'USDC' },
+        cryptoAmount: '24.12',
+        fiat: 'EUR',
+        fiatAmount: '25.00',
+        id: 'banxa_123',
+        status: 'complete'
+      }
+    });
+
+    const order = await BanxaService.orderForUser({
+      orderId: 'banxa_123',
+      userAddress: this.GLOBALS.user.address
+    });
+
+    expect(order.status).to.equal('completed');
+    expect(order.cryptoAmount).to.equal('24.12');
+    expect(order.blockchain).to.equal('STARKNET');
+    expect(getStub.calledOnce).to.equal(true);
+    expect(getStub.firstCall.args[0]).to.equal('https://banxa.localhost/test-partner/v2/orders/banxa_123');
+    expect(getStub.firstCall.args[1].headers['x-api-key']).to.equal(appConfig.get('Banxa.apiKey'));
+  });
+
   it('should reject Banxa webhooks with invalid signatures', async function () {
     await expectReject(BanxaService.updateOrderFromWebhook({
       authorization: `Bearer ${appConfig.get('Banxa.webhookApiKey')}:bad:1785804345837761`,

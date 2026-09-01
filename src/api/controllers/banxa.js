@@ -24,6 +24,8 @@ const createCheckout = async function (ctx) {
 };
 
 const getOrder = async function (ctx) {
+  if (!BanxaService.isConfigured()) ctx.throw(503, 'Banxa checkout unavailable');
+
   try {
     ctx.body = {
       order: await BanxaService.orderForUser({
@@ -32,7 +34,7 @@ const getOrder = async function (ctx) {
       })
     };
   } catch (error) {
-    ctx.throw(error.name === 'ValidationError' ? 404 : 500, error.message);
+    ctx.throw(error.name === 'ValidationError' ? 404 : 502, error.message);
   }
 };
 
