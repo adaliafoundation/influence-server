@@ -287,10 +287,13 @@ Client flow:
     }
     ```
 3. Client immediately redirects to, or embeds, `order.checkoutUrl`.
-4. Client can poll `GET /v2/banxa/orders/:orderId` after return. The webhook endpoint is
-   `POST /v2/banxa/webhook` and records Banxa status updates for known order IDs. Banxa webhook requests must include
-   the documented HMAC `Authorization` header signed for `/v2/banxa/webhook`; the webhook API key and secret are the
-   HMAC credentials from Banxa, not the v2 checkout `x-api-key`.
+4. Client can poll `GET /v2/banxa/orders/:orderId` after return. The server refreshes the order from Banxa's
+   `GET /{partnerRef}/v2/orders/{orderId}` endpoint before responding, so the Banxa API key remains server-side.
+   Poll no more than about once per minute and treat only `completed` as settled. Intermediate statuses are returned as
+   `pending`.
+5. The webhook endpoint is `POST /v2/banxa/webhook` and records Banxa status updates for known order IDs. Banxa webhook
+   requests must include the documented HMAC `Authorization` header signed for `/v2/banxa/webhook`; the webhook API key
+   and secret are the HMAC credentials from Banxa, not the v2 checkout `x-api-key`.
 
 ### Influence-server services
 - influence-server: the main service, running the API server

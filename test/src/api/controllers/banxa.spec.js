@@ -69,6 +69,21 @@ describe('banxa controller', function () {
     expect(orderStub.calledOnceWith({ orderId: 'banxa_123', userAddress: user.address })).to.equal(true);
   });
 
+  it('should return upstream errors when Banxa order refresh fails', async function () {
+    const app = new Koa();
+    app.on('error', () => {});
+    const server = request(app.callback());
+    const { userToken } = this.GLOBALS;
+    this._sandbox.stub(BanxaService, 'orderForUser').rejects(new Error('Banxa unavailable'));
+    app.use(banxaController.routes());
+
+    const response = await server
+      .get('/v2/banxa/orders/banxa_123')
+      .set('Authorization', `Bearer ${userToken}`);
+
+    expect(response.status).to.equal(502);
+  });
+
   it('should not register routes when Banxa checkout is disabled', async function () {
     appConfig.Banxa.checkoutEnabled = 0;
     delete require.cache[require.resolve('@api/controllers/banxa')];
