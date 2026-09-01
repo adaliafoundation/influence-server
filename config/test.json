@@ -20,6 +20,15 @@
     "paymasterUrl": "https://paymaster.localhost",
     "requestTimeoutMs": 10000
   },
+  "Banxa": {
+    "apiKey": "TEST_BANXA_API_KEY",
+    "baseUrl": "https://banxa.localhost",
+    "checkoutEnabled": 1,
+    "partnerRef": "test-partner",
+    "requestTimeoutMs": 10000,
+    "webhookApiKey": "TEST_BANXA_WEBHOOK_API_KEY",
+    "webhookSecret": "TEST_BANXA_WEBHOOK_SECRET"
+  },
   "Contracts": {
     "ethereum": {
       "arvadCrewSale": "0xe24021388601dBd07Dbd99e1f6D8199061c10892",

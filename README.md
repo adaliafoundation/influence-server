@@ -97,6 +97,7 @@ Community-run nodes should leave these unset or disabled:
 ```
 STARTER_PACK_PROVISIONER_ENABLED=0
 AVNU_PAYMASTER_ENABLED=0
+BANXA_CHECKOUT_ENABLED=0
 ```
 
 The client retrieves the available products with `GET /v2/starter-packs/products`. Product `name`, `description`, and
@@ -245,6 +246,51 @@ const result = await account.execute(calls, {
 The proxy does not sponsor requests for a wallet other than the authenticated user. AVNU may still decline sponsorship
 due to credits, rate limits, unsupported calls, or its abuse controls; the client should surface the paymaster error and
 allow the player to retry with normal gas payment.
+
+### Banxa hosted checkout proxy
+The authenticated Banxa checkout endpoints create hosted buy orders server-side while keeping the Banxa API key out of
+the browser. Banxa checkout is disabled by default; enable it only on official servers with:
+```
+BANXA_CHECKOUT_ENABLED=1
+BANXA_API_KEY=...
+BANXA_PARTNER_REF=...
+BANXA_WEBHOOK_API_KEY=...
+BANXA_WEBHOOK_SECRET=...
+```
+Prerelease defaults to `https://api.banxa-sandbox.com`; production defaults to `https://api.banxa.com`. Override with
+`BANXA_BASE_URL` only when Banxa gives us a different partner endpoint.
+
+Checkout requires an authenticated Influence user whose Starknet wallet is already deployed. The requested
+`walletAddress` must match the authenticated address, and the server confirms deployment with Starknet RPC before
+creating a Banxa order.
+
+Client flow:
+1. `POST /v2/banxa/checkout`
+    ```json
+    {
+      "walletAddress": "0x...",
+      "fiat": "EUR",
+      "fiatAmount": "25",
+      "crypto": "USDC",
+      "blockchain": "STARKNET",
+      "returnUrl": "https://game.example/banxa/return"
+    }
+    ```
+2. Server calls Banxa `POST /{partnerRef}/v2/buy` and returns:
+    ```json
+    {
+      "order": {
+        "orderId": "banxa_order_id",
+        "checkoutUrl": "https://...",
+        "status": "checkout_created"
+      }
+    }
+    ```
+3. Client immediately redirects to, or embeds, `order.checkoutUrl`.
+4. Client can poll `GET /v2/banxa/orders/:orderId` after return. The webhook endpoint is
+   `POST /v2/banxa/webhook` and records Banxa status updates for known order IDs. Banxa webhook requests must include
+   the documented HMAC `Authorization` header signed for `/v2/banxa/webhook`; the webhook API key and secret are the
+   HMAC credentials from Banxa, not the v2 checkout `x-api-key`.
 
 ### Influence-server services
 - influence-server: the main service, running the API server

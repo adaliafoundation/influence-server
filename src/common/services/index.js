@@ -5,6 +5,7 @@ const AvnuPaymasterService = require('./AvnuPaymaster');
 const AsteroidSaleService = require('./AsteroidSale');
 const AsteroidService = require('./Asteroid');
 const AuthService = require('./Auth');
+const BanxaService = require('./Banxa');
 const BuildingService = require('./Building');
 const ComponentService = require('./Components/Component');
 const ConstantService = require('./Constant');
@@ -43,6 +44,7 @@ module.exports = {
   AsteroidSaleService,
   AsteroidService,
   AuthService,
+  BanxaService,
   BuildingService,
   ComponentService,
   ConstantService,

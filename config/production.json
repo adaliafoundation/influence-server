@@ -5,6 +5,9 @@
   "Avnu": {
     "paymasterUrl": "https://starknet.paymaster.avnu.fi"
   },
+  "Banxa": {
+    "baseUrl": "https://api.banxa.com"
+  },
   "Contracts": {
     "ethereum": {
       "arvadCrewSale": "0x258432C72A28DD11318FC0373e75e87Ce65765E3",

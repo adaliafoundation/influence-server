@@ -22,6 +22,15 @@
     "rateLimitPerMinute": "AVNU_PAYMASTER_RATE_LIMIT_PER_MINUTE",
     "requestTimeoutMs": "AVNU_PAYMASTER_REQUEST_TIMEOUT_MS"
   },
+  "Banxa": {
+    "apiKey": "BANXA_API_KEY",
+    "baseUrl": "BANXA_BASE_URL",
+    "checkoutEnabled": "BANXA_CHECKOUT_ENABLED",
+    "partnerRef": "BANXA_PARTNER_REF",
+    "requestTimeoutMs": "BANXA_REQUEST_TIMEOUT_MS",
+    "webhookApiKey": "BANXA_WEBHOOK_API_KEY",
+    "webhookSecret": "BANXA_WEBHOOK_SECRET"
+  },
   "Elasticsearch": {
     "uri": "ELASTICSEARCH_URL",
     "indexer": {

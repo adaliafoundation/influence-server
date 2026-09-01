@@ -1,6 +1,7 @@
 const Activity = require('./Activity');
 const ApiKey = require('./ApiKey');
 const AsteroidSale = require('./AsteroidSale');
+const BanxaOrder = require('./BanxaOrder');
 const Constant = require('./Constant');
 const Crossing = require('./Crossing');
 const DirectMessage = require('./DirectMessage');
@@ -26,6 +27,7 @@ module.exports = {
   Activity,
   ApiKey,
   AsteroidSale,
+  BanxaOrder,
   Constant,
   Crossing,
   DirectMessage,
