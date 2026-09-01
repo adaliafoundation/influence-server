@@ -3,6 +3,7 @@ const annotations = require('./annotations');
 const argent = require('./argent');
 const asteroids = require('./asteroids');
 const auth = require('./auth');
+const banxa = require('./banxa');
 const chain = require('./chain');
 const claims = require('./claims');
 const components = require('./components');
@@ -29,6 +30,7 @@ module.exports = {
   argent,
   asteroids,
   auth,
+  banxa,
   chain,
   claims,
   components,

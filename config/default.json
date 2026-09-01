@@ -16,6 +16,15 @@
     "rateLimitPerMinute": 120,
     "requestTimeoutMs": 10000
   },
+  "Banxa": {
+    "apiKey": null,
+    "baseUrl": null,
+    "checkoutEnabled": 0,
+    "partnerRef": null,
+    "requestTimeoutMs": 10000,
+    "webhookApiKey": null,
+    "webhookSecret": null
+  },
   "Contracts": {
     "starknet": {
       "escrow": null,
