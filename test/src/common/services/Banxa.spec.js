@@ -107,6 +107,23 @@ describe('BanxaService', function () {
     }), 'Wallet address must match authenticated user');
   });
 
+  it('should surface Banxa checkout validation errors', async function () {
+    this._sandbox.stub(starknetClient, 'createRpcProvider').resolves({
+      getClassAt: this._sandbox.stub().resolves({})
+    });
+    this._sandbox.stub(axios, 'post').rejects({
+      response: {
+        data: { errors: { fiat: ['is invalid'] } },
+        status: 422
+      }
+    });
+
+    await expectReject(BanxaService.createCheckout({
+      body: checkoutBody(this.GLOBALS.user.address),
+      userAddress: this.GLOBALS.user.address
+    }), 'Banxa API 422: {"errors":{"fiat":["is invalid"]}}');
+  });
+
   it('should update order status from signed Banxa webhooks', async function () {
     await mongoose.model('BanxaOrder').create({
       banxaOrderId: 'banxa_123',
@@ -161,6 +178,30 @@ describe('BanxaService', function () {
     expect(getStub.calledOnce).to.equal(true);
     expect(getStub.firstCall.args[0]).to.equal('https://banxa.localhost/test-partner/v2/orders/banxa_123');
     expect(getStub.firstCall.args[1].headers['x-api-key']).to.equal(appConfig.get('Banxa.apiKey'));
+  });
+
+  it('should surface Banxa order lookup errors', async function () {
+    await mongoose.model('BanxaOrder').create({
+      banxaOrderId: 'banxa_123',
+      checkoutUrl: 'https://checkout.banxa.local/order',
+      crypto: 'USDC',
+      externalOrderId: 'external_123',
+      fiat: 'EUR',
+      fiatAmount: '25',
+      userAddress: this.GLOBALS.user.address,
+      walletAddress: this.GLOBALS.user.address
+    });
+    this._sandbox.stub(axios, 'get').rejects({
+      response: {
+        data: { error: 'not_found' },
+        status: 404
+      }
+    });
+
+    await expectReject(BanxaService.orderForUser({
+      orderId: 'banxa_123',
+      userAddress: this.GLOBALS.user.address
+    }), 'Banxa API 404: {"error":"not_found"}');
   });
 
   it('should reject Banxa webhooks with invalid signatures', async function () {
