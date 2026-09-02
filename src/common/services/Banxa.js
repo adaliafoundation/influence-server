@@ -8,6 +8,13 @@ const starknetClient = require('@common/lib/starknet/client');
 const { ValidationError } = require('@common/lib/errors');
 
 const isContractNotDeployedError = (error) => /not deployed|contract not found/i.test(error.message || String(error));
+const banxaErrorMessage = (error) => {
+  if (!error.response) return error.message;
+
+  const body = error.response.data;
+  const detail = typeof body === 'string' ? body : JSON.stringify(body);
+  return `Banxa API ${error.response.status}: ${detail}`;
+};
 
 const requiredConfig = () => [
   ['Banxa.apiKey', appConfig.get('Banxa.apiKey')],
@@ -133,17 +140,22 @@ class BanxaService {
     await this.validateDeployedWallet(requestBody.walletAddress);
 
     const externalOrderId = new Types.ObjectId().toString();
-    const response = await axios.post(buyUrl(), {
-      ...requestBody,
-      externalOrderId
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': appConfig.get('Banxa.apiKey')
-      },
-      responseType: 'json',
-      timeout: Number(appConfig.get('Banxa.requestTimeoutMs'))
-    });
+    let response;
+    try {
+      response = await axios.post(buyUrl(), {
+        ...requestBody,
+        externalOrderId
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': appConfig.get('Banxa.apiKey')
+        },
+        responseType: 'json',
+        timeout: Number(appConfig.get('Banxa.requestTimeoutMs'))
+      });
+    } catch (error) {
+      throw new ValidationError(banxaErrorMessage(error));
+    }
 
     const order = response.data;
     if (!order?.id || !order?.checkoutUrl) throw new ValidationError('Invalid Banxa checkout response');
@@ -166,11 +178,16 @@ class BanxaService {
   }
 
   static async refreshOrder(order) {
-    const response = await axios.get(orderUrl(order.banxaOrderId), {
-      headers: { 'x-api-key': appConfig.get('Banxa.apiKey') },
-      responseType: 'json',
-      timeout: Number(appConfig.get('Banxa.requestTimeoutMs'))
-    });
+    let response;
+    try {
+      response = await axios.get(orderUrl(order.banxaOrderId), {
+        headers: { 'x-api-key': appConfig.get('Banxa.apiKey') },
+        responseType: 'json',
+        timeout: Number(appConfig.get('Banxa.requestTimeoutMs'))
+      });
+    } catch (error) {
+      throw new ValidationError(banxaErrorMessage(error));
+    }
     const banxaOrder = response.data;
 
     order.set({
