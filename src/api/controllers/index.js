@@ -9,6 +9,7 @@ const claims = require('./claims');
 const components = require('./components');
 const constants = require('./constants');
 const crossings = require('./crossings');
+const crewmatePurchases = require('./crewmatePurchases');
 const deprecated = require('./deprecated');
 const entities = require('./entities');
 const faucet = require('./faucet');
@@ -36,6 +37,7 @@ module.exports = {
   components,
   constants,
   crossings,
+  crewmatePurchases,
   deprecated,
   entities,
   faucet,

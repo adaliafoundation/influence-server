@@ -1,12 +1,12 @@
 const appConfig = require('config');
-const fs = require('fs/promises');
 const mongoose = require('mongoose');
-const { hash, shortString, num } = require('starknet');
+const { shortString } = require('starknet');
 const { Address } = require('@influenceth/sdk');
 const logger = require('@common/lib/logger');
 const starknetClient = require('@common/lib/starknet/client');
 const Entity = require('@common/lib/Entity');
 const { ValidationError } = require('@common/lib/errors');
+const OffchainPurchaseService = require('./OffchainPurchase');
 
 const STARTER_PACK_COUNTS = {
   1: 2,
@@ -63,48 +63,11 @@ const PENDING_PURCHASE_STATUSES = [
 ];
 
 const GRANT_SYSTEM_NAME = 'GrantOffchainStarterPack';
-const STARTER_PACK_WINDOW_DAYS = 14;
-const STARTER_PACK_WINDOW_SECONDS = STARTER_PACK_WINDOW_DAYS * 24 * 60 * 60;
-
 const asNumberArray = (values = []) => values.map(Number);
-
-const asFelt = (value) => {
-  if (typeof value === 'number') return num.toHex(value);
-  if (typeof value === 'bigint') return num.toHex(value);
-  if (typeof value === 'string' && value.startsWith('0x')) return value;
-  return shortString.encodeShortString(value);
-};
-
-const readStarterPackPrivateKey = async () => {
-  const keyFile = appConfig.get('Starknet.starterPackPrivateKeyFile');
-  if (keyFile) return (await fs.readFile(keyFile, 'utf8')).trim();
-
-  const privateKey = appConfig.get('Starknet.starterPackPrivateKey');
-  if (!privateKey) throw new ValidationError('Missing starter pack private key');
-  return privateKey;
-};
-
-const starknetEnvironment = () => ({
-  chainId: appConfig.get('Starknet.chainId')?.toString(),
-  chainSlug: appConfig.has('Starknet.chainSlug') ? appConfig.get('Starknet.chainSlug') : null
-});
-
-const addStarterPackWindow = (date) => {
-  if (!date) return null;
-  return new Date(new Date(date).getTime() + STARTER_PACK_WINDOW_SECONDS * 1000);
-};
-
-const starterPackRestrictedUntil = () => Math.floor(Date.now() / 1000) + STARTER_PACK_WINDOW_SECONDS;
-
-const refundWindowClosesAt = (purchase) => {
-  if (purchase.grantSubmittedAt) return purchase.grantSubmittedAt;
-  return addStarterPackWindow(purchase.paidAt);
-};
 
 class StarterPackPurchaseService {
   static externalRefForCheckoutSession(sessionId) {
-    // Stripe Checkout Session IDs are too long for felt252, so store the raw ID and use this felt hash on-chain.
-    return num.toHex(hash.starknetKeccak(sessionId));
+    return OffchainPurchaseService.externalRefForCheckoutSession(sessionId);
   }
 
   static packTypeForProductId(productId) {
@@ -139,22 +102,17 @@ class StarterPackPurchaseService {
   static async listProducts({ stripe }) {
     const products = await Promise.all(Object.entries(STARTER_PACK_DEFINITIONS).map(async ([packType, definition]) => {
       const config = this.starterPackProductConfig(packType);
-      const stripeProduct = await stripe.products.retrieve(config.stripeProductId);
-      const price = stripeProduct.default_price
-        ? await stripe.prices.retrieve(stripeProduct.default_price)
-        : null;
+      const { product: stripeProduct, price, ...stripeDetails } = await OffchainPurchaseService.stripeProduct({
+        stripe,
+        stripeProductId: config.stripeProductId
+      });
 
       return {
-        amount: price?.unit_amount ?? null,
+        ...stripeDetails,
         buildings: definition.buildings,
         coreSampleAllowance: definition.coreSampleAllowance,
-        currency: price?.currency ?? null,
-        description: stripeProduct.description || null,
-        enabled: Boolean(stripeProduct.active && price?.active),
-        features: (stripeProduct.marketing_features || []).map(({ name }) => name).filter(Boolean),
         foodReloadAllowance: definition.foodReloadAllowance,
         lotAllowance: definition.lotAllowance,
-        name: stripeProduct.name,
         packType,
         productId: definition.productId,
         requiredCrewmates: STARTER_PACK_COUNTS[definition.productId],
@@ -214,7 +172,7 @@ class StarterPackPurchaseService {
     const { productId } = starterPackProduct;
 
     const purchase = await mongoose.model('StarterPackPurchase').create({
-      ...starknetEnvironment(),
+      ...OffchainPurchaseService.environment(),
       productId,
       purchaser: purchaserAddress,
       recipient: recipientAddress,
@@ -227,6 +185,7 @@ class StarterPackPurchaseService {
       client_reference_id: purchase.id,
       line_items: [{ price: price.id, quantity: 1 }],
       metadata: {
+        purchaseType: 'starter_pack',
         purchaseId: purchase.id,
         productId,
         recipient: recipientAddress
@@ -261,7 +220,7 @@ class StarterPackPurchaseService {
     if (!purchase) return null;
     const doc = purchase.toObject ? purchase.toObject() : purchase;
     const packType = this.packTypeForProductId(doc.productId);
-    const refundClosesAt = refundWindowClosesAt(doc);
+    const refundClosesAt = OffchainPurchaseService.refundWindowClosesAt(doc);
     return {
       canCustomize: doc.status === 'paid_pending_customization' || doc.status === 'grant_failed',
       chainId: doc.chainId,
@@ -281,7 +240,7 @@ class StarterPackPurchaseService {
       requiredCrewmates: STARTER_PACK_COUNTS[doc.productId],
       refundWindowClosesAt: refundClosesAt,
       refundWindowOpen: Boolean(refundClosesAt && new Date(refundClosesAt) > new Date()),
-      sponsorshipEndsAt: addStarterPackWindow(doc.grantedAt),
+      sponsorshipEndsAt: OffchainPurchaseService.addRestrictionWindow(doc.grantedAt),
       status: doc.status,
       stripeCheckoutSessionId: doc.stripeCheckoutSessionId,
       txHash: doc.txHash
@@ -349,7 +308,7 @@ class StarterPackPurchaseService {
     const request = {
       ...grantRequest,
       recipient: purchase.recipient,
-      restrictedUntil: starterPackRestrictedUntil()
+      restrictedUntil: OffchainPurchaseService.restrictedUntil()
     };
     this.validateGrantRequest({ productId: purchase.productId, grantRequest: request });
 
@@ -391,7 +350,7 @@ class StarterPackPurchaseService {
       grantRequest.clothes.length,
       ...asNumberArray(grantRequest.clothes),
       grantRequest.names.length,
-      ...grantRequest.names.map(asFelt)
+      ...grantRequest.names.map(OffchainPurchaseService.asFelt)
     ];
   }
 
@@ -437,7 +396,7 @@ class StarterPackPurchaseService {
       const account = starknetClient.createAccount({
         provider,
         address: appConfig.get('Contracts.starknet.starterPackAdmin'),
-        signer: await readStarterPackPrivateKey()
+        signer: await OffchainPurchaseService.readPrivateKey()
       });
       const response = await account.execute(this.callFromPurchase(grantPurchase));
 
@@ -483,7 +442,7 @@ class StarterPackPurchaseService {
     if (purchase.status === 'checkout_created') {
       purchase.status = 'paid_pending_customization';
       purchase.paidAt = purchase.paidAt || new Date();
-      Object.assign(purchase, starknetEnvironment());
+      Object.assign(purchase, OffchainPurchaseService.environment());
     }
     await purchase.save();
 

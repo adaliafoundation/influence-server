@@ -32,6 +32,9 @@
       "udc": "0x041a78e741e5af2fec34b695679bc6891742439f7afb8484ecd7766661ad02bf"
     }
   },
+  "Crewmate": {
+    "provisionerEnabled": 0
+  },
   "Elasticsearch": {
     "indexer": {
       "bulkBatchSizeBytes": 2500000,
@@ -144,6 +147,9 @@
       "card",
       "ideal"
     ],
+    "crewmateProduct": {
+      "stripeProductId": null
+    },
     "starterPackProducts": {
       "explorer": {
         "productId": 1,

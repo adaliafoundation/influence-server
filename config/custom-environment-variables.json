@@ -31,6 +31,9 @@
     "webhookApiKey": "BANXA_WEBHOOK_API_KEY",
     "webhookSecret": "BANXA_WEBHOOK_SECRET"
   },
+  "Crewmate": {
+    "provisionerEnabled": "CREWMATE_PROVISIONER_ENABLED"
+  },
   "Elasticsearch": {
     "uri": "ELASTICSEARCH_URL",
     "indexer": {
@@ -127,6 +130,9 @@
   "Stripe": {
     "secretKey": "STRIPE_SECRET_KEY",
     "webhookSecret": "STRIPE_WEBHOOK_SECRET",
+    "crewmateProduct": {
+      "stripeProductId": "STRIPE_CREWMATE_PRODUCT_ID"
+    },
     "starterPackProducts": {
       "explorer": {
         "stripeProductId": "STRIPE_STARTER_PACK_EXPLORER_PRODUCT_ID"

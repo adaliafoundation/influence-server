@@ -4,6 +4,7 @@ const AsteroidSale = require('./AsteroidSale');
 const BanxaOrder = require('./BanxaOrder');
 const Constant = require('./Constant');
 const Crossing = require('./Crossing');
+const CrewmatePurchase = require('./CrewmatePurchase');
 const DirectMessage = require('./DirectMessage');
 const Entity = require('./Entity');
 const Entropy = require('./Entropy');
@@ -30,6 +31,7 @@ module.exports = {
   BanxaOrder,
   Constant,
   Crossing,
+  CrewmatePurchase,
   DirectMessage,
   Entity,
   Entropy,
