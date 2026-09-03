@@ -85,17 +85,18 @@ Notes:
 The deploy script renders the merged compose config before starting containers, refuses to deploy if the app service
 would bind-mount local source files into `/app`, pulls the latest configured image, and then runs `docker compose up -d`.
 
-### Starter pack grant signing key
-The off-chain starter pack flow submits Starknet transactions from a dedicated admin account after Stripe confirms
-payment and the player submits their completed crewmate customization.
-Provisioning calls the configured Dispatcher entrypoint `run_system` with `GrantOffchainStarterPack` as the system name.
-Starter pack purchasing, Stripe webhooks, grant provisioning, and AVNU fee subsidies are disabled by default so
-open-source nodes can index starter pack activity without holding official payment credentials, AVNU credentials, or
+### Offchain purchase grant signing key
+The off-chain starter pack and individual crewmate flows submit Starknet transactions from a dedicated admin account
+after Stripe confirms payment and the player submits completed customization. Provisioning calls the configured
+Dispatcher entrypoint `run_system` with `GrantOffchainStarterPack` or `GrantOffchainCrewmate` as the system name.
+Purchasing, Stripe webhooks, grant provisioning, and AVNU fee subsidies are disabled by default so
+open-source nodes can index grant activity without holding official payment credentials, AVNU credentials, or
 the grant signer key.
 
 Community-run nodes should leave these unset or disabled:
 ```
 STARTER_PACK_PROVISIONER_ENABLED=0
+CREWMATE_PROVISIONER_ENABLED=0
 AVNU_PAYMASTER_ENABLED=0
 BANXA_CHECKOUT_ENABLED=0
 ```
@@ -123,6 +124,43 @@ The purchase flow is:
    `POST /v2/starter-packs/customization`.
 5. Client waits for the indexer to observe `OffchainStarterPackGranted` and the related starter pack components.
 
+Individual crewmate purchases use the same embedded Checkout lifecycle through these authenticated endpoints:
+
+- `GET /v2/crewmate-purchases/products`
+- `POST /v2/crewmate-purchases/checkout`
+- `GET /v2/crewmate-purchases/pending`
+- `GET /v2/crewmate-purchases/checkout/:checkoutSessionId`
+- `POST /v2/crewmate-purchases/customization`
+
+The configured Stripe Product supplies the product name, description, marketing features, price, and currency. Create
+Checkout with `productId`, `returnUrl`, and optionally `recipient`; `recipient` must equal the authenticated account.
+After payment reaches `paid_pending_customization`, submit the purchase `id` and this `grantRequest`:
+
+```json
+{
+  "purchaseId": "...",
+  "grantRequest": {
+    "station": { "label": 5, "id": 1 },
+    "callerCrew": { "label": 1, "id": 42 },
+    "class": 2,
+    "impactful": [10],
+    "cosmetic": [11, 12, 13],
+    "gender": 1,
+    "body": 2,
+    "face": 3,
+    "hair": 4,
+    "hairColor": 5,
+    "clothes": 6,
+    "name": "Ada"
+  }
+}
+```
+
+The server verifies indexed ownership of `callerCrew`, derives the Stripe checkout hash used as `external_ref`, sets
+`restricted_until` to 14 days from submission, and invokes `GrantOffchainCrewmate`. The client should wait until the
+purchase reaches `grant_confirmed`, which occurs when the indexer handles `OffchainCrewmateGranted`. That response
+contains `grantedCrewmate` and `grantedCrew`; the normal component events update the resulting crew and crewmate.
+
 The purchase refund window and starter pack subsidy window are separate. The refund window closes when the server
 submits the starter pack grant transaction, or 14 days after Stripe payment if customization never completes. The
 subsidized Starknet fee window starts from the indexed `OffchainStarterPackGranted` timestamp and lasts 14 days. The
@@ -133,11 +171,13 @@ Prerelease may use a raw private key in `.env`:
 ```
 NODE_ENV=prerelease
 STARTER_PACK_PROVISIONER_ENABLED=1
+CREWMATE_PROVISIONER_ENABLED=1
 STARKNET_STARTER_PACK_ADMIN=0x...
 STARKNET_STARTER_PACK_PRIVATE_KEY=0x...
 STARKNET_RPC_PROVIDER=https://...
 STRIPE_SECRET_KEY=sk_...
 STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_CREWMATE_PRODUCT_ID=prod_...
 STRIPE_STARTER_PACK_EXPLORER_PRODUCT_ID=prod_...
 STRIPE_STARTER_PACK_STRATEGIST_PRODUCT_ID=prod_...
 STRIPE_STARTER_PACK_INDUSTRIALIST_PRODUCT_ID=prod_...
@@ -157,10 +197,12 @@ Production should use a key file mounted read-only into the API container. Do no
     ```
     NODE_ENV=production
     STARTER_PACK_PROVISIONER_ENABLED=1
+    CREWMATE_PROVISIONER_ENABLED=1
     STARKNET_STARTER_PACK_ADMIN=0x...
     STARKNET_RPC_PROVIDER=https://...
     STRIPE_SECRET_KEY=sk_...
     STRIPE_WEBHOOK_SECRET=whsec_...
+    STRIPE_CREWMATE_PRODUCT_ID=prod_...
     STRIPE_STARTER_PACK_EXPLORER_PRODUCT_ID=prod_...
     STRIPE_STARTER_PACK_STRATEGIST_PRODUCT_ID=prod_...
     STRIPE_STARTER_PACK_INDUSTRIALIST_PRODUCT_ID=prod_...
@@ -172,14 +214,18 @@ Production should use a key file mounted read-only into the API container. Do no
    ```
    Run with `./bin/start-container.sh production --provisioner-keyfile`.
 
-For production without starter pack provisioning, leave `STARTER_PACK_PROVISIONER_ENABLED=0` and run
-`./bin/start-container.sh production`.
+For production without offchain purchase provisioning, leave `STARTER_PACK_PROVISIONER_ENABLED=0` and
+`CREWMATE_PROVISIONER_ENABLED=0`, then run `./bin/start-container.sh production`.
 
 Use a dedicated Starknet account for this signer, authorize it only for starter pack grants, and keep only enough ETH
-on it for transaction fees.
+on it for transaction fees. To provision individual crewmates, the same account also needs Dispatcher role
+`OFFCHAIN_STARTER_PACK_GRANTER` (currently role `2`). `GrantOffchainCrewmate` is a Dispatcher system name, not a
+deployed contract address; its compiled class hash does not belong in server configuration.
 
 Configure log alerts for these starter pack provisioning markers:
 - `STARTER_PACK_GRANT_FAILED`: Stripe payment completed and customization was submitted, but the Starknet grant
+  transaction was not submitted.
+- `CREWMATE_GRANT_FAILED`: Stripe payment completed and customization was submitted, but the crewmate grant
   transaction was not submitted.
 
 ### AVNU gasfree paymaster proxy

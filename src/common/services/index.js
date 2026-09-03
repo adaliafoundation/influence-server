@@ -11,6 +11,7 @@ const ComponentService = require('./Components/Component');
 const ConstantService = require('./Constant');
 const CrewService = require('./Crew');
 const CrewmateService = require('./Crewmate');
+const CrewmatePurchaseService = require('./CrewmatePurchase');
 const CrossingService = require('./Crossing');
 const DirectMessageService = require('./DirectMessage');
 const ElasticSearchService = require('./ElasticSearch');
@@ -49,6 +50,7 @@ module.exports = {
   ComponentService,
   ConstantService,
   CrewmateService,
+  CrewmatePurchaseService,
   CrewService,
   CrossingService,
   DirectMessageService,
