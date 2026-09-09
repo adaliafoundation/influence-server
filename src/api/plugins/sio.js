@@ -1,7 +1,7 @@
 const appConfig = require('config');
+const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 const { createClient } = require('redis');
-const socketioJwt = require('socketio-jwt');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const eventEmitter = require('@common/lib/sio/emitter');
 const { Address } = require('@influenceth/sdk');
@@ -10,6 +10,34 @@ const logger = require('@common/lib/logger');
 const AsteroidChatRoom = require('./sio/AsteroidChatRoom');
 
 class SocketIoServer {
+  static authorizeSocket(socket, next) {
+    Object.assign(socket, { auth: { isAuthenticated: false } });
+
+    const authorizationHeader = socket.request?.headers?.authorization;
+    let token;
+
+    if (authorizationHeader) {
+      const [scheme, credentials, extra] = authorizationHeader.split(' ');
+      if (scheme?.toLowerCase() !== 'bearer' || !credentials || extra) {
+        return next(new Error('Authorization header must use the Bearer scheme'));
+      }
+      token = credentials;
+    }
+
+    token = socket.handshake?.query?.token || token;
+    if (!token) return next();
+
+    try {
+      const decodedToken = jwt.verify(token, appConfig.get('App.jwtSecret'));
+      Object.assign(socket, {
+        auth: { decoded_token: decodedToken, isAuthenticated: true }
+      });
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   constructor(httpServer) {
     const NODE_ENV = appConfig.util.getEnv('NODE_ENV');
     const REDIS_URL = appConfig.get('Redis.uri');
@@ -45,29 +73,7 @@ class SocketIoServer {
   }
 
   initPlugins() {
-    this.sioServer.use(socketioJwt.authorize({
-      secret: appConfig.get('App.jwtSecret'),
-      handshake: true,
-      decodedPropertyName: 'auth',
-      customDecoded(decoded) {
-        return { decoded_token: decoded, isAuthenticated: true };
-      },
-      fail(error, socket, accept) {
-        let _error = error;
-        let result = false;
-        Object.assign(socket, { auth: { isAuthenticated: false } });
-        // allow null/empty credentials to pass through
-        if (error?.data?.code === 'credentials_required') {
-          _error = null;
-          result = true;
-        }
-        if (socket.request) {
-          accept(_error);
-        } else {
-          accept(null, result);
-        }
-      }
-    }));
+    this.sioServer.use(SocketIoServer.authorizeSocket);
   }
 
   initAuthenticatedListeners(socket) {

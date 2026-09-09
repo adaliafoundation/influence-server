@@ -1,8 +1,8 @@
 require('module-alias/register');
 require('dotenv').config({ silent: true });
+const { randomUUID } = require('node:crypto');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
-const uuid = require('short-uuid');
 const { mongoose } = require('@common/storage/db');
 const { apiKey } = require('@common/lib/hash');
 const logger = require('@common/lib/logger');
@@ -15,7 +15,7 @@ const done = function (error) {
 
 const main = async function ({ name }) {
   if (!name) throw new Error('Invalid name');
-  const key = uuid.uuid();
+  const key = randomUUID();
   const doc = await mongoose.model('ApiKey').create({ name, client_secret: apiKey.generateHash(key) });
 
   logger.info(`Name: ${doc.name}, Id: ${doc.client_id}, Key: ${key}`);
