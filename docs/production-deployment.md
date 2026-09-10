@@ -40,7 +40,7 @@ Check that the provenance/OCI revision identifies the requested source commit. T
 
 ## Stack / deployer changes
 
-Production CI uses the `production-test` stage with MongoDB 7 test binaries (`MONGOMS_VERSION=7.0.14`). The existing `unittest` target and local MongoDB 6 test default remain unchanged; the Mongo version can be selected explicitly through `MONGOMS_VERSION`.
+Production CI uses the `production-test` stage with MongoDB 7 test binaries (`MONGOMS_VERSION=7.0.14`). The existing `unittest` target aliases `production-test`, so regular Docker CI uses the same maintained base and MongoDB 7 test binaries. Local tests retain the MongoDB 6 default; the Mongo version can be selected explicitly through `MONGOMS_VERSION`.
 
 The prerelease workflow, `runtime` Docker target, npm worker commands, and optional indexer profile remain supported. Production uses a separate target with only production npm dependencies, no MongoDB tools or package managers, and `USER 1000:1000`. Application files are root-owned and not writable by that user.
 
