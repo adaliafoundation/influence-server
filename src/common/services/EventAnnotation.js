@@ -3,7 +3,8 @@ const Joi = require('joi');
 const { Address } = require('@influenceth/sdk');
 const Entity = require('@common/lib/Entity');
 const { isObject } = require('lodash');
-const { InfuraIpfs } = require('@common/lib/Ipfs');
+const Ipfs = require('@common/lib/Ipfs/Ipfs');
+const { IpfsRpcClient } = require('@common/lib/Ipfs');
 
 class EventAnnotationService {
   static MAX_ANNOTATION_SIZE = 1024; // In Bytes
@@ -24,7 +25,7 @@ class EventAnnotationService {
 
     if (!_contentHash && annotation) {
       this.validate(annotation);
-      _contentHash = await InfuraIpfs.hashData(annotation);
+      _contentHash = await Ipfs.hashData(annotation);
     }
 
     // Find EventAnnotation event (note, this is not the event being annotated)
@@ -45,8 +46,11 @@ class EventAnnotationService {
     // If content is provided, validate and upload
     if (annotation) {
       this.validate(annotation);
-      const ipfs = new InfuraIpfs();
+      const ipfs = new IpfsRpcClient();
       const result = await ipfs.addData(annotation, { pin });
+      if (result.hash !== annotationEvent.returnValues.contentHash) {
+        throw new Error('Uploaded IPFS content does not match the on-chain content hash');
+      }
       _contentHash = result.hash;
     }
 
@@ -62,7 +66,7 @@ class EventAnnotationService {
       address: _caller,
       annotated: { transactionHash, logIndex },
       crew: annotationEvent.returnValues.callerCrew.id,
-      ipfs: { hash: annotationEvent.returnValues.contentHash, service: 'infura', pinned: pin }
+      ipfs: { hash: annotationEvent.returnValues.contentHash, pinned: pin }
     };
 
     return mongoose.model('EventAnnotation').findOneAndUpdate(filter, update, { upsert: true, new: true });
@@ -80,7 +84,7 @@ class EventAnnotationService {
   }
 
   static hashData(data) {
-    return InfuraIpfs.hashData(data);
+    return Ipfs.hashData(data);
   }
 
   static validate(data) {

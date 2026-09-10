@@ -11,7 +11,7 @@ const schema = new mongoose.Schema({
     transactionIndex: { type: Number }
   },
   ipfs: {
-    service: { type: String, enum: ['infura'] },
+    service: { type: String },
     hash: { type: String },
     pinned: { type: Boolean }
   },

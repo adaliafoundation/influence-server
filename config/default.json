@@ -174,5 +174,10 @@
     "release": "local",
     "timeoutMs": 2000,
     "workerMaxAgeMs": 180000
+  },
+  "Ipfs": {
+    "rpcUrl": null,
+    "rpcAuthorization": null,
+    "gatewayUrl": null
   }
 }

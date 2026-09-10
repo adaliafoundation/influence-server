@@ -17,18 +17,14 @@ const hashContent = async function (content) {
 };
 
 class Ipfs {
+  static serialize(data) {
+    if (isObject(data)) return JSON.stringify(data);
+    if (isString(data)) return data;
+    throw new Error('Ipfs::serialize: Invalid data type');
+  }
+
   static hashData(data) {
-    if (isObject(data)) return hashContent(JSON.stringify(data));
-    if (isString(data)) return hashContent(data);
-    throw new Error('Ipfs::hashData: Invalid data type');
-  }
-
-  async addFile() {
-    throw new Error('Ipfs::addFile must be implemented in a child class');
-  }
-
-  async addData() {
-    throw new Error('Ipfs::addData must be implemented in a child class');
+    return hashContent(this.serialize(data));
   }
 }
 

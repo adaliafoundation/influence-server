@@ -1,12 +1,13 @@
 require('module-alias/register');
 require('dotenv').config({ silent: true });
 const axios = require('axios');
+const { gatewayUrl } = require('@common/lib/Ipfs');
 const { Entity } = require('@influenceth/sdk');
 const { constants } = require('@influenceth/astro');
 const { mongoose } = require('@common/storage/db');
 
 const main = async function () {
-  const snapshotUrl = 'https://influence.infura-ipfs.io/ipfs/QmdJ7kY74efg8PvcbZ7AzuVdfZAksUiAVUL7koznvYWUq4';
+  const snapshotUrl = gatewayUrl('QmdJ7kY74efg8PvcbZ7AzuVdfZAksUiAVUL7koznvYWUq4');
   const { data: snapshot } = await axios.get(snapshotUrl);
   let count = 0;
 

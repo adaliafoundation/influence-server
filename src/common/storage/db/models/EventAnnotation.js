@@ -10,7 +10,7 @@ const schema = new mongoose.Schema({
   },
   crew: { type: Number, required: true },
   ipfs: {
-    service: { type: String, enum: ['infura'] },
+    service: { type: String },
     hash: { type: String },
     pinned: { type: Boolean }
   }

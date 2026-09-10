@@ -81,7 +81,7 @@ Supported names (append `_FILE`):
 - `MONGO_URL`, `REDIS_URL`, `ELASTICSEARCH_URL`
 - `ETHEREUM_PROVIDER`, `STARKNET_RPC_PROVIDER`, `STARKNET_EVENT_RETRIEVER_RPC_PROVIDER`
 - `STARKNET_FAUCET_PRIVATE_KEY`, `STARKNET_STARTER_PACK_PRIVATE_KEY`
-- `IPFS_INFURA_API_KEY`, `IPFS_INFURA_API_KEY_SECRET`, `OPEN_SEA_API_KEY`, `SENDGRID_API_KEY`
+- `IPFS_RPC_AUTHORIZATION`, `OPEN_SEA_API_KEY`, `SENDGRID_API_KEY`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 
 `STARKNET_STARTER_PACK_PRIVATE_KEY_FILE` keeps its existing path-based provisioner behavior and is also validated at startup. Existing `compose.provisioner-keyfile.yaml` remains usable after removing any simultaneous plain key and adjusting its file permissions for the production user.
@@ -159,3 +159,32 @@ node bin/generateApiKey.js --name 'Stack client' --output /credentials/stack-cli
 ```
 
 The JSON file contains `name`, `client_id` and the plaintext `client_secret`; MongoDB stores only the secret's hash. The output must not already exist (symlinks are also rejected), and is created with mode `0600`. In the production container, mount a private writable directory at `/credentials` owned by UID 1000. Deliver the file securely to the client and remove it after provisioning; keep it outside log collection and source control. A failed command exits nonzero. The previous log-only invocation now requires `--output` in every environment.
+
+### Optional IPFS storage
+
+IPFS uploads are disabled unless `IPFS_RPC_URL` is configured. Local CID hashing
+and database reads remain available; upload requests return HTTP 503 when storage
+is unconfigured. No provider or gateway is selected by default, including in
+production and prerelease configurations.
+
+Set these independently for each deployment:
+
+- `IPFS_RPC_URL`: Kubo-compatible API root, including `/api/v0`.
+- `IPFS_RPC_AUTHORIZATION`: complete Authorization header, or use
+  `IPFS_RPC_AUTHORIZATION_FILE` for a mounted secret. Omit for an unauthenticated
+  private Kubo endpoint. Never expose RPC credentials to browser clients.
+- `IPFS_GATEWAY_URL`: gateway origin/base before `/ipfs/<CID>`, used by the
+  Starknet setup scripts. Configure the frontend gateway separately.
+
+For Filebase, create an IPFS bucket and generate its bucket-specific token on the
+Access Keys page. Set `IPFS_RPC_URL=https://rpc.filebase.io/api/v0` and configure
+`IPFS_RPC_AUTHORIZATION` as `Bearer <token>`. No S3 keys or bucket-name environment
+variable is needed. See https://filebase.com/docs/ipfs/rpc-api.
+
+The client uploads UTF-8 content with CIDv0, SHA-256, 256 KiB chunks, DAG-PB leaves,
+and no wrapping directory, matching local hashing. A mismatched returned CID or
+upstream failure returns HTTP 502 and is not saved as a successful upload.
+Before enabling production writes, verify uploads, pin status, and byte-for-byte
+retrieval against the selected provider, including a payload larger than 256 KiB.
+Existing stored CIDs and legacy service metadata are retained; changing the RPC
+endpoint does not migrate existing pins. Content migration is a separate step.

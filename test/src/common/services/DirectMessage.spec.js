@@ -1,7 +1,7 @@
 const { expect } = require('chai');
 const mongoose = require('mongoose');
 const DirectMessageService = require('@common/services/DirectMessage');
-const { InfuraIpfs } = require('@common/lib/Ipfs');
+const { IpfsRpcClient } = require('@common/lib/Ipfs');
 const UserFactory = require('../../../factories/User');
 
 describe('DirectMessage', function () {
@@ -10,7 +10,7 @@ describe('DirectMessage', function () {
   });
 
   beforeEach(async function () {
-    this._sandbox.stub(InfuraIpfs.prototype, 'addData').resolves({ hash: '123123123' });
+    this._sandbox.stub(IpfsRpcClient.prototype, 'addData').resolves({ hash: '123123123' });
   });
 
   afterEach(async function () {

@@ -80,12 +80,6 @@
   "EventProcessor": {
     "runDelay": "EVENT_PROCESSOR_RUN_DELAY"
   },
-  "Ipfs": {
-    "infura": {
-      "apiKey": "IPFS_INFURA_API_KEY",
-      "apiKeySecret": "IPFS_INFURA_API_KEY_SECRET"
-    }
-  },
   "MongoDb": {
     "uri": "MONGO_URL",
     "debug": "MONGO_DEBUG"
@@ -156,5 +150,10 @@
     "release": "IMAGE_REVISION",
     "timeoutMs": "HEALTH_TIMEOUT_MS",
     "workerMaxAgeMs": "WORKER_MAX_AGE_MS"
+  },
+  "Ipfs": {
+    "rpcUrl": "IPFS_RPC_URL",
+    "rpcAuthorization": "IPFS_RPC_AUTHORIZATION",
+    "gatewayUrl": "IPFS_GATEWAY_URL"
   }
 }

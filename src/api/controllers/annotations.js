@@ -29,7 +29,7 @@ const createAnnotation = async function (ctx) {
     ctx.status = 200;
     ctx.body = result;
   } catch (error) {
-    ctx.throw(400, error.message);
+    ctx.throw(error.status || 400, error.message);
   }
 };
 
@@ -39,7 +39,7 @@ const getHash = async function (ctx) {
   try {
     await EventAnnotationService.validate(annotation);
   } catch (error) {
-    ctx.throw(400, error.message);
+    ctx.throw(error.status || 400, error.message);
   }
 
   const hash = await EventAnnotationService.hashData(annotation);

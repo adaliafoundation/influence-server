@@ -2,7 +2,7 @@ const { expect } = require('chai');
 const sinon = require('sinon');
 const mongoose = require('mongoose');
 const EventAnnotationService = require('@common/services/EventAnnotation');
-const { InfuraIpfs } = require('@common/lib/Ipfs');
+const { IpfsRpcClient } = require('@common/lib/Ipfs');
 
 describe('AnnotationService', function () {
   let sandbox;
@@ -10,7 +10,7 @@ describe('AnnotationService', function () {
 
   beforeEach(async function () {
     sandbox = sinon.createSandbox();
-    pinStub = sandbox.stub(InfuraIpfs.prototype, 'addData').resolves({ hash: '123123123' });
+    pinStub = sandbox.stub(IpfsRpcClient.prototype, 'addData').resolves({ hash: '123123123' });
   });
 
   afterEach(async function () {
