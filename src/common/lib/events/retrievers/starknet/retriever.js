@@ -41,7 +41,7 @@ class StarknetRetriever {
         recentHeadBlock = Math.max(originBlock - 1, headBlock - bootstrapLookbackBlocks);
       }
     } catch (error) {
-      logger.warn(`StarknetRetriever::getBootstrapLastRetrievedBlock, unable to load head block: ${error.message}`);
+      logger.warn('StarknetRetriever::getBootstrapLastRetrievedBlock, unable to load head block', error);
     }
 
     const orderedCandidates = [
@@ -148,7 +148,7 @@ class StarknetRetriever {
     }
   }
 
-  async runner({ runDelay } = {}) {
+  async runner({ runDelay, onHealthy = async () => {}, onFailure = async () => {} } = {}) {
     const _runDelay = Number(
       runDelay || appConfig.EventRetriever.starknet?.runDelay || appConfig.EventRetriever.runDelay
     );
@@ -178,7 +178,9 @@ class StarknetRetriever {
         } else {
           logger.debug(`${logSlug}, caught up at block ${toBlock}`);
         }
+        await onHealthy();
       } catch (error) {
+        await onFailure();
         logger.error(`${logSlug}, runner failed processing from block ${fromBlock} to block ${toBlock}`);
         logger.error(error);
       }

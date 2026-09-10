@@ -15,12 +15,13 @@
     "exportStarknetVotes": "node ./bin/exportStarknetVotingSnapshot.js",
     "lint": "./node_modules/.bin/eslint ./src ./test",
     "start": "node ./src/api/server.js",
-    "test": "NODE_ENV=test LOG_LEVEL=test ALLOW_CONFIG_MUTATIONS=true ./node_modules/.bin/mocha",
+    "test": "NODE_ENV=test LOG_LEVEL=test ALLOW_CONFIG_MUTATIONS=true ./node_modules/.bin/mocha && npm run test:deployment",
     "watch": "./node_modules/.bin/nodemon ./src/api/server.js -e .js,.html,.json,.css",
     "watch-all": "./node_modules/.bin/pm2 start ecosystem.config.js; pm2 monit ; ./node_modules/.bin/pm2 stop all",
     "pm2-watch": "./node_modules/.bin/pm2 start ecosystem.config.js; pm2 logs",
     "pm2-monitor": "./node_modules/.bin/pm2 start ecosystem.config.js; pm2 monit ; ./node_modules/.bin/pm2 stop all",
-    "pm2-restart-all": "./node_modules/.bin/pm2 restart all"
+    "pm2-restart-all": "./node_modules/.bin/pm2 restart all",
+    "test:deployment": "node --test test/deployment/*.test.cjs"
   },
   "repository": {
     "type": "git",
@@ -105,5 +106,10 @@
     "@api": "./src/api",
     "@common": "./src/common",
     "@test": "./test"
+  },
+  "overrides": {
+    "patch-package": {
+      "tmp": "^0.2.6"
+    }
   }
 }

@@ -38,7 +38,7 @@ class EthereumRetriever {
         recentHeadBlock = Math.max(originBlock - 1, headBlock - bootstrapLookbackBlocks);
       }
     } catch (error) {
-      logger.warn(`EthereumRetriever::getBootstrapLastRetrievedBlock, unable to load head block: ${error.message}`);
+      logger.warn('EthereumRetriever::getBootstrapLastRetrievedBlock, unable to load head block', error);
     }
 
     const orderedCandidates = [
@@ -165,7 +165,7 @@ class EthereumRetriever {
     return null;
   }
 
-  async runner({ runDelay } = {}) {
+  async runner({ runDelay, onHealthy = async () => {}, onFailure = async () => {} } = {}) {
     const _runDelay = Number(
       runDelay || appConfig.EventRetriever.ethereum?.runDelay || appConfig.EventRetriever.runDelay
     );
@@ -204,7 +204,9 @@ class EthereumRetriever {
           await EthereumBlockCache.setLastRetrievedBlock(toBlock);
           logger.info(`${logSlug}, advanced checkpoint to block ${toBlock}`);
         }
+        await onHealthy();
       } catch (error) {
+        await onFailure();
         logger.error(`${logSlug}, runner iteration failed`);
         logger.error(error);
       }

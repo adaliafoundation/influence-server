@@ -6,6 +6,7 @@ const { hideBin } = require('yargs/helpers');
 const { EthereumRetriever } = require('@common/lib/events/retrievers/ethereum/retriever');
 const { StarknetRetriever } = require('@common/lib/events/retrievers/starknet/retriever');
 const logger = require('@common/lib/logger');
+const createWorkerHealth = require('@common/lib/workerHealth');
 
 const EVENT_SOURCES = {
   ethereum: EthereumRetriever,
@@ -15,7 +16,7 @@ const EVENT_SOURCES = {
 const done = function (error) {
   if (error) logger.inspect(error, 'error');
   logger.info('done');
-  process.exit();
+  process.exit(error ? 1 : 0);
 };
 
 const args = yargs(hideBin(process.argv))
@@ -65,12 +66,9 @@ const main = async function ({ blocks, eventSource, fromBlock, toBlock, runOnce,
     return;
   }
 
-  try {
-    // run the event retriever
-    await retriever.runner();
-  } catch (error) {
-    logger.inspect(error, 'error');
-  }
+  const health = createWorkerHealth(`${eventSource}-retriever`);
+  await health.starting();
+  await retriever.runner({ onHealthy: health.healthy, onFailure: health.failed });
 };
 
 main(args)

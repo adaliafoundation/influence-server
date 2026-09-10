@@ -49,11 +49,11 @@ class SocketIoServer {
     this.subClient = this.pubClient.duplicate();
 
     this.pubClient.on('error', (error) => {
-      logger.error(error.message || error);
+      logger.error(error);
     });
 
     this.subClient.on('error', (error) => {
-      logger.error(error.message || error);
+      logger.error(error);
     });
 
     this.initSocketIoServer(httpServer);

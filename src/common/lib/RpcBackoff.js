@@ -16,7 +16,7 @@ class RpcBackoff {
       startingDelay,
       retry(error, attemptNumber) {
         logger.warn(`${label}, retry: ${attemptNumber}`);
-        logger.warn(`${label}, error: ${error.message || error}`);
+        logger.warn(`${label}, operation failed`, error);
         logger.inspect(error, 'debug');
         return true;
       }

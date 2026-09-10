@@ -308,10 +308,7 @@ class CrewmatePurchaseService {
       await grantPurchase.save();
       return grantPurchase.txHash;
     } catch (error) {
-      logger.error(
-        `CREWMATE_GRANT_FAILED purchase=${grantPurchase.id} session=${grantPurchase.stripeCheckoutSessionId} `
-        + `reason=${error.message || error}`
-      );
+      logger.error({ event: 'CREWMATE_GRANT_FAILED', error });
       grantPurchase.status = 'grant_failed';
       grantPurchase.grantError = error.message || String(error);
       await grantPurchase.save();

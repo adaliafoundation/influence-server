@@ -115,6 +115,31 @@ describe('EventProcessor', function () {
   });
 
   describe('main', function () {
+    it('reports successful idle progress only after processing and emission complete', async function () {
+      sandbox.stub(EventService, 'getNonProcessed').resolves([]);
+      const processed = sandbox.stub(processor, 'process').resolves();
+      const emitted = sandbox.stub(processor, 'emitCachedStarknetBlockNumberIfCaughtUp').resolves();
+      sandbox.stub(processor, 'scheduleNextRun').resolves();
+      processor.onHealthy = sandbox.stub().resolves();
+      await processor.main();
+      expect(processed.calledBefore(processor.onHealthy)).to.equal(true);
+      expect(emitted.calledBefore(processor.onHealthy)).to.equal(true);
+    });
+
+    it('does not report healthy after a processing failure', async function () {
+      sandbox.stub(EventService, 'getNonProcessed').resolves([]);
+      const failure = new Error('processing failed');
+      sandbox.stub(processor, 'process').rejects(failure);
+      processor.onHealthy = sandbox.stub().resolves();
+      try {
+        await processor.main();
+        throw new Error('Expected processing failure');
+      } catch (error) {
+        expect(error).to.equal(failure);
+      }
+      expect(processor.onHealthy.called).to.equal(false);
+    });
+
     it('should fetch non-processed events using the capped batch size', async function () {
       sandbox.stub(EventService, 'getNonProcessed').resolves([]);
       const processStub = sandbox.stub(processor, 'process').resolves();

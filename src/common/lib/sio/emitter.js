@@ -15,7 +15,7 @@ class EventEmitter {
     }
     this.#redisClient = createClient(options);
     this.#redisClient.on('error', (error) => {
-      logger.error(`EventEmitter, redis connect error: ${error.message || error}`);
+      logger.error('EventEmitter, redis connect error', error);
     });
 
     this.#redisClient.connect().then(() => {

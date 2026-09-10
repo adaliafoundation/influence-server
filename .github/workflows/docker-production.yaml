@@ -1,46 +1,269 @@
-name: Promote prerelease to production
+name: Release production server
 
 on:
   workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full 40-character Git commit SHA to release
+        required: true
+        type: string
 
 permissions:
   contents: read
-  packages: write
+
+concurrency:
+  group: production-server-release
+  cancel-in-progress: false
 
 jobs:
-  promote:
+  validate:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
+      - name: Require the main workflow branch
+        run: test "$GITHUB_REF" = refs/heads/main
+
+      - name: Checkout trusted workflow policy
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require main ancestry before executing candidate code
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: bash scripts/verify-release.sh "$COMMIT_SHA"
+
+      - name: Checkout validated source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          path: source
+          persist-credentials: false
+
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build unit test image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: source
+          target: production-test
+          load: true
+          tags: influence-server:unittest
+
+      - name: Run unit and deployment tests
+        run: docker run --rm influence-server:unittest
+
+  build:
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout trusted workflow policy
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require main ancestry before executing candidate code
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: bash scripts/verify-release.sh "$COMMIT_SHA"
+
+      - name: Checkout validated source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          path: source
+          persist-credentials: false
+
+      - name: Set candidate image name
+        id: image
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "name=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "candidate=$IMAGE:candidate-$COMMIT_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set image name
-        id: image
+      - name: Build candidate with SBOM and provenance
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: source
+          target: production
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.image.outputs.candidate }}
+          build-args: IMAGE_REVISION=${{ inputs.commit_sha }}
+          sbom: true
+          provenance: mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ inputs.commit_sha }}
+
+  verify:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout trusted workflow policy
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require main ancestry before executing candidate code
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: bash scripts/verify-release.sh "$COMMIT_SHA"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan the exact candidate digest
+        id: scan
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          image: ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}
+          fail-build: false
+          severity-cutoff: high
+          only-fixed: false
+          output-format: json
+          output-file: vulnerability-report.json
+
+      - name: Enforce reviewed vulnerability policy
+        run: node scripts/check-vulnerabilities.cjs vulnerability-report.json security/vulnerability-exceptions.json
+
+      - name: Save vulnerability report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: production-vulnerability-report
+          path: vulnerability-report.json
+          if-no-files-found: warn
+
+      - name: Smoke-test the exact candidate digest
+        env:
+          PRODUCTION_IMAGE: ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}
+        run: bash scripts/test-production-image.sh "$PRODUCTION_IMAGE"
+
+  publish:
+    needs: [build, verify]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout trusted workflow policy
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require main ancestry before executing candidate code
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: bash scripts/verify-release.sh "$COMMIT_SHA"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Refuse to replace an existing SHA release
+        env:
+          RELEASE: ${{ needs.build.outputs.image }}:production-${{ inputs.commit_sha }}
         run: |
-          IMAGE=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          echo "image_name=$IMAGE" >> $GITHUB_OUTPUT
+          if docker buildx imagetools inspect "$RELEASE" > /tmp/release-inspect.log 2>&1; then
+            echo 'This SHA is already released. Deploy its existing digest.' >&2
+            exit 1
+          fi
+          if ! grep -Eiq 'manifest unknown|not found' /tmp/release-inspect.log; then
+            cat /tmp/release-inspect.log >&2
+            exit 1
+          fi
 
-      - name: Promote prerelease to latest + production
+      - name: Download verified scan report
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: production-vulnerability-report
+
+      - name: Recheck exception expiry before publication
+        run: node scripts/check-vulnerabilities.cjs vulnerability-report.json security/vulnerability-exceptions.json
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign and verify the candidate digest
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}
         run: |
-          IMAGE=${{ steps.image.outputs.image_name }}
+          cosign sign --yes "$IMAGE"
+          cosign verify "$IMAGE" \
+            --certificate-identity "https://github.com/$GITHUB_WORKFLOW_REF" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
-          echo "Promoting $IMAGE:prerelease"
+      - name: Publish release aliases and deployment reference
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+          RELEASE: ${{ needs.build.outputs.image }}:production-${{ inputs.commit_sha }}
+          DIGEST: ${{ needs.build.outputs.digest }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          docker buildx imagetools create --prefer-index=false \
+            -t "$RELEASE" -t "$IMAGE:production" -t "$IMAGE:latest" "$IMAGE@$DIGEST"
+          test "$(docker buildx imagetools inspect "$RELEASE" --format '{{.Manifest.Digest}}')" = "$DIGEST"
+          printf '%s\n' "$IMAGE@$DIGEST" > production-image.txt
+          {
+            echo '### Production image released'
+            echo "Commit: \`$COMMIT_SHA\`"
+            echo "Deploy: \`$IMAGE@$DIGEST\`"
+            echo 'Tests, vulnerability scan, SBOM, provenance and signature completed. Deployment is manual.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          # Inspect the digest of prerelease
-          DIGEST=$(docker buildx imagetools inspect $IMAGE:prerelease --format '{{.Manifest.Digest}}')
-
-          echo "Found digest: $DIGEST"
-
-          # Retag same digest as latest and production
-          docker buildx imagetools create \
-            -t $IMAGE:latest \
-            -t $IMAGE:production \
-            $IMAGE@${DIGEST}
+      - name: Save deployment reference
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: production-image
+          path: production-image.txt

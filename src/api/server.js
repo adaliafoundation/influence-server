@@ -7,8 +7,9 @@ const serveStatic = require('koa-static');
 const cors = require('@koa/cors');
 const ratelimit = require('koa-ratelimit');
 const compress = require('koa-compress');
-const koaLogger = require('koa-logger');
 const { isWhiteList } = require('@api/plugins/origin');
+const requestLogging = require('./plugins/requestLogging');
+const { createHealthMiddleware } = require('./plugins/health');
 const logger = require('../common/lib/logger');
 require('@common/storage/db'); // db connection and init models
 const controllers = require('./controllers');
@@ -18,6 +19,10 @@ const port = appConfig.get('App.port');
 const server = new Koa();
 const httpServer = createServer(server.callback());
 const socketIoServer = new SocketIoServer(httpServer);
+
+server.on('error', (error) => logger.error(error));
+server.use(createHealthMiddleware(socketIoServer));
+server.use(requestLogging);
 
 // Serve static files
 server.use(serveStatic(`${__dirname}/../common/assets`));
@@ -35,12 +40,6 @@ server.use(ratelimit({
 }));
 
 server.use(compress());
-server.use(koaLogger((str, args) => {
-  const [,,, status] = args;
-  if (status < 400) logger.debug(str); // Informational, success, and redirects
-  if (status >= 400 && status < 500) logger.warn(str); // Client error responses
-  if (status >= 500) logger.error(str); // Server error responses
-}));
 
 // load api standard routes
 if (Number(appConfig.get('App.isApiServer')) === 1) {
@@ -52,8 +51,8 @@ if (Number(appConfig.get('App.isApiServer')) === 1) {
 // load routes for the images server
 if (Number(appConfig.get('App.isImagesServer')) === 1) server.use(controllers.images.routes());
 
-socketIoServer.connect()
-  .then(() => {
-    httpServer.listen(port);
-    logger.info(`API and SocketIO Server listening on ${port}`);
-  });
+httpServer.listen(port, () => logger.info(`API and SocketIO Server listening on ${port}`));
+socketIoServer.connect().catch((error) => {
+  logger.error(error);
+  process.exit(1);
+});

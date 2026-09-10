@@ -11,6 +11,6 @@ if (appConfig.util.getEnv('NODE_ENV') === 'test') {
 }
 
 // Handle connection errors
-keyv.on('error', (error) => logger.error(`MongoCache::connectionError, ${error.message || error}`));
+keyv.on('error', (error) => logger.error('MongoCache::connectionError', error));
 
 module.exports = keyv;

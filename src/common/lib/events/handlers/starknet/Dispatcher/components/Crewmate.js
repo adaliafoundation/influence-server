@@ -36,7 +36,7 @@ class Handler extends BaseHandler {
       try {
         await updateCrewmateAsset({ id: entity.id });
       } catch (error) {
-        logger.warn(JSON.stringify(error));
+        logger.warn(error);
       }
     }
   }

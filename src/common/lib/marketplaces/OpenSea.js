@@ -18,7 +18,7 @@ class OpenSea {
     try {
       this.veryifyConfig();
     } catch (error) {
-      logger.warn(error.message);
+      logger.warn(error);
       return;
     }
 
@@ -30,7 +30,7 @@ class OpenSea {
       const response = await axios.post(query, {}, options);
       logger.info(`OpenSea::updateAsteroidAsset, updated asteroidID: ${id}, with status: ${response.status}`);
     } catch (error) {
-      logger.error(error.message, error.request.host + error.request.path);
+      logger.error(error);
     }
   }
 
@@ -38,7 +38,7 @@ class OpenSea {
     try {
       this.veryifyConfig();
     } catch (error) {
-      logger.warn(error.message);
+      logger.warn(error);
       return;
     }
 
@@ -52,7 +52,7 @@ class OpenSea {
         const response = await axios.post(query, {}, options);
         logger.info(`OpenSea::updateCrewmateAsset, updated crewmateId: ${id}, with status: ${response.status}`);
       } catch (error) {
-        logger.error(error.message, error.request.host + error.request.path);
+        logger.error(error);
       }
     } else {
       logger.warn('OpenSea::updateCrewmateAsset, missing Contracts.ethereum.crew');
@@ -68,7 +68,7 @@ class OpenSea {
         const response = await axios.post(query, {}, options);
         logger.info(`OpenSea::updateCrewmateAsset, updated crewmateId: ${id}, with status: ${response.status}`);
       } catch (error) {
-        logger.error(error.message, error.request.host + error.request.path);
+        logger.error(error);
       }
     } else {
       logger.warn('OpenSea::updateCrewmateAsset, missing Contracts.ethereum.crewmate');

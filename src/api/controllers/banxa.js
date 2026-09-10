@@ -48,7 +48,7 @@ const receiveWebhook = async function (ctx) {
       })
     };
   } catch (error) {
-    logger.warn(`BANXA_WEBHOOK_FAILED reason=${error.message}`);
+    logger.warn({ event: 'BANXA_WEBHOOK_FAILED', error });
     ctx.throw(error.name === 'ValidationError' ? 400 : 500, error.message);
   }
 };

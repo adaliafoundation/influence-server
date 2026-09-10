@@ -31,7 +31,7 @@ const verifyAuthChallenge = async (ctx) => {
     ctx.body = { token };
     ctx.status = 200;
   } catch (error) {
-    logger.warn(`Auth challenge failed for ${address}: ${error.message}`);
+    logger.warn(`Auth challenge failed for ${address}`, error);
     ctx.status = 401;
     ctx.body = { error: error.message };
   }

@@ -29,7 +29,7 @@ class Handler extends StarknetBaseHandler {
     try {
       await ReferralService.createReferralForBuyer(caller, Entity.Crewmate(crewmate.id));
     } catch (error) {
-      logger.warn(`Error creating referral for buyer: ${error.message}`);
+      logger.warn('Error creating referral for buyer', error);
     }
 
     // Create (only) an InternalSale component for the crewmate
@@ -45,7 +45,7 @@ class Handler extends StarknetBaseHandler {
         }
       });
     } catch (error) {
-      logger.warn(`Error creating InternalSale component: ${error.message}`);
+      logger.warn('Error creating InternalSale component', error);
     }
   }
 

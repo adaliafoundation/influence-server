@@ -8,7 +8,8 @@
     "isImagesServer": "IMAGES_SERVER",
     "jwtSecret": "JWT_SECRET",
     "logLevel": "LOG_LEVEL",
-    "port": "PORT"
+    "port": "PORT",
+    "logFormat": "LOG_FORMAT"
   },
   "Argent": {
     "apiKey": "ARGENT_API_KEY"
@@ -93,7 +94,7 @@
     "email": {
       "enabled": "NOTIFICATIONS_EMAIL_ENABLED",
       "from": {
-        "email":  "NOTIFICATIONS_EMAIL_FROM_EMAIL",
+        "email": "NOTIFICATIONS_EMAIL_FROM_EMAIL",
         "name": "NOTIFICATIONS_EMAIL_FROM_NAME"
       }
     }
@@ -149,5 +150,11 @@
     "starknet": {
       "starterPackAdmin": "STARKNET_STARTER_PACK_ADMIN"
     }
+  },
+  "Health": {
+    "namespace": "HEALTH_NAMESPACE",
+    "release": "IMAGE_REVISION",
+    "timeoutMs": "HEALTH_TIMEOUT_MS",
+    "workerMaxAgeMs": "WORKER_MAX_AGE_MS"
   }
 }

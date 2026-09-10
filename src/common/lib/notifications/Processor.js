@@ -77,7 +77,7 @@ class NotificationsProcessor {
         const result = await (new Formatter({ notification })).format();
         formatted.push(result);
       } catch (error) {
-        logger.error(`Error formatting notification: ${error.message}, doc: ${JSON.stringify(notification)}`);
+        logger.error({ event: 'notification_format_failed', notificationId: notification.id, error });
       }
     }
 
@@ -123,7 +123,7 @@ class NotificationsProcessor {
             this._toSend[address].notifications.push(doc);
           }
         } catch (error) {
-          logger.error(`Error filtering notification: ${error.message}, doc: ${doc.id}`);
+          logger.error(`Error filtering notification, doc: ${doc.id}`, error);
         }
       }
     }

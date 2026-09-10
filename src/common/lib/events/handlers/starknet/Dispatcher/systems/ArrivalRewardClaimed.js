@@ -35,7 +35,7 @@ class Handler extends StarknetBaseHandler {
     try {
       await updateAsteroidAsset({ id: asteroid.id });
     } catch (error) {
-      logger.warn(JSON.stringify(error));
+      logger.warn(error);
     }
   }
 
