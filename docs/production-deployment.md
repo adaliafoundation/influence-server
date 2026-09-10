@@ -149,3 +149,13 @@ Rollback by restoring the previous verified digest on **all** server/worker serv
 The refreshed local AMD64 scan reports 7 Critical package matches (6 distinct advisories) and 57 High matches, all without available fixes. The six Critical advisories were reviewed against the packaged API/worker runtime: three are excluded by architecture or absent modules; the other three have no identified affected application execution path. Seven narrowly matched, expiring `not_affected` entries record these decisions. See [the review and evidence](../security/production-vulnerability-review.md).
 
 The local gate now reports **0 blocking, 7 excepted, 57 warnings**. No High/Critical npm findings remain in this report. Unfixed High warnings are not a claim of non-applicability; revisit them during regular dependency/base-image updates. CI must still scan and smoke-test its actual candidate digest, and new findings or expired decisions can block it.
+
+## Generate an API credential
+
+Use an explicit private output file; the generated secret is never sent to application logs:
+
+```sh
+node bin/generateApiKey.js --name 'Stack client' --output /credentials/stack-client.json
+```
+
+The JSON file contains `name`, `client_id` and the plaintext `client_secret`; MongoDB stores only the secret's hash. The output must not already exist (symlinks are also rejected), and is created with mode `0600`. In the production container, mount a private writable directory at `/credentials` owned by UID 1000. Deliver the file securely to the client and remove it after provisioning; keep it outside log collection and source control. A failed command exits nonzero. The previous log-only invocation now requires `--output` in every environment.

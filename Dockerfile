@@ -89,7 +89,7 @@ COPY . .
 
 # Mongodb-memory-server dependencies
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libcurl4 \
+ && apt-get install -y --no-install-recommends libcurl4 git \
  && rm -rf /var/lib/apt/lists/*
 
 CMD ["npm", "test"]
