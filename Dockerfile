@@ -74,22 +74,5 @@ EXPOSE 3001
 
 CMD ["npm", "run", "start"]
 
-############################
-# Unit test image
-############################
-# Debian 11 (bullseye) max for mongo 6
-FROM node:22-bullseye-slim AS unittest
-
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci
-
-COPY . .
-
-# Mongodb-memory-server dependencies
-RUN apt-get update \
- && apt-get install -y --no-install-recommends libcurl4 git \
- && rm -rf /var/lib/apt/lists/*
-
-CMD ["npm", "test"]
+# Keep the existing CI/Compose target name on the maintained production test image.
+FROM production-test AS unittest
