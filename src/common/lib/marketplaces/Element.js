@@ -22,7 +22,7 @@ const refreshAsset = async ({ collection, id, logName }) => {
     const response = await axios.get(query);
     logger.info(`Element::${logName}, updated ${collection} tokenID: ${id}, with status: ${response.status}`);
   } catch (error) {
-    logger.error(error.message, error.request ? error.request.host + error.request.path : query);
+    logger.error(error);
   }
 };
 

@@ -1,40 +1,62 @@
-# This file is only meant to override image definitions and pull the image from GHCR; the full service definitions are in compose.yaml.
-# The fully merged configuration can be viewed with:
-# docker compose -f compose.yaml -f compose.prod.yaml config
-
-# Command examples:
-# docker compose -f compose.yaml -f compose.prod.yaml up -d
-# docker compose -f compose.yaml -f compose.prod.yaml --profile indexer up -d
-# docker compose -f compose.yaml -f compose.prod.yaml run --rm influence-eventauditor
-
+# PRODUCTION_IMAGE must be the image@sha256 reference from the release job.
+# docker compose -f compose.yaml -f compose.prod.yaml --profile indexer up -d --no-build
 x-image: &image
-  image: ghcr.io/adaliafoundation/influence-server:production
+  image: ${PRODUCTION_IMAGE:?Set PRODUCTION_IMAGE to the released image@sha256 digest}
+  environment:
+    NODE_ENV: production
+    HEALTH_NAMESPACE: ${HEALTH_NAMESPACE:-production}
+
+x-worker-health: &worker-health
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 180s
 
 services:
   influence-server:
     <<: *image
-    environment:
-      NODE_ENV: production
-    volumes: !override []    # remove dev binding to source files
-    command: !override ["npm", "run", "start"]
+    build: !reset null
+    volumes: !override []
+    command: !override ["node", "src/api/server.js"]
+    healthcheck:
+      <<: *worker-health
+      test: ["CMD", "node", "bin/healthcheck.js", "api"]
 
   influence-indexer:
     <<: *image
+    command: ["node", "src/workers/elasticsearch.js"]
+    healthcheck:
+      <<: *worker-health
+      test: ["CMD", "node", "bin/healthcheck.js", "elastic-indexer"]
 
   influence-ethereumeventretriever:
     <<: *image
+    command: ["node", "src/workers/eventRetriever.js", "--eventSource=ethereum"]
+    healthcheck:
+      <<: *worker-health
+      test: ["CMD", "node", "bin/healthcheck.js", "ethereum-retriever"]
 
   influence-starkneteventretriever:
     <<: *image
+    command: ["node", "src/workers/eventRetriever.js", "--eventSource=starknet"]
+    healthcheck:
+      <<: *worker-health
+      test: ["CMD", "node", "bin/healthcheck.js", "starknet-retriever"]
 
   influence-eventprocessor:
     <<: *image
+    command: ["node", "src/workers/eventProcessor.js"]
+    healthcheck:
+      <<: *worker-health
+      test: ["CMD", "node", "bin/healthcheck.js", "event-processor"]
 
   influence-eventauditor:
     <<: *image
+    command: ["node", "src/workers/eventAuditor.js"]
 
   influence-agreementauditor:
     <<: *image
+    command: ["node", "src/workers/agreementAudit.js"]
 
   influence-tools:
     <<: *image

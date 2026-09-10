@@ -13,6 +13,7 @@ class EventProcessor {
   constructor(props = {}) {
     if (!props.runDelay) throw new Error('Missing required value for runDelay');
     this.runDelay = props.runDelay;
+    this.onHealthy = props.onHealthy || (async () => {});
     this.batchSize = Number(props.batchSize || DEFAULT_BATCH_SIZE);
   }
 
@@ -104,6 +105,7 @@ class EventProcessor {
       await this.emitCachedStarknetBlockNumberIfCaughtUp();
     }
 
+    await this.onHealthy();
     return this.scheduleNextRun({ timeStamp, timerMs: timer.ms(), eventsLength: events.length });
   }
 }

@@ -96,7 +96,9 @@ describe('AuthService', function () {
     it('should return a challenge message', async function () {
       const address = '0x0517567ac7026ce129c950e6e113e437aa3c83716cd61481c6bb8c5057e6923e';
       const result = await AuthService.getChallenge(address);
-      expect(result.message?.nonce).to.be.a('string');
+      expect(result.message?.nonce).to.match(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+      );
     });
 
     it('should throw an error if address is not provided', async function () {

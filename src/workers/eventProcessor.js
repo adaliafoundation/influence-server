@@ -6,11 +6,12 @@ const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 const EventProcessor = require('@common/lib/events/processor/EventProcessor');
 const logger = require('@common/lib/logger');
+const health = require('@common/lib/workerHealth')('event-processor');
 
 const done = function (error) {
   if (error) logger.inspect(error, 'error');
   logger.info('done');
-  process.exit();
+  process.exit(error ? 1 : 0);
 };
 
 const args = yargs(hideBin(process.argv))
@@ -24,10 +25,11 @@ const args = yargs(hideBin(process.argv))
   .parse();
 
 const main = async function ({ timestamp }) {
+  await health.starting();
   const runDelay = Number(appConfig.EventProcessor?.runDelay);
 
   // instatiate retrievers(s)
-  const processor = new EventProcessor({ runDelay });
+  const processor = new EventProcessor({ runDelay, onHealthy: health.healthy });
 
   // run the processor
   await processor.main({ timestamp });

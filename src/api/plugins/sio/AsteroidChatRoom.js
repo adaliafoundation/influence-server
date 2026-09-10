@@ -38,7 +38,7 @@ class AsteroidChatRoom {
       try {
         ownsCrew = await CrewService.isDelegatedTo({ crew: fromEntity, address: socket.auth?.decoded_token?.sub });
       } catch (error) {
-        Logger.error(`Error checking crew ownership: ${error.message || error}`);
+        Logger.error('Error checking crew ownership', error);
         return socket.emit('send-message-failure', {
           message: `Error checking crew ownership: ${error.message || error}`
         });

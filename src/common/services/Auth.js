@@ -1,6 +1,6 @@
 const appConfig = require('config');
+const { randomUUID } = require('node:crypto');
 const { Address } = require('@influenceth/sdk');
-const uuid = require('short-uuid');
 const starknetClient = require('@common/lib/starknet/client');
 const UserService = require('@common/services/User');
 const { AuthCache } = require('@common/lib/cache');
@@ -88,7 +88,7 @@ class AuthService {
     if (!address) throw new Error('Address is required');
 
     const _address = Address.toStandard(address);
-    const nonce = uuid.generate();
+    const nonce = randomUUID();
 
     await AuthCache.setLoginMessage(_address, nonce, this.CHALLENGE_TIME_LIMIT);
 

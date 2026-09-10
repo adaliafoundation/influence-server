@@ -2,7 +2,8 @@ const mongoose = require('mongoose');
 const Joi = require('joi');
 const { Address } = require('@influenceth/sdk');
 const { isNil, isObject, pick } = require('lodash');
-const { InfuraIpfs } = require('@common/lib/Ipfs');
+const Ipfs = require('@common/lib/Ipfs/Ipfs');
+const { IpfsRpcClient } = require('@common/lib/Ipfs');
 const DirectMessageNotificationService = require('./Notifications/DirectMessage');
 const UserService = require('./User');
 
@@ -28,7 +29,7 @@ class DirectMessageService {
 
     if (!_contentHash && message) {
       this.validate(message);
-      _contentHash = await InfuraIpfs.hashData(message);
+      _contentHash = await Ipfs.hashData(message);
     }
 
     // Find recipient to confirm is a game user
@@ -55,8 +56,11 @@ class DirectMessageService {
     // If content is provided, validate and upload
     if (message) {
       this.validate(message);
-      const ipfs = new InfuraIpfs();
+      const ipfs = new IpfsRpcClient();
       const result = await ipfs.addData(message, { pin });
+      if (result.hash !== messagedEvent.returnValues.contentHash) {
+        throw new Error('Uploaded IPFS content does not match the on-chain content hash');
+      }
       _contentHash = result.hash;
     }
 
@@ -70,7 +74,7 @@ class DirectMessageService {
 
     const update = {
       event: pick(messagedEvent.toJSON(), ['logIndex', 'timestamp', 'transactionHash']),
-      ipfs: { hash: messagedEvent.returnValues.contentHash, service: 'infura', pinned: pin },
+      ipfs: { hash: messagedEvent.returnValues.contentHash, pinned: pin },
       recipient: recipientUser.address,
       sender: _caller
     };
@@ -95,7 +99,7 @@ class DirectMessageService {
   }
 
   static hashData(data) {
-    return InfuraIpfs.hashData(data);
+    return Ipfs.hashData(data);
   }
 
   static markRead(id, recipient) {

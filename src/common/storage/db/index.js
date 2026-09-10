@@ -13,9 +13,14 @@ require('./models');
 
 // init db connection
 mongoose.set('bufferTimeoutMS', 30000);
-mongoose.connect(appConfig.get('MongoDb.uri'));
+mongoose.connect(appConfig.get('MongoDb.uri')).catch((error) => {
+  require('../../lib/logger').error(error); // eslint-disable-line global-require
+  process.exit(1);
+});
 
-mongoose.set('debug', Number(appConfig.MongoDb?.debug || 0) === 1);
+// Query debug output includes documents and bypasses application redaction.
+const debugQueries = appConfig.util.getEnv('NODE_ENV') !== 'production' && Number(appConfig.MongoDb?.debug || 0) === 1;
+mongoose.set('debug', debugQueries);
 
 module.exports = {
   db: mongoose.connection,

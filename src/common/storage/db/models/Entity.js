@@ -10,7 +10,7 @@ const preValidate = function () {
       const lot = Entity.Lot(this.id);
       if (lot) this.set('asteroid', lot.unpackLot().asteroidEntity);
     } catch (error) {
-      Logger.warn(`Entity::preValidate, error unpacking lot: ${this.uuid} ${error.message}`);
+      Logger.warn(`Entity::preValidate, error unpacking lot: ${this.uuid} [error]`, error);
     }
   }
 };

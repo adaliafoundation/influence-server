@@ -26,7 +26,7 @@ class Handler extends StarknetBaseHandler {
         messagingKeys: { x: messagingKeyX, y: messagingKeyY }
       });
     } catch (error) {
-      logger.warn(`RekeyedInbox::processEvent: ${error.message}`);
+      logger.warn('RekeyedInbox::processEvent', error);
     }
   }
 

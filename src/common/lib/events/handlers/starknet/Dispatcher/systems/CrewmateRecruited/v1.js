@@ -41,7 +41,7 @@ class Handler extends StarknetBaseHandler {
     try {
       await updateCrewmateAsset({ id: crewmate.id });
     } catch (error) {
-      logger.warn(JSON.stringify(error));
+      logger.warn(error);
     }
 
     if (!stationEntity.isAsteroid() && stationLocationComponentDoc) {
@@ -62,7 +62,7 @@ class Handler extends StarknetBaseHandler {
         }
       });
     } catch (error) {
-      logger.warn(`Error creating InternalSale component: ${error.message}`);
+      logger.warn('Error creating InternalSale component', error);
     }
   }
 

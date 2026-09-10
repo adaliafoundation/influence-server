@@ -8,7 +8,8 @@
     "isImagesServer": "IMAGES_SERVER",
     "jwtSecret": "JWT_SECRET",
     "logLevel": "LOG_LEVEL",
-    "port": "PORT"
+    "port": "PORT",
+    "logFormat": "LOG_FORMAT"
   },
   "Argent": {
     "apiKey": "ARGENT_API_KEY"
@@ -79,12 +80,6 @@
   "EventProcessor": {
     "runDelay": "EVENT_PROCESSOR_RUN_DELAY"
   },
-  "Ipfs": {
-    "infura": {
-      "apiKey": "IPFS_INFURA_API_KEY",
-      "apiKeySecret": "IPFS_INFURA_API_KEY_SECRET"
-    }
-  },
   "MongoDb": {
     "uri": "MONGO_URL",
     "debug": "MONGO_DEBUG"
@@ -93,7 +88,7 @@
     "email": {
       "enabled": "NOTIFICATIONS_EMAIL_ENABLED",
       "from": {
-        "email":  "NOTIFICATIONS_EMAIL_FROM_EMAIL",
+        "email": "NOTIFICATIONS_EMAIL_FROM_EMAIL",
         "name": "NOTIFICATIONS_EMAIL_FROM_NAME"
       }
     }
@@ -149,5 +144,16 @@
     "starknet": {
       "starterPackAdmin": "STARKNET_STARTER_PACK_ADMIN"
     }
+  },
+  "Health": {
+    "namespace": "HEALTH_NAMESPACE",
+    "release": "IMAGE_REVISION",
+    "timeoutMs": "HEALTH_TIMEOUT_MS",
+    "workerMaxAgeMs": "WORKER_MAX_AGE_MS"
+  },
+  "Ipfs": {
+    "rpcUrl": "IPFS_RPC_URL",
+    "rpcAuthorization": "IPFS_RPC_AUTHORIZATION",
+    "gatewayUrl": "IPFS_GATEWAY_URL"
   }
 }

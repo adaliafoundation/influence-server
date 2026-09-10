@@ -29,7 +29,7 @@ mongoose.set('strictQuery', true);
 exports.mochaHooks = {
   async beforeAll() {
     logger.info('Setting up test mongodb server...');
-    mongoServer = await MongoMemoryServer.create({ binary: { version: '6.0.14' } });
+    mongoServer = await MongoMemoryServer.create({ binary: { version: process.env.MONGOMS_VERSION || '6.0.14' } });
     this.mongoUri = mongoServer.getUri();
 
     // Set the mongo uri in the app config

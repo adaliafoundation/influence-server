@@ -407,10 +407,7 @@ class StarterPackPurchaseService {
       await grantPurchase.save();
       return grantPurchase.txHash;
     } catch (error) {
-      logger.error(
-        `STARTER_PACK_GRANT_FAILED purchase=${grantPurchase.id} session=${grantPurchase.stripeCheckoutSessionId} `
-        + `product=${grantPurchase.productId} reason=${error.message || error}`
-      );
+      logger.error({ event: 'STARTER_PACK_GRANT_FAILED', error });
       grantPurchase.status = 'grant_failed';
       grantPurchase.grantError = error.message || String(error);
       await grantPurchase.save();

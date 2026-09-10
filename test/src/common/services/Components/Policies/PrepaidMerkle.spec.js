@@ -3,7 +3,7 @@ const sinon = require('sinon');
 const mongoose = require('mongoose');
 const Entity = require('@common/lib/Entity');
 const { PrepaidMerklePolicyService } = require('@common/services');
-const { InfuraIpfs } = require('@common/lib/Ipfs');
+const { IpfsRpcClient } = require('@common/lib/Ipfs');
 
 describe('PrepaidMerklePolicyService', function () {
   let sandbox;
@@ -11,7 +11,7 @@ describe('PrepaidMerklePolicyService', function () {
 
   beforeEach(async function () {
     sandbox = sinon.createSandbox();
-    pinStub = sandbox.stub(InfuraIpfs.prototype, 'addData').resolves({ hash: '0x1234' });
+    pinStub = sandbox.stub(IpfsRpcClient.prototype, 'addData').resolves({ hash: '0x1234' });
   });
 
   afterEach(function () {

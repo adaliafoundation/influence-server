@@ -27,7 +27,7 @@ const createMessage = async function (ctx) {
     ctx.status = 200;
     ctx.body = result;
   } catch (error) {
-    ctx.throw(400, error.message);
+    ctx.throw(error.status || 400, error.message);
   }
 };
 

@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const { last } = require('lodash');
 const { Asteroid } = require('@influenceth/sdk');
-const { InfuraIpfs } = require('@common/lib/Ipfs');
+const { IpfsRpcClient } = require('@common/lib/Ipfs');
 const Entity = require('@common/lib/Entity');
 
 class PrepaidMerklePolicyService {
@@ -50,7 +50,7 @@ class PrepaidMerklePolicyService {
     }
 
     // upload and pin tree to IPFS
-    const { hash } = await (new InfuraIpfs()).addData(JSON.stringify(merkleTree), { pin: true });
+    const { hash } = await (new IpfsRpcClient()).addData(JSON.stringify(merkleTree), { pin: true });
     doc.set({ merkleTreeIpfsHash: hash, lotIndices });
     return doc.save();
   }

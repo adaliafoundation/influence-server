@@ -21,7 +21,7 @@ const addPrepaidMerkle = async (ctx) => {
     ctx.status = 200;
     ctx.body = result.toJSON();
   } catch (error) {
-    ctx.status = 400;
+    ctx.status = error.status || 400;
     ctx.body = { error: error.message };
   }
 };

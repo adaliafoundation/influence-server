@@ -67,13 +67,6 @@
     "originBlock": 1,
     "provider": "wss://localhost"
   },
-  "Ipfs": {
-    "infura": {
-      "endpoint": "https://ipfs.localhost:5001/api/v0",
-      "apiKey": "IPFS_INFURA_API_KEY",
-      "apiKeySecret": "IPFS_INFURA_API_KEY_SECRET"
-    }
-  },
   "MongoDb": {
     "debug": 0,
     "autoIndex": true
@@ -84,7 +77,6 @@
         "email": "no-reply@localhost",
         "name": "Adalia Foundation"
       }
-
     }
   },
   "Redis": {
@@ -104,5 +96,9 @@
   },
   "Stripe": {
     "secretKey": "TEST_STRIPE_SECRET_KEY"
+  },
+  "Ipfs": {
+    "rpcUrl": "https://ipfs.localhost/api/v0",
+    "rpcAuthorization": "Bearer test-token"
   }
 }

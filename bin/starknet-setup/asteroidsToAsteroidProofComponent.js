@@ -1,11 +1,12 @@
 require('module-alias/register');
 require('dotenv').config({ silent: true });
 const axios = require('axios');
+const { gatewayUrl } = require('@common/lib/Ipfs');
 const { Merkle, Entity } = require('@influenceth/sdk');
 const { mongoose } = require('@common/storage/db');
 
 const main = async function () {
-  const asteroidMerkleUrl = 'https://influence.infura-ipfs.io/ipfs/QmVS9yNQWMumTJ6wJLrMetKxyiEysuKZaoGjaTMQJTmjty';
+  const asteroidMerkleUrl = gatewayUrl('QmVS9yNQWMumTJ6wJLrMetKxyiEysuKZaoGjaTMQJTmjty');
   const { data: asteroidMerkle } = await axios.get(asteroidMerkleUrl);
 
   for (let id = 1; id <= 250000; id += 1) {

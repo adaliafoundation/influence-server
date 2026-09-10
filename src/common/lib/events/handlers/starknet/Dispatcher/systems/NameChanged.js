@@ -29,7 +29,7 @@ class Handler extends StarknetBaseHandler {
       if (Entity.isAsteroid(entity)) await updateAsteroidAsset({ id: entity.id });
       if (Entity.isCrewmate(entity)) await updateCrewmateAsset({ id: entity.id });
     } catch (error) {
-      logger.warn(JSON.stringify(error));
+      logger.warn(error);
     }
   }
 

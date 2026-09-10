@@ -6,15 +6,17 @@ const { mongoose } = require('@common/storage/db');
 const { delay } = require('lodash');
 const { Timer } = require('timer-node');
 const logger = require('@common/lib/logger');
+const health = require('@common/lib/workerHealth')('elastic-indexer');
 const Indexer = require('@common/lib/elasticsearch/Indexer');
 
 const done = function (error) {
   if (error) logger.inspect(error, 'error');
   logger.info('done');
-  process.exit();
+  process.exit(error ? 1 : 0);
 };
 
 const main = async function () {
+  await health.starting();
   const keepRunning = true;
   const runDelay = appConfig.get('Elasticsearch.indexer.runDelay');
   const batchSizeBytes = appConfig.get('Elasticsearch.indexer.bulkBatchSizeBytes');
@@ -34,6 +36,7 @@ const main = async function () {
         .lean();
       logger.info(`ElasticSearch Indexer, indexing [${docs.length}/${totalCount}]...`);
       await Indexer.bulkIndex({ batchSizeBytes, batchSizeCount, docs });
+      await health.healthy();
 
       logger.debug(`ElasticSearch Indexer, run delay not met, delaying for [${delayMs}ms]...`);
       await new Promise((resolve) => {

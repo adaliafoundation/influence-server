@@ -35,7 +35,7 @@ class Handler extends BaseHandler {
       try {
         await updateAsteroidAsset({ id: entity.id });
       } catch (error) {
-        logger.warn(JSON.stringify(error));
+        logger.warn(error);
       }
     }
   }

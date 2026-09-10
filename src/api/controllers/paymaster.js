@@ -31,7 +31,7 @@ const proxyPaymasterRequest = async function (ctx) {
   } catch (error) {
     if (error.name === 'ValidationError') ctx.throw(400, error.message);
 
-    logger.error(`AVNU_PAYMASTER_PROXY_FAILED method=${ctx.request.body?.method || 'unknown'} reason=${error.message}`);
+    logger.error({ event: 'AVNU_PAYMASTER_PROXY_FAILED', error });
     ctx.throw(502, 'Paymaster request failed');
   }
 };

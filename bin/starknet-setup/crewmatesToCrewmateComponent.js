@@ -1,6 +1,7 @@
 require('module-alias/register');
 require('dotenv').config({ silent: true });
 const axios = require('axios');
+const { gatewayUrl } = require('@common/lib/Ipfs');
 const { Entity } = require('@influenceth/sdk');
 const { mongoose } = require('@common/storage/db');
 
@@ -19,7 +20,7 @@ const packAppearance = function (gender, body, face, hair, hairColor, clothes, h
 };
 
 const main = async function () {
-  const snapshotUrl = 'https://influence.infura-ipfs.io/ipfs/QmPjtFx2b8gx4kBEX3xZmCafmyWdfDj8UkNqfQGmFvtg4U';
+  const snapshotUrl = gatewayUrl('QmPjtFx2b8gx4kBEX3xZmCafmyWdfDj8UkNqfQGmFvtg4U');
   const { data: snapshot } = await axios.get(snapshotUrl);
   let count = 0;
 

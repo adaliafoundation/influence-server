@@ -20,6 +20,49 @@ describe('Ethereum Event Retriever', function () {
     sandbox.restore();
   });
 
+  describe('worker health reporting', function () {
+    for (const idle of [true, false]) {
+      // eslint-disable-next-line no-loop-func
+      it(`reports success after a ${idle ? 'healthy idle' : 'persisted batch'} iteration`, async function () {
+        const stop = new Error('stop test runner');
+        const head = Number(appConfig.Ethereum.originBlock) + 100;
+        const rpc = sandbox.stub(EthereumRpc, 'getBlockNumber');
+        rpc.onFirstCall().resolves(head);
+        rpc.onSecondCall().rejects(stop);
+        sandbox.stub(retriever, 'cacheCurrentBlockNumber').resolves();
+        sandbox.stub(retriever, 'ensureBootstrapCheckpoint').resolves(idle ? head : head - 1);
+        sandbox.stub(retriever, 'pullEvents').resolves([]);
+        const checkpoint = sandbox.stub(EthereumBlockCache, 'setLastRetrievedBlock').resolves();
+        const onHealthy = sandbox.stub().resolves();
+        const onFailure = sandbox.stub().rejects(stop);
+        try {
+          await retriever.runner({ runDelay: 1, onHealthy, onFailure });
+          throw new Error('Expected the test runner to stop');
+        } catch (error) {
+          expect(error).to.equal(stop);
+        }
+        expect(onHealthy.calledOnce).to.equal(true);
+        expect(onFailure.calledOnce).to.equal(true);
+        if (!idle) expect(checkpoint.calledBefore(onHealthy)).to.equal(true);
+      });
+    }
+
+    it('does not report success when RPC fails', async function () {
+      const stop = new Error('stop test runner');
+      sandbox.stub(EthereumRpc, 'getBlockNumber').rejects(stop);
+      const onHealthy = sandbox.stub().resolves();
+      const onFailure = sandbox.stub().rejects(stop);
+      try {
+        await retriever.runner({ runDelay: 1, onHealthy, onFailure });
+        throw new Error('Expected the test runner to stop');
+      } catch (error) {
+        expect(error).to.equal(stop);
+      }
+      expect(onHealthy.called).to.equal(false);
+      expect(onFailure.calledOnce).to.equal(true);
+    });
+  });
+
   describe('getCatchUpDelay', function () {
     it('should use the configured catch-up delay when provided', function () {
       appConfig.EventRetriever.ethereum.catchUpDelay = 1500;
