@@ -23,7 +23,6 @@ The licensor considers non-commercial use under this license to include deployme
     ```
     echo "API_SERVER=1
     CLIENT_URL=http://localhost:3000
-    BRIDGE_CLIENT_URL=http://localhost:4000
     IMAGES_SERVER=1
     IMAGES_SERVER_URL=http://localhost:3001
     MONGO_URL=mongodb://localhost:27017/influence

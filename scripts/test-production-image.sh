@@ -62,7 +62,7 @@ docker run --rm --name "$project-api" --network "$project" --read-only --tmpfs /
   -e MONGO_URL_FILE=/run/secrets/mongo -e JWT_SECRET_FILE=/run/secrets/jwt \
   -e REDIS_URL_FILE=/run/secrets/redis -e REDIS_DISABLE_TLS=1 \
   -e ELASTICSEARCH_URL_FILE=/run/secrets/elastic \
-  -e CLIENT_URL=http://client.local -e BRIDGE_CLIENT_URL=http://bridge.local -e IMAGES_SERVER_URL=http://images.local \
+  -e CLIENT_URL=http://client.local -e IMAGES_SERVER_URL=http://images.local \
   -e ETHEREUM_PROVIDER=http://rpc.invalid -e STARKNET_RPC_PROVIDER=http://rpc.invalid \
   -e API_SERVER=1 -e IMAGES_SERVER=1 -e PORT=3001 -e LOG_LEVEL=info \
   -e HEALTH_NAMESPACE="$project" -e WORKER_MAX_AGE_MS=300000 \
