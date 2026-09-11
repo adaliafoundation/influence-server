@@ -95,3 +95,25 @@ test('recorded not-affected decisions cover December 31 and expire on January 1 
   assert.doesNotThrow(() => evaluate({ matches: [] }, policy, Date.parse('2026-12-31T23:59:59.999Z')));
   assert.throws(() => evaluate({ matches: [] }, policy, Date.parse('2027-01-01T00:00:00Z')), /exception dates/);
 });
+
+
+test('Debian point-release labels match across Grype versions without widening other package qualifiers', () => {
+  const reviewed = exception({
+    purl: 'pkg:deb/debian/example@1.0?arch=amd64&distro=debian-13.6&upstream=example'
+  });
+  const match = finding('Critical');
+  const url = 'pkg:deb/debian/example@1.0?arch=amd64&distro=debian-13&upstream=example';
+  for (const purl of [url, reviewed.purl]) {
+    match.artifact.purl = purl;
+    assert.equal(check(match, [reviewed]).excepted.length, 1);
+  }
+  for (const purl of [
+    url.replace('amd64', 'arm64'), url.replace('debian-13', 'debian-12'),
+    url.replace('@1.0', '@2.0'), url.replace('upstream=example', 'upstream=other'),
+    url.replace('debian-13', 'ubuntu-13'), url.replace('&distro=debian-13', '')
+  ]) {
+    match.artifact.purl = purl;
+    assert.equal(check(match, [reviewed]).blocking.length, 1);
+  }
+  assert.throws(() => check(match, [reviewed, { ...reviewed, purl: url }]), /Duplicate/);
+});

@@ -4,6 +4,13 @@ const SEVERITIES = new Set(['Unknown', 'Negligible', 'Low', 'Medium', 'High', 'C
 const FIX_STATES = new Set(['fixed', 'not-fixed', 'wont-fix', 'unknown']);
 const MAX_ACCEPTED_RISK_DAYS = 30;
 
+// Grype versions report Debian's distro qualifier as either 13 or 13.6.
+// Package versions, architecture, upstream and the advisory namespace remain exact.
+function normalizePackageUrl(purl) {
+  if (typeof purl !== 'string' || !purl.startsWith('pkg:deb/debian/')) return purl;
+  return purl.replace(/([?&]distro=debian-\d+)\.\d+(?=&|$)/, '$1');
+}
+
 function validateExceptions(document, now) {
   if (!Array.isArray(document?.exceptions)) throw new Error('Invalid exceptions document');
   const seen = new Set();
@@ -20,7 +27,7 @@ function validateExceptions(document, now) {
       || (entry.disposition === 'accepted_risk' && expires - reviewed > MAX_ACCEPTED_RISK_DAYS * 86400000)) {
       throw new Error(`Expired or invalid exception dates: ${entry.vulnerability}`);
     }
-    const key = JSON.stringify([entry.vulnerability, entry.package, entry.version, entry.type, entry.namespace, entry.purl]);
+    const key = JSON.stringify([entry.vulnerability, entry.package, entry.version, entry.type, entry.namespace, normalizePackageUrl(entry.purl)]);
     if (seen.has(key)) throw new Error(`Duplicate exception: ${entry.vulnerability}`);
     seen.add(key);
   }
@@ -43,7 +50,8 @@ function evaluate(report, document = { exceptions: [] }, now = Date.now()) {
     }
     const finding = { vulnerability: v.id, package: a.name, version: a.version, severity: v.severity };
     const exception = exceptions.find((entry) => entry.vulnerability === v.id && entry.package === a.name
-      && entry.version === a.version && entry.type === a.type && entry.namespace === v.namespace && entry.purl === a.purl);
+      && entry.version === a.version && entry.type === a.type && entry.namespace === v.namespace
+      && normalizePackageUrl(entry.purl) === normalizePackageUrl(a.purl));
     const fixable = v.fix.state === 'fixed' || v.fix.versions.length > 0;
     const unfixedHigh = v.severity === 'High' && !fixable && ['not-fixed', 'wont-fix'].includes(v.fix.state);
     // Unknown fix status stays blocking; Critical always needs verified non-applicability.
