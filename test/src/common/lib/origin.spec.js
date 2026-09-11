@@ -9,9 +9,9 @@ describe('origin', function () {
       expect(result).to.equal(appConfig.get('App.clientUrl'));
     });
 
-    it('should match for the bridge client url', function () {
-      const result = allowedOrigin({ request: { headers: { origin: appConfig.get('App.bridgeClientUrl') } } });
-      expect(result).to.equal(appConfig.get('App.bridgeClientUrl'));
+    it('should fall back for the deprecated bridge origin', function () {
+      const result = allowedOrigin({ request: { headers: { origin: 'https://bridge.influenceth.io' } } });
+      expect(result).to.equal(appConfig.get('App.clientUrl'));
     });
 
     it('should match for heroku build urls', function () {
@@ -35,12 +35,12 @@ describe('origin', function () {
       expect(result).to.equal(true);
     });
 
-    it('should return true for the bridge client url', function () {
-      let result = isWhiteList({ request: { headers: { origin: appConfig.get('App.bridgeClientUrl') } } });
-      expect(result).to.equal(true);
+    it('should reject the deprecated bridge origin', function () {
+      let result = isWhiteList({ request: { headers: { origin: 'https://bridge.influenceth.io' } } });
+      expect(result).to.equal(false);
 
-      result = isWhiteList({ request: { headers: { origin: `${appConfig.get('App.bridgeClientUrl')}/` } } });
-      expect(result).to.equal(true);
+      result = isWhiteList({ request: { headers: { origin: 'https://bridge.influenceth.io/' } } });
+      expect(result).to.equal(false);
     });
 
     it('should return true for heroku pr builds', function () {

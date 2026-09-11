@@ -1,6 +1,5 @@
 {
   "App": {
-    "bridgeClientUrl": "BRIDGE_CLIENT_URL",
     "clientUrl": "CLIENT_URL",
     "envCheckEnabled": "ENV_CHECK_ENABLED",
     "imagesServerUrl": "IMAGES_SERVER_URL",

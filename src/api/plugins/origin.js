@@ -2,8 +2,7 @@ const appConfig = require('config');
 
 const ALLOWED_ORIGINS = [
   /(.*):\/\/influence-client-pr-[0-9]+.herokuapp.com\/?/i, // heroku review builds
-  new RegExp(`${appConfig.get('App.clientUrl')}/?$`, 'i'),
-  new RegExp(`${appConfig.get('App.bridgeClientUrl')}/?$`, 'i')
+  new RegExp(`${appConfig.get('App.clientUrl')}/?$`, 'i')
 ];
 
 const allowedEnvs = ['goerli', 'staging', 'development', 'prerelease'];
