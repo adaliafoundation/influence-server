@@ -1,3 +1,4 @@
+const { RpcError } = require('starknet');
 const { expect } = require('chai');
 const axios = require('axios');
 const appConfig = require('config');
@@ -76,7 +77,9 @@ describe('BanxaService', function () {
 
   it('should reject checkouts for undeployed wallets', async function () {
     this._sandbox.stub(starknetClient, 'createRpcProvider').resolves({
-      getClassAt: this._sandbox.stub().rejects(new Error('Requested contract address is not deployed'))
+      getClassAt: this._sandbox.stub().rejects(
+        new RpcError({ code: 20, message: 'Contract not found' }, 'starknet_getClassAt', [])
+      )
     });
 
     await expectReject(BanxaService.createCheckout({

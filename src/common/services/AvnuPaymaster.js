@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const { hash } = require('starknet');
 const { Address } = require('@influenceth/sdk');
 const starknetClient = require('@common/lib/starknet/client');
+const { isContractNotDeployedError } = require('@common/lib/starknet/errors');
 const { ValidationError } = require('@common/lib/errors');
 
 const READ_METHODS = [
@@ -57,7 +58,6 @@ const starterPackPurchaseQuery = ({ recipient, sinceField, statuses }) => ({
   status: { $in: statuses }
 });
 
-const isContractNotDeployedError = (error) => /not deployed|contract not found/i.test(error.message || String(error));
 const isBuildMethod = (method) => method === 'paymaster_buildTransaction';
 const isExecuteMethod = (method) => method === 'paymaster_executeTransaction';
 const isSuccessfulResponse = (response) => response.status >= 200 && response.status < 300 && response.data?.result;

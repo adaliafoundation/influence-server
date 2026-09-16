@@ -77,7 +77,7 @@ class RpcProvider extends DefaultStarknetProvider {
           to_block: _toBlock,
           address: Address.toStandard(address, 'starknet'),
           chunk_size: chunkSize,
-          continuation_token: continuationToken
+          ...(continuationToken ? { continuation_token: continuationToken } : {})
         }
       }
     }, { responseType: 'json' });

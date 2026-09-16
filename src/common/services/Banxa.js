@@ -4,9 +4,9 @@ const mongoose = require('mongoose');
 const { Types } = require('mongoose');
 const { Address } = require('@influenceth/sdk');
 const starknetClient = require('@common/lib/starknet/client');
+const { isContractNotDeployedError } = require('@common/lib/starknet/errors');
 const { ValidationError } = require('@common/lib/errors');
 
-const isContractNotDeployedError = (error) => /not deployed|contract not found/i.test(error.message || String(error));
 const banxaErrorMessage = (error) => {
   if (!error.response) return error.message;
 
