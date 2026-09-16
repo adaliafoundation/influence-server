@@ -1,25 +1,10 @@
 const { expect } = require('chai');
 const axios = require('axios');
-const crypto = require('crypto');
 const appConfig = require('config');
 const mongoose = require('mongoose');
 const { Address } = require('@influenceth/sdk');
 const { BanxaService } = require('@common/services');
 const starknetClient = require('@common/lib/starknet/client');
-
-const signWebhook = (payload) => {
-  const nonce = '1785804345837761';
-  const rawBody = JSON.stringify(payload);
-  const signature = crypto
-    .createHmac('sha256', appConfig.get('Banxa.webhookSecret'))
-    .update(`POST\n/v2/banxa/webhook\n${nonce}\n${rawBody}`)
-    .digest('hex');
-
-  return {
-    authorization: `Bearer ${appConfig.get('Banxa.webhookApiKey')}:${signature}:${nonce}`,
-    rawBody
-  };
-};
 
 const expectReject = async (promise, message) => {
   try {
@@ -124,27 +109,6 @@ describe('BanxaService', function () {
     }), 'Banxa API 422: {"errors":{"fiat":["is invalid"]}}');
   });
 
-  it('should update order status from signed Banxa webhooks', async function () {
-    await mongoose.model('BanxaOrder').create({
-      banxaOrderId: 'banxa_123',
-      checkoutUrl: 'https://checkout.banxa.local/order',
-      crypto: 'USDC',
-      externalOrderId: 'external_123',
-      fiat: 'EUR',
-      fiatAmount: '25',
-      userAddress: this.GLOBALS.user.address,
-      walletAddress: this.GLOBALS.user.address
-    });
-    const payload = { order_id: 'banxa_123', status: 'complete' };
-    const { authorization, rawBody } = signWebhook(payload);
-
-    const order = await BanxaService.updateOrderFromWebhook({ authorization, payload, rawBody });
-
-    expect(order.status).to.equal('completed');
-    const persisted = await mongoose.model('BanxaOrder').findOne({ banxaOrderId: 'banxa_123' }).lean();
-    expect(persisted.rawWebhookEvents).to.have.length(1);
-  });
-
   it('should refresh order status from Banxa order lookup', async function () {
     await mongoose.model('BanxaOrder').create({
       banxaOrderId: 'banxa_123',
@@ -202,13 +166,5 @@ describe('BanxaService', function () {
       orderId: 'banxa_123',
       userAddress: this.GLOBALS.user.address
     }), 'Banxa API 404: {"error":"not_found"}');
-  });
-
-  it('should reject Banxa webhooks with invalid signatures', async function () {
-    await expectReject(BanxaService.updateOrderFromWebhook({
-      authorization: `Bearer ${appConfig.get('Banxa.webhookApiKey')}:bad:1785804345837761`,
-      payload: { order_id: 'banxa_123', status: 'complete' },
-      rawBody: '{"order_id":"banxa_123","status":"complete"}'
-    }), 'Invalid Banxa webhook signature');
   });
 });

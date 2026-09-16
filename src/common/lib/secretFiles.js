@@ -8,8 +8,6 @@ const SECRET_PATHS = {
   AVNU_PAYMASTER_URL: 'Avnu.paymasterUrl',
   BANXA_API_KEY: 'Banxa.apiKey',
   BANXA_BASE_URL: 'Banxa.baseUrl',
-  BANXA_WEBHOOK_API_KEY: 'Banxa.webhookApiKey',
-  BANXA_WEBHOOK_SECRET: 'Banxa.webhookSecret',
   ELASTICSEARCH_URL: 'Elasticsearch.uri',
   ETHEREUM_PROVIDER: 'Ethereum.provider',
   IPFS_RPC_AUTHORIZATION: 'Ipfs.rpcAuthorization',

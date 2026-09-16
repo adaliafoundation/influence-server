@@ -22,9 +22,7 @@
     "baseUrl": null,
     "checkoutEnabled": 0,
     "partnerRef": null,
-    "requestTimeoutMs": 10000,
-    "webhookApiKey": null,
-    "webhookSecret": null
+    "requestTimeoutMs": 10000
   },
   "Contracts": {
     "starknet": {

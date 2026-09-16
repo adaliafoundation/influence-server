@@ -24,9 +24,7 @@
     "baseUrl": "https://banxa.localhost",
     "checkoutEnabled": 1,
     "partnerRef": "test-partner",
-    "requestTimeoutMs": 10000,
-    "webhookApiKey": "TEST_BANXA_WEBHOOK_API_KEY",
-    "webhookSecret": "TEST_BANXA_WEBHOOK_SECRET"
+    "requestTimeoutMs": 10000
   },
   "Contracts": {
     "ethereum": {

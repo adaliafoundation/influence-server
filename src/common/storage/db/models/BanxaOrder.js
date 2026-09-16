@@ -17,8 +17,7 @@ const schema = new mongoose.Schema({
   cryptoAmount: { type: String },
   blockchain: { type: String },
   checkoutUrl: { type: String, required: true },
-  rawOrder: { type: mongoose.Schema.Types.Mixed },
-  rawWebhookEvents: [{ type: mongoose.Schema.Types.Mixed }]
+  rawOrder: { type: mongoose.Schema.Types.Mixed }
 }, { timestamps: true });
 
 schema
