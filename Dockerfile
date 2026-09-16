@@ -4,10 +4,15 @@
 FROM node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284 AS production-base
 WORKDIR /app
 ENV NODE_ENV=production
-# Security update newer than the pinned upstream image; keep versions explicit.
+# Security updates newer than the pinned upstream image; keep versions explicit.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
+    gzip=1.13-1+deb13u1 \
+    libc-bin=2.41-12+deb13u4 libc6=2.41-12+deb13u4 \
+    libpcre2-8-0=10.46-1~deb13u2 \
+    libsqlite3-0=3.46.1-7+deb13u2 \
     libssl3t64=3.5.7-1~deb13u2 openssl-provider-legacy=3.5.7-1~deb13u2 \
+    perl-base=5.40.1-6+deb13u1 \
   && rm -rf /var/lib/apt/lists/*
 
 FROM production-base AS production-dependencies
