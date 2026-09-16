@@ -299,8 +299,6 @@ the browser. Banxa checkout is disabled by default; enable it only on official s
 BANXA_CHECKOUT_ENABLED=1
 BANXA_API_KEY=...
 BANXA_PARTNER_REF=...
-BANXA_WEBHOOK_API_KEY=...
-BANXA_WEBHOOK_SECRET=...
 ```
 Prerelease defaults to `https://api.banxa-sandbox.com`; production defaults to `https://api.banxa.com`. Override with
 `BANXA_BASE_URL` only when Banxa gives us a different partner endpoint.
@@ -336,9 +334,6 @@ Client flow:
    `GET /{partnerRef}/v2/orders/{orderId}` endpoint before responding, so the Banxa API key remains server-side.
    Poll no more than about once per minute and treat only `completed` as settled. Intermediate statuses are returned as
    `pending`.
-5. The webhook endpoint is `POST /v2/banxa/webhook` and records Banxa status updates for known order IDs. Banxa webhook
-   requests must include the documented HMAC `Authorization` header signed for `/v2/banxa/webhook`; the webhook API key
-   and secret are the HMAC credentials from Banxa, not the v2 checkout `x-api-key`.
 
 ### Influence-server services
 - influence-server: the main service, running the API server

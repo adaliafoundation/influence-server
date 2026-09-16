@@ -27,9 +27,7 @@
     "baseUrl": "BANXA_BASE_URL",
     "checkoutEnabled": "BANXA_CHECKOUT_ENABLED",
     "partnerRef": "BANXA_PARTNER_REF",
-    "requestTimeoutMs": "BANXA_REQUEST_TIMEOUT_MS",
-    "webhookApiKey": "BANXA_WEBHOOK_API_KEY",
-    "webhookSecret": "BANXA_WEBHOOK_SECRET"
+    "requestTimeoutMs": "BANXA_REQUEST_TIMEOUT_MS"
   },
   "Crewmate": {
     "provisionerEnabled": "CREWMATE_PROVISIONER_ENABLED"

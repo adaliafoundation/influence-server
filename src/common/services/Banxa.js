@@ -1,6 +1,5 @@
 const appConfig = require('config');
 const axios = require('axios');
-const crypto = require('crypto');
 const mongoose = require('mongoose');
 const { Types } = require('mongoose');
 const { Address } = require('@influenceth/sdk');
@@ -33,18 +32,9 @@ const banxaStatus = (value) => {
   return 'pending';
 };
 
-const orderStatusFromWebhook = (payload) => banxaStatus(
-  payload.status || payload.orderStatus || payload.order?.status || payload.data?.status || payload.data?.order?.status
-);
-
-const orderIdFromWebhook = (payload) => (
-  payload.orderId || payload.order_id || payload.id || payload.order?.id || payload.data?.id || payload.data?.order?.id
-);
-
 const banxaBaseUrl = () => appConfig.get('Banxa.baseUrl').replace(/\/+$/, '');
 const buyUrl = () => `${banxaBaseUrl()}/${appConfig.get('Banxa.partnerRef')}/v2/buy`;
 const orderUrl = (orderId) => `${banxaBaseUrl()}/${appConfig.get('Banxa.partnerRef')}/v2/orders/${orderId}`;
-const webhookPath = () => '/v2/banxa/webhook';
 
 const cryptoId = (order) => order.crypto?.id || order.crypto;
 const cryptoBlockchain = (order) => order.crypto?.blockchain || order.blockchain;
@@ -59,39 +49,6 @@ class BanxaService {
       .filter(([, value]) => !value)
       .map(([path]) => path);
     if (missing.length) throw new ValidationError(`Banxa checkout missing config: ${missing.join(', ')}`);
-  }
-
-  static validateWebhookConfigured() {
-    const missing = [
-      ['Banxa.webhookApiKey', appConfig.get('Banxa.webhookApiKey')],
-      ['Banxa.webhookSecret', appConfig.get('Banxa.webhookSecret')]
-    ].filter(([, value]) => !value).map(([path]) => path);
-    if (missing.length) throw new ValidationError(`Banxa webhook missing config: ${missing.join(', ')}`);
-  }
-
-  static verifyWebhook({ authorization, rawBody }) {
-    this.validateWebhookConfigured();
-    if (!authorization?.startsWith('Bearer ')) throw new ValidationError('Missing Banxa webhook signature');
-
-    const [receivedKey, receivedSignature, nonce] = authorization.replace('Bearer ', '').split(':');
-    if (!receivedKey || !receivedSignature || !nonce) throw new ValidationError('Invalid Banxa webhook signature');
-    if (receivedKey !== appConfig.get('Banxa.webhookApiKey')) throw new ValidationError('Invalid Banxa webhook key');
-
-    const payload = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody;
-    const signedPayload = `POST\n${webhookPath()}\n${nonce}\n${payload}`;
-    const expected = crypto
-      .createHmac('sha256', appConfig.get('Banxa.webhookSecret'))
-      .update(signedPayload)
-      .digest('hex');
-
-    const receivedBuffer = Buffer.from(receivedSignature, 'hex');
-    const expectedBuffer = Buffer.from(expected, 'hex');
-    if (
-      receivedBuffer.length !== expectedBuffer.length
-      || !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
-    ) {
-      throw new ValidationError('Invalid Banxa webhook signature');
-    }
   }
 
   static async validateDeployedWallet(address) {
@@ -211,24 +168,6 @@ class BanxaService {
     });
     if (!order) throw new ValidationError('Banxa order not found');
     if (refresh) order = await this.refreshOrder(order);
-    return this.serializeOrder(order);
-  }
-
-  static async updateOrderFromWebhook({ authorization, payload, rawBody }) {
-    this.verifyWebhook({ authorization, rawBody });
-
-    const orderId = orderIdFromWebhook(payload);
-    if (!orderId) throw new ValidationError('Missing Banxa order id');
-
-    const order = await mongoose.model('BanxaOrder').findOneAndUpdate(
-      { banxaOrderId: orderId },
-      {
-        $push: { rawWebhookEvents: payload },
-        $set: { status: orderStatusFromWebhook(payload) }
-      },
-      { new: true }
-    );
-    if (!order) throw new ValidationError('Banxa order not found');
     return this.serializeOrder(order);
   }
 
