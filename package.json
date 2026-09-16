@@ -36,7 +36,7 @@
   "dependencies": {
     "@elastic/elasticsearch": "8.19.2",
     "@influenceth/astro": "^0.2.5",
-    "@influenceth/sdk": "^2.4.4",
+    "@influenceth/sdk": "2.5.0",
     "@keyv/mongo": "^2.1.8",
     "@keyv/redis": "2.5.7",
     "@koa/cors": "5.0.0",
@@ -77,7 +77,7 @@
     "redis": "4.6.5",
     "socket.io": "4.8.3",
     "socket.io-client": "4.8.3",
-    "starknet": "^8.9.0",
+    "starknet": "10.8.0",
     "stripe": "^17.4.0",
     "timer-node": "^5.0.5",
     "web3": "^4.12.1",

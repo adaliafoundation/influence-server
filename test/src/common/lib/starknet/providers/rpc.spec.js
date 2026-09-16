@@ -190,7 +190,7 @@ describe('Starknet RpcProvider', function () {
 
       expect(results).to.have.lengthOf(2);
       expect(postStub.callCount).to.eql(2);
-      expect(postStub.getCall(0).args[1].params.filter.continuation_token).to.eql(null);
+      expect(postStub.getCall(0).args[1].params.filter).not.to.have.property('continuation_token');
       expect(postStub.getCall(1).args[1].params.filter.continuation_token).to.eql('next-page-token');
     });
 

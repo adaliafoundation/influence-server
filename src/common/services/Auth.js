@@ -2,6 +2,7 @@ const appConfig = require('config');
 const { randomUUID } = require('node:crypto');
 const { Address } = require('@influenceth/sdk');
 const starknetClient = require('@common/lib/starknet/client');
+const { isContractNotDeployedError } = require('@common/lib/starknet/errors');
 const UserService = require('@common/services/User');
 const { AuthCache } = require('@common/lib/cache');
 const logger = require('@common/lib/logger');
@@ -137,6 +138,7 @@ class AuthService {
       await provider.getClassAt(_address, 'latest');
       isDeployed = true;
     } catch (error) {
+      if (!isContractNotDeployedError(error)) throw error;
       logger.warn(`Auth: account at ${_address} not yet deployed`);
       isDeployed = false;
     }

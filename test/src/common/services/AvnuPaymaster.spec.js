@@ -2,7 +2,7 @@ const { expect } = require('chai');
 const axios = require('axios');
 const appConfig = require('config');
 const mongoose = require('mongoose');
-const { hash } = require('starknet');
+const { hash, RpcError } = require('starknet');
 const { Address } = require('@influenceth/sdk');
 const starknetClient = require('@common/lib/starknet/client');
 const { AvnuPaymasterService } = require('@common/services');
@@ -228,7 +228,9 @@ describe('AvnuPaymasterService', function () {
       status: 'paid_pending_customization'
     });
     this._sandbox.stub(starknetClient, 'createRpcProvider').resolves({
-      getClassAt: this._sandbox.stub().rejects(new Error('Requested contract address is not deployed'))
+      getClassAt: this._sandbox.stub().rejects(
+        new RpcError({ code: 20, message: 'Contract not found' }, 'starknet_getClassAt', [])
+      )
     });
 
     await AvnuPaymasterService.validateRequest({
@@ -246,7 +248,9 @@ describe('AvnuPaymasterService', function () {
     const transaction = readyDeployTransaction();
     await createPurchase({ status: 'paid_pending_customization' });
     this._sandbox.stub(starknetClient, 'createRpcProvider').resolves({
-      getClassAt: this._sandbox.stub().rejects(new Error('Requested contract address is not deployed'))
+      getClassAt: this._sandbox.stub().rejects(
+        new RpcError({ code: 20, message: 'Contract not found' }, 'starknet_getClassAt', [])
+      )
     });
 
     await expectReject(AvnuPaymasterService.validateRequest({
@@ -412,7 +416,9 @@ describe('AvnuPaymasterService', function () {
       status: 'paid_pending_customization'
     });
     this._sandbox.stub(starknetClient, 'createRpcProvider').resolves({
-      getClassAt: this._sandbox.stub().rejects(new Error('Requested contract address is not deployed'))
+      getClassAt: this._sandbox.stub().rejects(
+        new RpcError({ code: 20, message: 'Contract not found' }, 'starknet_getClassAt', [])
+      )
     });
 
     await expectReject(AvnuPaymasterService.validateRequest({
@@ -528,7 +534,9 @@ describe('AvnuPaymasterService', function () {
       status: 'paid_pending_customization'
     });
     this._sandbox.stub(starknetClient, 'createRpcProvider').resolves({
-      getClassAt: this._sandbox.stub().rejects(new Error('Requested contract address is not deployed'))
+      getClassAt: this._sandbox.stub().rejects(
+        new RpcError({ code: 20, message: 'Contract not found' }, 'starknet_getClassAt', [])
+      )
     });
 
     const body = paymasterRequest({

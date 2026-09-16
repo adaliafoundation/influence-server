@@ -1,3 +1,5 @@
+const { RpcError } = require('starknet');
+const { rejects } = require('node:assert/strict');
 const appConfig = require('config');
 const { expect } = require('chai');
 const mongoose = require('mongoose');
@@ -88,7 +90,7 @@ describe('AuthService', function () {
       expect(starknetClient.starknet.typedData.getMessageHash(
         message,
         this.GLOBALS.TEST_STARKNET_WALLET
-      )).to.be.a('string');
+      )).to.equal('0x6f83364cb7500a45936fb6d289f1fdfcba64eba4ecbe7b28f3fd94b5808af53');
     });
   });
 
@@ -113,6 +115,26 @@ describe('AuthService', function () {
   });
 
   describe('verifyChallenge', function () {
+    for (const rpcError of [
+      new Error('RPC unavailable'),
+      new Error('Contract not found'),
+      new RpcError({ code: 24, message: 'Block not found' }, 'starknet_getClassAt', [])
+    ]) {
+      it(`should reject deployment lookup failure: ${rpcError.message}`, async function () {
+        this._sandbox.stub(AuthCache, 'getLoginMessage').resolves('nonce');
+        this._sandbox.stub(AuthCache, 'deleteLoginMessage').resolves();
+        this._sandbox.stub(starknetClient, 'createRpcProvider').resolves({
+          getClassAt: this._sandbox.stub().rejects(rpcError)
+        });
+        const userStub = this._sandbox.stub(UserService, 'findOrCreateByAddress');
+
+        await rejects(AuthService.verifyChallenge({
+          address: this.GLOBALS.TEST_STARKNET_WALLET, signature: '1,2'
+        }), (error) => error === rpcError);
+        expect(userStub.called).to.equal(false);
+      });
+    }
+
     it('should throw if the cached nonce is missing', async function () {
       this._sandbox.stub(AuthCache, 'getLoginMessage').resolves(null);
 
@@ -132,7 +154,9 @@ describe('AuthService', function () {
 
     it('should allow undeployed accounts without signature verification', async function () {
       const provider = {
-        getClassAt: this._sandbox.stub().rejects(new Error('not deployed')),
+        getClassAt: this._sandbox.stub().rejects(
+          new RpcError({ code: 20, message: 'Contract not found' }, 'starknet_getClassAt', [])
+        ),
         callContract: this._sandbox.stub()
       };
       const expectedUser = { address: this.GLOBALS.TEST_STARKNET_WALLET, isDeployed: false };
