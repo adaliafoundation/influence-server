@@ -1,6 +1,15 @@
-name: Release production server
+name: Release production image
 
 on:
+  workflow_call:
+    inputs:
+      commit_sha:
+        required: true
+        type: string
+      channel:
+        required: false
+        default: production
+        type: string
   workflow_dispatch:
     inputs:
       commit_sha:
@@ -12,18 +21,23 @@ permissions:
   contents: read
 
 concurrency:
-  group: production-server-release
+  group: ${{ inputs.channel || 'production' }}-server-release
   cancel-in-progress: false
 
 jobs:
   validate:
+    name: Test image
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
     steps:
-      - name: Require the main workflow branch
-        run: test "$GITHUB_REF" = refs/heads/main
+      - name: Require the main workflow branch and a supported channel
+        env:
+          CHANNEL: ${{ inputs.channel || 'production' }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$CHANNEL" = production || "$CHANNEL" = prerelease ]]
 
       - name: Checkout trusted workflow policy
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -59,6 +73,7 @@ jobs:
         run: docker run --rm influence-server:unittest
 
   build:
+    name: Build image
     needs: validate
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -125,6 +140,7 @@ jobs:
             org.opencontainers.image.revision=${{ inputs.commit_sha }}
 
   verify:
+    name: Verify image
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -179,11 +195,12 @@ jobs:
         run: bash scripts/test-production-image.sh "$PRODUCTION_IMAGE"
 
   publish:
+    name: ${{ inputs.channel == 'prerelease' && 'Publish prerelease image and request deployment' || 'Publish production image' }}
     needs: [build, verify]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: production
+    environment: ${{ inputs.channel || 'production' }}
     permissions:
       contents: read
       packages: write
@@ -213,7 +230,7 @@ jobs:
 
       - name: Refuse to replace an existing SHA release
         env:
-          RELEASE: ${{ needs.build.outputs.image }}:production-${{ inputs.commit_sha }}
+          RELEASE: ${{ needs.build.outputs.image }}:${{ inputs.channel == 'prerelease' && 'stack-prerelease' || 'production' }}-${{ inputs.commit_sha }}
         run: |
           if docker buildx imagetools inspect "$RELEASE" > /tmp/release-inspect.log 2>&1; then
             echo 'This SHA is already released. Deploy its existing digest.' >&2
@@ -247,19 +264,32 @@ jobs:
       - name: Publish release aliases and deployment reference
         env:
           IMAGE: ${{ needs.build.outputs.image }}
-          RELEASE: ${{ needs.build.outputs.image }}:production-${{ inputs.commit_sha }}
+          RELEASE: ${{ needs.build.outputs.image }}:${{ inputs.channel == 'prerelease' && 'stack-prerelease' || 'production' }}-${{ inputs.commit_sha }}
           DIGEST: ${{ needs.build.outputs.digest }}
           COMMIT_SHA: ${{ inputs.commit_sha }}
+          CHANNEL: ${{ inputs.channel || 'production' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          aliases=(-t "$RELEASE")
+          if [ "$CHANNEL" = production ]; then
+            aliases+=(-t "$IMAGE:production" -t "$IMAGE:latest")
+          elif [ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$COMMIT_SHA" ]; then
+            aliases+=(-t "$IMAGE:stack-prerelease")
+          fi
           docker buildx imagetools create --prefer-index=false \
-            -t "$RELEASE" -t "$IMAGE:production" -t "$IMAGE:latest" "$IMAGE@$DIGEST"
+            "${aliases[@]}" "$IMAGE@$DIGEST"
           test "$(docker buildx imagetools inspect "$RELEASE" --format '{{.Manifest.Digest}}')" = "$DIGEST"
           printf '%s\n' "$IMAGE@$DIGEST" > production-image.txt
           {
-            echo '### Production image released'
+            echo "### $CHANNEL image released"
             echo "Commit: \`$COMMIT_SHA\`"
             echo "Deploy: \`$IMAGE@$DIGEST\`"
-            echo 'Tests, vulnerability scan, SBOM, provenance and signature completed. Deployment is manual.'
+            echo 'Tests, vulnerability scan, SBOM, provenance and signature completed.'
+            if [ "$CHANNEL" = production ]; then
+              echo 'Production deployment is manual.'
+            else
+              echo 'The main-head release is available to opt-in prerelease updaters.'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Save deployment reference
@@ -267,3 +297,23 @@ jobs:
         with:
           name: production-image
           path: production-image.txt
+
+      - name: Notify prerelease deployment after publication
+        if: inputs.channel == 'prerelease' && vars.STACK_PRERELEASE_WEBHOOK_URL != ''
+        env:
+          WEBHOOK_URL: ${{ vars.STACK_PRERELEASE_WEBHOOK_URL }}
+          WEBHOOK_TOKEN: ${{ secrets.STACK_PRERELEASE_WEBHOOK_TOKEN }}
+          IMAGE: ${{ needs.build.outputs.image }}
+          DIGEST: ${{ needs.build.outputs.digest }}
+        run: |
+          [[ "$WEBHOOK_URL" = https://* ]]
+          test -n "$WEBHOOK_TOKEN"
+          # Only notify for the digest currently promoted to the prerelease channel.
+          if [ "$(docker buildx imagetools inspect "$IMAGE:stack-prerelease" --format '{{.Manifest.Digest}}')" != "$DIGEST" ]; then
+            echo 'The prerelease channel points to another release; skipping notification.'
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error \
+            --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 5 \
+            --request POST --header "X-Webhook-Token: $WEBHOOK_TOKEN" "$WEBHOOK_URL"
+          echo 'Webhook accepted; deployment completion must be checked on the host.' >> "$GITHUB_STEP_SUMMARY"
