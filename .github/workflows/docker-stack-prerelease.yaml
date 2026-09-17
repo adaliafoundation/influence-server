@@ -1,4 +1,4 @@
-name: Release stack prerelease server
+name: Release prerelease image
 
 on:
   push:

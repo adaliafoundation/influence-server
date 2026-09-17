@@ -1,4 +1,4 @@
-name: Release production server
+name: Release production image
 
 on:
   workflow_call:
@@ -26,6 +26,7 @@ concurrency:
 
 jobs:
   validate:
+    name: Test image
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -72,6 +73,7 @@ jobs:
         run: docker run --rm influence-server:unittest
 
   build:
+    name: Build image
     needs: validate
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -138,6 +140,7 @@ jobs:
             org.opencontainers.image.revision=${{ inputs.commit_sha }}
 
   verify:
+    name: Verify image
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -192,6 +195,7 @@ jobs:
         run: bash scripts/test-production-image.sh "$PRODUCTION_IMAGE"
 
   publish:
+    name: ${{ inputs.channel == 'prerelease' && 'Publish prerelease image and request deployment' || 'Publish production image' }}
     needs: [build, verify]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -312,3 +316,4 @@ jobs:
           curl --fail-with-body --silent --show-error \
             --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 5 \
             --request POST --header "X-Webhook-Token: $WEBHOOK_TOKEN" "$WEBHOOK_URL"
+          echo 'Webhook accepted; deployment completion must be checked on the host.' >> "$GITHUB_STEP_SUMMARY"
