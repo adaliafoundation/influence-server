@@ -257,8 +257,9 @@ jobs:
           IMAGE: ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}
         run: |
           cosign sign --yes "$IMAGE"
+          # Sigstore identifies the signing workflow, including when called by another workflow.
           cosign verify "$IMAGE" \
-            --certificate-identity "https://github.com/$GITHUB_WORKFLOW_REF" \
+            --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/docker-production.yaml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
       - name: Publish release aliases and deployment reference
