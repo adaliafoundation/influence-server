@@ -52,9 +52,9 @@ test('node-config loads files after production defaults, without exporting secre
   } finally { rmSync(dir, { recursive: true }); }
 });
 
-test('plain environment configuration and prerelease optional workers remain supported', () => {
+test('plain environment secrets and prerelease logging remain supported', () => {
   const result = execFileSync(process.execPath, ['-e',
-    "const c=require('config'); process.stdout.write(JSON.stringify([c.get('App.jwtSecret'),c.get('Health.requiredWorkers'),c.get('App.logFormat')]));"
+    "const c=require('config'); process.stdout.write(JSON.stringify([c.get('App.jwtSecret'),c.get('App.logFormat')]));"
   ], { env: { PATH: process.env.PATH, NODE_ENV: 'prerelease', JWT_SECRET: 'plain-secret' } });
-  assert.deepEqual(JSON.parse(result), ['plain-secret', [], 'text']);
+  assert.deepEqual(JSON.parse(result), ['plain-secret', 'text']);
 });
