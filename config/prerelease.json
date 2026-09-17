@@ -65,5 +65,13 @@
     "chainSlug": "SN_SEPOLIA",
     "chainId": "0x534e5f5345504f4c4941",
     "originBlock": 14380
+  },
+  "Health": {
+    "requiredWorkers": [
+      "ethereum-retriever",
+      "starknet-retriever",
+      "event-processor",
+      "elastic-indexer"
+    ]
   }
 }

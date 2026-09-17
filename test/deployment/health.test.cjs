@@ -1,5 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
+const { resolve } = require('node:path');
 const Koa = require('koa');
 const request = require('supertest');
 const { createReadiness, createWorkerHealth, isWorkerHealthy, workerKey, boundedProbe,
@@ -35,7 +37,7 @@ test('worker readiness requires successful progress, expires, and isolates relea
   }
 });
 
-test('optional workers do not write health records in prerelease', async () => {
+test('explicitly disabled workers do not write health records', async () => {
   const worker = createWorkerHealth({ collection: { updateOne() { throw new Error('unexpected write'); } },
     settings: { ...settings, requiredWorkers: [] }, role: 'event-processor' });
   await worker.starting(); await worker.healthy(); await worker.failed();
@@ -84,3 +86,25 @@ test('health settings reject invalid thresholds and unsupported worker roles', (
     assert.throws(() => healthSettings({ ...config, Health: { ...settings, ...patch } }), /Invalid health/);
   }
 });
+
+for (const environment of ['production', 'prerelease']) {
+  test(`${environment} configuration enables heartbeats for every deployed worker`, async () => {
+    const config = JSON.parse(execFileSync(process.execPath, ['-e',
+      'process.stdout.write(JSON.stringify(require("config").get("Health")))'], {
+      cwd: resolve(__dirname, '../..'),
+      env: { PATH: process.env.PATH, NODE_ENV: environment },
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']
+    }));
+    assert.deepEqual([...config.requiredWorkers].sort(), [...WORKER_ROLES].sort());
+    const records = new Map();
+    const collection = { async updateOne(filter, update) { records.set(filter._id, update.$set); } };
+    const configured = { ...config, namespace: environment };
+    for (const role of WORKER_ROLES) {
+      const worker = createWorkerHealth({ collection, settings: configured, role,
+        instance: 'deployed-worker', now: () => new Date(1000) });
+      await worker.healthy();
+      assert.equal(isWorkerHealthy(records.get(workerKey(configured, role)),
+        configured, 1000, 'deployed-worker'), true);
+    }
+  });
+}
