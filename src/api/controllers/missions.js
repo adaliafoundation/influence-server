@@ -5,6 +5,9 @@ const cors = require('@koa/cors');
 const corsOrJwt = require('@api/plugins/corsOrJwt');
 const { allowedOrigin } = require('@api/plugins/origin');
 const MissionService = require('@common/services/Mission');
+const MissionBindingService = require('@common/services/MissionBinding');
+const { bindingTypes } = require('@common/lib/missionBindings');
+const { Entity } = require('@influenceth/sdk');
 const { felt, subjectFromUuid } = require('@common/lib/missions');
 
 const integer = (value, min, max) => {
@@ -50,6 +53,22 @@ const router = new KoaRouter()
       page: integer(ctx.query.page ?? 0, 0, 0x7ffffff)
     }));
     respond(ctx, await MissionService.getSubject(campaign, subject, page));
+  })
+  .get('/v2/missions/campaigns/:campaign/subjects/:uuid/bindings/:kind/:entityUuid', async (ctx) => {
+    const { campaign, subject, kind, entity, slot } = readInput(ctx, () => {
+      const type = Object.hasOwn(bindingTypes, ctx.params.kind) && bindingTypes[ctx.params.kind];
+      if (!type) throw new Error('Invalid binding kind');
+      const crew = subjectFromUuid(ctx.params.uuid);
+      const target = subjectFromUuid(ctx.params.entityUuid);
+      if (crew.label !== Entity.IDS.CREW || target.label !== type.label) throw new Error('Invalid binding entity');
+      if (type.slotted && ctx.query.slot === undefined) throw new Error('Action slot is required');
+      const actionSlot = integer(ctx.query.slot ?? 0, 0, Number.MAX_SAFE_INTEGER);
+      if (!type.slotted && actionSlot !== 0) throw new Error('This binding requires slot 0');
+      return {
+        campaign: felt(ctx.params.campaign), subject: crew, kind: ctx.params.kind, entity: target, slot: actionSlot
+      };
+    });
+    respond(ctx, await MissionBindingService.getBinding(campaign, subject, kind, entity, slot));
   })
   .get('/v2/missions/campaigns/:campaign/subjects/:uuid/evidence', async (ctx) => {
     const { campaign, subject, page, pageSize } = readInput(ctx, () => ({

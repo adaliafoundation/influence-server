@@ -1,0 +1,144 @@
+[
+  {
+    "name": "sample",
+    "helper": "getSampleFingerprint",
+    "args": [
+      {
+        "status": 1,
+        "resource": 6,
+        "initial_yield": 500001,
+        "remaining_yield": 450000,
+        "finish_time": 1700001001,
+        "yield_eff": {
+          "mag": "9007199254740993",
+          "sign": true
+        }
+      }
+    ],
+    "serialized": [
+      "1",
+      "6",
+      "500001",
+      "450000",
+      "1700001001",
+      "9007199254740993",
+      "1"
+    ],
+    "hash": "3348657287006974126970958141478350615540007261406273802235803768405230992691"
+  },
+  {
+    "name": "extraction",
+    "helper": "getExtractionFingerprint",
+    "args": [
+      {
+        "extractor_type": 1,
+        "status": 1,
+        "output_product": 6,
+        "yield": 123456789,
+        "destination": {
+          "label": 5,
+          "id": 77
+        },
+        "destination_slot": 2,
+        "finish_time": 1700001002
+      }
+    ],
+    "serialized": [
+      "1",
+      "1",
+      "6",
+      "123456789",
+      "5",
+      "77",
+      "2",
+      "1700001002"
+    ],
+    "hash": "2380603401066428107353995262058796593418349859264890538231451907663460598822"
+  },
+  {
+    "name": "process",
+    "helper": "getProcessFingerprint",
+    "args": [
+      {
+        "processor_type": 1,
+        "status": 1,
+        "running_process": 23,
+        "output_product": 2,
+        "recipes": {
+          "mag": "9007199254740995",
+          "sign": false
+        },
+        "secondary_eff": {
+          "mag": "5368709121",
+          "sign": true
+        },
+        "destination": {
+          "label": 5,
+          "id": 77
+        },
+        "destination_slot": 2,
+        "finish_time": 1700001003
+      }
+    ],
+    "serialized": [
+      "1",
+      "1",
+      "23",
+      "2",
+      "9007199254740995",
+      "0",
+      "5368709121",
+      "1",
+      "5",
+      "77",
+      "2",
+      "1700001003"
+    ],
+    "hash": "3385411375961684559813898337239579095380188096204218572294067749918454657577"
+  },
+  {
+    "name": "delivery",
+    "helper": "getDeliveryFingerprint",
+    "args": [
+      {
+        "status": 4,
+        "origin": {
+          "label": 5,
+          "id": "9007199254740993"
+        },
+        "origin_slot": 2,
+        "dest": {
+          "label": 5,
+          "id": 77
+        },
+        "dest_slot": 3,
+        "finish_time": 1700001004,
+        "contents": [
+          {
+            "product": 129,
+            "amount": "9007199254740993"
+          },
+          {
+            "product": 2,
+            "amount": 7
+          }
+        ]
+      }
+    ],
+    "serialized": [
+      "5",
+      "9007199254740993",
+      "2",
+      "5",
+      "77",
+      "3",
+      "1700001004",
+      "2",
+      "129",
+      "9007199254740993",
+      "2",
+      "7"
+    ],
+    "hash": "2015228966702577207506141670456480079549669795352086185292078035679738867455"
+  }
+]
