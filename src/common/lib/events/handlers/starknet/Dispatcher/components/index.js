@@ -1,3 +1,4 @@
+const ComponentUpdatedMission = require('./Mission');
 const ComponentUpdatedAsteroidSale = require('./AsteroidSale');
 const ComponentUpdatedBuilding = require('./Building');
 const ComponentUpdatedCelestial = require('./Celestial');
@@ -36,6 +37,7 @@ const ComponentUpdatedPrepaidPolicy = require('./policies/Prepaid');
 const ComponentUpdatedUnique = require('./Unique');
 
 module.exports = {
+  ComponentUpdatedMission,
   ComponentUpdatedAsteroidSale,
   ComponentUpdatedBuilding,
   ComponentUpdatedCelestial,

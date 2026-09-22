@@ -1,3 +1,4 @@
+const missions = require('./missions');
 const activity = require('./activity');
 const annotations = require('./annotations');
 const argent = require('./argent');
@@ -26,6 +27,7 @@ const stripe = require('./stripe');
 const users = require('./users');
 
 module.exports = {
+  missions,
   activity,
   annotations,
   argent,
