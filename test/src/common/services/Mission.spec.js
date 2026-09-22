@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const Koa = require('koa');
 const request = require('supertest');
 const appConfig = require('config');
-const { Mission, StarterMission, Entity } = require('@influenceth/sdk');
+const { Mission, StarterMission, Entity, Address } = require('@influenceth/sdk');
 const { hash, shortString } = require('starknet');
 const EventProcessor = require('@common/lib/events/processor/EventProcessor');
 const MissionService = require('@common/services/Mission');
@@ -66,18 +66,34 @@ const activate = async () => {
 
 describe('Mission indexing and API', function () {
   let server;
+  let processorRegistry;
+  let retrieverRegistry;
 
   beforeEach(function () {
+    processorRegistry = ProcessorConfig.config;
+    retrieverRegistry = RetrieverConfig.config;
     // Other suites replace registries and config addresses; build from the real Dispatcher exports.
-    const handlers = { [appConfig.get('Contracts.starknet.dispatcher')]: dispatcherHandlers };
-    ProcessorConfig.buildHandlerConfig(handlers);
-    RetrieverConfig.buildEventsConfig(handlers);
+    const address = appConfig.get('Contracts.starknet.dispatcher');
+    const handlers = Object.values(dispatcherHandlers);
+    this._sandbox.stub(ProcessorConfig, 'config').get(() => ({
+      ...processorRegistry,
+      [Address.toStandard(address)]: Object.fromEntries(handlers.map((handler) => [handler.eventName, handler]))
+    }));
+    this._sandbox.stub(RetrieverConfig, 'config').get(() => ({
+      ...retrieverRegistry,
+      [Address.toStandard(address, 'starknet')]: Object.fromEntries(
+        handlers.map((handler) => [handler.eventNameKey, handler])
+      )
+    }));
     const app = new Koa();
     app.use(router.routes());
     server = request(app.callback());
   });
 
   afterEach(async function () {
+    this._sandbox.restore();
+    expect(ProcessorConfig.config).to.equal(processorRegistry);
+    expect(RetrieverConfig.config).to.equal(retrieverRegistry);
     await this.utils.resetCollections(['MissionComponent', 'Constant', 'CrewComponent', 'Activity', 'Starknet']);
   });
 
@@ -86,6 +102,19 @@ describe('Mission indexing and API', function () {
       const address = appConfig.get('Contracts.starknet.dispatcher');
       expect(RetrieverConfig.getHandler({ address, keys: Handler.eventConfig.keys })).to.equal(Handler);
       expect(ProcessorConfig.getHandlerByAddressAndEvent({ address, eventName: Handler.eventName })).to.equal(Handler);
+    }
+  });
+
+  it('keeps unrelated contract handlers available in the scoped registries', function () {
+    for (const [address, handlers] of Object.entries(processorRegistry)) {
+      if (address !== Address.toStandard(appConfig.get('Contracts.starknet.dispatcher'))) {
+        expect(ProcessorConfig.config[address]).to.equal(handlers);
+      }
+    }
+    for (const [address, handlers] of Object.entries(retrieverRegistry)) {
+      if (address !== Address.toStandard(appConfig.get('Contracts.starknet.dispatcher'), 'starknet')) {
+        expect(RetrieverConfig.config[address]).to.equal(handlers);
+      }
     }
   });
 
