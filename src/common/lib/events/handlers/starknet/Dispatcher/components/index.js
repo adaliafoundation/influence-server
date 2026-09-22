@@ -1,3 +1,4 @@
+const ComponentUpdatedProcessType = require('./ProcessType');
 const ComponentUpdatedMission = require('./Mission');
 const ComponentUpdatedAsteroidSale = require('./AsteroidSale');
 const ComponentUpdatedBuilding = require('./Building');
@@ -37,6 +38,7 @@ const ComponentUpdatedPrepaidPolicy = require('./policies/Prepaid');
 const ComponentUpdatedUnique = require('./Unique');
 
 module.exports = {
+  ComponentUpdatedProcessType,
   ComponentUpdatedMission,
   ComponentUpdatedAsteroidSale,
   ComponentUpdatedBuilding,

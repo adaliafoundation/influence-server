@@ -14,6 +14,13 @@ const ConstantHandler = require('@common/lib/events/handlers/starknet/Dispatcher
 const RetrieverConfig = require('@common/lib/events/retrievers/starknet/config');
 const ProcessorConfig = require('@common/lib/events/processor/config');
 const router = require('@api/controllers/missions');
+const ProcessTypeHandler = require('@common/lib/events/handlers/starknet/Dispatcher/components/ProcessType');
+const MissionBindingService = require('@common/services/MissionBinding');
+const backfillProcessTypes = require('@common/lib/backfillMissionProcessTypes');
+const StarknetEventService = require('@common/services/Event/Starknet');
+const { decodeComponent } = require('@common/lib/missionBindings');
+// Cairo-generated SDK 2.6.3 vectors; provenance is recorded alongside this fixture.
+const bindingVectors = require('@test/fixtures/missionBindings.json');
 const emitter = require('@common/lib/sio/emitter');
 const { ElasticSearchService, CrewReadyNotificationService } = require('@common/services');
 const CrewV0 = require('@common/lib/events/handlers/starknet/Dispatcher/components/Crew/v0');
@@ -94,11 +101,14 @@ describe('Mission indexing and API', function () {
     this._sandbox.restore();
     expect(ProcessorConfig.config).to.equal(processorRegistry);
     expect(RetrieverConfig.config).to.equal(retrieverRegistry);
-    await this.utils.resetCollections(['MissionComponent', 'Constant', 'CrewComponent', 'Activity', 'Starknet']);
+    await this.utils.resetCollections([
+      'MissionComponent', 'Constant', 'CrewComponent', 'Activity', 'Starknet', 'ProcessTypeComponent',
+      'BuildingComponent', 'DepositComponent', 'ExtractorComponent', 'ProcessorComponent', 'DeliveryComponent'
+    ]);
   });
 
   it('registers component and lifecycle selectors for retrieval and processing', function () {
-    for (const Handler of [ComponentHandler, ...Object.values(lifecycleHandlers)]) {
+    for (const Handler of [ComponentHandler, ProcessTypeHandler, ...Object.values(lifecycleHandlers)]) {
       const address = appConfig.get('Contracts.starknet.dispatcher');
       expect(RetrieverConfig.getHandler({ address, keys: Handler.eventConfig.keys })).to.equal(Handler);
       expect(ProcessorConfig.getHandlerByAddressAndEvent({ address, eventName: Handler.eventName })).to.equal(Handler);
@@ -348,6 +358,169 @@ describe('Mission indexing and API', function () {
     expect(() => lifecycleHandlers.MissionRewardClaimed.transformEventData({
       data: [123, 1, 501, 0, '0xabc', (2n ** 128n).toString()]
     })).to.throw();
+  });
+
+  it('indexes exact process definitions, preserving item order and rejecting stale updates', async function () {
+    const vector = bindingVectors.find((item) => item.name === 'process');
+    const raw = [1, 23, ...vector.serialized.slice(12)];
+    const event = await eventFor(ProcessTypeHandler, raw);
+    await new ProcessTypeHandler(event).processEvent();
+    const saved = await mongoose.model('ProcessTypeComponent').findOne({ processId: '23' }).lean();
+    expect(saved.definition.inputs.map((item) => item.product)).to.deep.equal(['24', '1']);
+    expect(saved.definition.recipe_time).to.equal('56160');
+    raw[3] = 999;
+    const older = await eventFor(ProcessTypeHandler, raw, { blockNumber: 9 });
+    await new ProcessTypeHandler(older).processEvent();
+    expect((await mongoose.model('ProcessTypeComponent').findOne({ processId: '23' })).definition.recipe_time)
+      .to.equal('56160');
+  });
+
+  for (const [name, kind, component, label, slotted] of [
+    ['sample', 'Sample', 'Deposit', 'DEPOSIT', false],
+    ['extraction', 'Extraction', 'Extractor', 'BUILDING', true],
+    ['process', 'Process', 'Processor', 'BUILDING', true],
+    ['delivery', 'Delivery', 'Delivery', 'DELIVERY', false]
+  ]) {
+    // Each generated test uses the server initialized by beforeEach.
+    // eslint-disable-next-line no-loop-func
+    it(`matches ${kind} from exact retained Cairo values and detects changed or cleared evidence`, async function () {
+      await register();
+      const vector = bindingVectors.find((item) => item.name === name);
+      const entity = { label: Entity.IDS[label], id: 42 };
+      const slot = slotted ? 1 : 0;
+      const raw = [...vector.serialized];
+      if (kind === 'Process') {
+        const definition = await eventFor(ProcessTypeHandler, [1, 23, ...raw.splice(12)]);
+        await new ProcessTypeHandler(definition).processEvent();
+      }
+      if (kind === 'Delivery') raw.unshift(4);
+      const event = await mongoose.model('Starknet').create({
+        event: `ComponentUpdated_${component}${kind === 'Process' ? '_V1' : ''}`,
+        name: `ComponentUpdated_${component}`,
+        address: appConfig.get('Contracts.starknet.dispatcher'),
+        blockHash: '0xabc',
+        transactionHash: '0xfeed',
+        blockNumber: 20,
+        transactionIndex: 0,
+        logIndex: 0,
+        timestamp: 1000,
+        data: [slotted ? 2 : 1, Entity.packEntity(entity), ...(slotted ? [slot] : []), ...raw].map(String)
+      });
+      // Deliberately omit display fields: commitments must use the exact source event.
+      await mongoose.model(`${component}Component`).create({ entity, slot, event: { id: event.id, timestamp: 1000 } });
+      const path = Mission.getEvidencePath(assignment, StarterMission.getActionEvidenceSlot({ kind, entity, slot }));
+      await writeCell(path, vector.hash);
+      const url = `/v2/missions/campaigns/${campaign}/subjects/${uuid}/bindings/${kind}/${Entity.packEntity(entity)}`;
+      const response = await server.get(`${url}?slot=${slot}`).set('Origin', 'http://localhost.local');
+      expect(response.status).to.equal(200);
+      expect(response.body.status).to.equal('matched');
+      expect(response.body.expectedValue).to.equal(vector.hash);
+      expect(response.body.componentEventId).to.equal(event.id);
+      if (slotted) {
+        expect((await MissionBindingService.getBinding(campaign, subject, kind, entity, 2)).status).to.equal('unbound');
+      }
+      const relatedKind = { Process: 'Downstream', Delivery: 'EconomicDelivery' }[kind];
+      if (relatedKind) {
+        await writeCell(Mission.getEvidencePath(
+          assignment,
+          StarterMission.getActionEvidenceSlot({ kind: relatedKind, entity, slot })
+        ), 1);
+        const related = await MissionBindingService.getBinding(campaign, subject, kind, entity, slot);
+        expect(related.relatedEvidence).to.deep.equal({ kind: relatedKind, value: '1' });
+      }
+      const changed = [...event.data];
+      const finishIndex = { Delivery: 9, Sample: 6 }[kind] ?? changed.length - 1;
+      changed[finishIndex] = String(BigInt(changed[finishIndex]) + 1n);
+      await mongoose.model('Starknet').updateOne({ _id: event.id }, { data: changed });
+      expect((await MissionBindingService.getBinding(campaign, subject, kind, entity, slot)).status)
+        .to.equal('mismatched');
+      await mongoose.model('Starknet').updateOne({ _id: event.id }, { data: event.data });
+      if (kind === 'Process') {
+        await mongoose.model('ProcessTypeComponent')
+          .updateOne({ processId: '23' }, { 'definition.recipe_time': '56161' });
+        expect((await MissionBindingService.getBinding(campaign, subject, kind, entity, slot)).status)
+          .to.equal('mismatched');
+        await mongoose.model('Starknet').updateOne({ _id: event.id }, { event: 'ComponentUpdated_Processor' });
+        expect(await MissionBindingService.getBinding(campaign, subject, kind, entity, slot))
+          .to.include({ status: 'unknown', reason: 'unsupported_component_version' });
+        await mongoose.model('Starknet').updateOne({ _id: event.id }, { event: event.event });
+        await mongoose.model('ProcessTypeComponent').deleteMany({});
+        const missing = await MissionBindingService.getBinding(campaign, subject, kind, entity, slot);
+        expect(missing).to.include({ status: 'unknown', reason: 'process_definition_not_indexed' });
+        const definition = await eventFor(ProcessTypeHandler, [1, 23, ...vector.serialized.slice(12)]);
+        await new ProcessTypeHandler(definition).processEvent();
+      }
+      await writeCell(path, '1');
+      const mismatched = await MissionBindingService.getBinding(campaign, subject, kind, entity, slot);
+      expect(mismatched.status).to.equal('mismatched');
+      await writeCell(path, '0');
+      const cleared = await MissionBindingService.getBinding(campaign, subject, kind, entity, slot);
+      expect(cleared.status).to.equal('unbound');
+    });
+  }
+
+  it('checks building commitments, isolates subjects and reports missing source data', async function () {
+    await register();
+    const entity = { label: Entity.IDS.BUILDING, id: 42 };
+    const kind = 'Built';
+    const fingerprint = StarterMission.getBuildingFingerprint(entity, {
+      building_type: 5, planned_at: 100, finish_time: 200
+    });
+    const path = Mission.getEvidencePath(assignment, StarterMission.getActionEvidenceSlot({ kind, entity }));
+    await writeCell(path, fingerprint);
+    expect(await MissionBindingService.getBinding(campaign, subject, kind, entity, 0))
+      .to.include({ status: 'unknown', reason: 'component_not_indexed' });
+    const event = await mongoose.model('Starknet').create({
+      event: 'ComponentUpdated_Building',
+      address: appConfig.get('Contracts.starknet.dispatcher'),
+      data: [1, Entity.packEntity(entity), 2, 5, 100, 200].map(String),
+      timestamp: 1000,
+      blockHash: '0xabc',
+      transactionHash: '0xbeef',
+      blockNumber: 10,
+      transactionIndex: 0,
+      logIndex: 0
+    });
+    await mongoose.model('BuildingComponent').create({ entity, event: { id: event.id, timestamp: 1000 } });
+    expect((await MissionBindingService.getBinding(campaign, subject, kind, entity, 0)).status).to.equal('matched');
+    expect((await MissionBindingService.getBinding(campaign, { ...subject, id: '502' }, kind, entity, 0)).status)
+      .to.equal('unbound');
+    await mongoose.model('Starknet').deleteOne({ _id: event.id });
+    expect(await MissionBindingService.getBinding(campaign, subject, kind, entity, 0))
+      .to.include({ status: 'unknown', reason: 'source_event_unavailable' });
+  });
+
+  it('backfills only process definitions, following pagination and reusing canonical event indices', async function () {
+    const getEvents = this._sandbox.stub();
+    getEvents.onFirstCall().resolves({ events: [{ block_number: 20 }], continuation_token: 'next' });
+    getEvents.onSecondCall().resolves({ events: [{ block_number: 10 }, { block_number: 20 }] });
+    const definition = { event: ProcessTypeHandler.eventName, logIndex: 7 };
+    const pullAndFormatEvents = this._sandbox.stub().resolves([definition, { event: 'MissionAccepted' }]);
+    const persist = this._sandbox.stub(StarknetEventService, 'updateOrCreateMany').resolves();
+    const result = await backfillProcessTypes({
+      rpc: { getEvents }, retriever: { pullAndFormatEvents }, address: '0x123', fromBlock: 0, toBlock: 30
+    });
+    expect(result).to.deep.equal({ blocks: 2, events: 2 });
+    expect(getEvents.firstCall.args[0].keys).to.deep.equal(ProcessTypeHandler.eventConfig.keys.map((key) => [key]));
+    expect(getEvents.secondCall.args[0].continuation_token).to.equal('next');
+    expect(pullAndFormatEvents.firstCall.args[0]).to.deep.equal({ blockNumber: 10 });
+    expect(pullAndFormatEvents.secondCall.args[0]).to.deep.equal({ blockNumber: 20 });
+    expect(persist.args).to.deep.equal([[[definition]], [[definition]]]);
+  });
+
+  it('rejects unsupported binding inputs and malformed raw components', async function () {
+    const building = Entity.packEntity({ label: Entity.IDS.BUILDING, id: 42 });
+    const base = `/v2/missions/campaigns/${campaign}/subjects/${uuid}/bindings`;
+    for (const suffix of [
+      `/nope/${building}`, `/constructor/${building}`, `/Sample/${building}`, `/Process/${building}`,
+      `/Process/${building}?slot=-1`, `/Built/${building}?slot=1`, '/Built/0'
+    ]) {
+      expect((await server.get(base + suffix).set('Origin', 'http://localhost.local')).status).to.equal(400);
+    }
+    const missing = await server.get(`${base}/Built/${building}`).set('Origin', 'http://localhost.local');
+    expect(missing.status).to.equal(404);
+    expect(() => decodeComponent('Deposit', { data: [1, building, 1] })).to.throw();
+    expect(() => decodeComponent('Building', { data: [1, building, 2, 5, 100, 200, 1] })).to.throw();
   });
 
   it('rejects invalid API input and reports unknown campaigns', async function () {
