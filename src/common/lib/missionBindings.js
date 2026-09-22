@@ -83,16 +83,6 @@ const decodeComponent = (component, event) => {
         contents: items()
       };
       break;
-    case 'ProcessType':
-      data = {
-        setup_time: integer(),
-        recipe_time: integer(),
-        batched: boolean(),
-        processor_type: integer(),
-        inputs: items(),
-        outputs: items()
-      };
-      break;
     default:
       throw new Error('Unsupported mission component');
   }

@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { Mission, StarterMission } = require('@influenceth/sdk');
+const { Mission, StarterMission, Processor } = require('@influenceth/sdk');
 const { bindingTypes, decodeComponent } = require('@common/lib/missionBindings');
 const { felt, pathKey, subjectUuid } = require('@common/lib/missions');
 const MissionService = require('./Mission');
@@ -54,14 +54,14 @@ class MissionBindingService {
     if (componentPath[0] !== felt(subjectUuid(entity))
       || (type.slotted && componentPath[1] !== String(slot))) throw new Error('Component source path mismatch');
 
+    // Completion resets Processor before its mission evidence is cleared. Never hash that reset state.
+    if (kind === 'Process' && Number(data.status) !== Processor.STATUSES.RUNNING) {
+      return unknown('processor_not_running');
+    }
+
     let expected;
     if (kind === 'Built') {
       expected = StarterMission[type.helper](entity, data);
-    } else if (kind === 'Process') {
-      const definition = await mongoose.model('ProcessTypeComponent')
-        .findOne({ processId: data.running_process }).lean();
-      if (!definition) return unknown('process_definition_not_indexed');
-      expected = StarterMission[type.helper](data, definition.definition);
     } else {
       expected = StarterMission[type.helper](data);
     }

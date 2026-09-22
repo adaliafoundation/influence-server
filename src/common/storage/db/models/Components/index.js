@@ -1,4 +1,3 @@
-const ProcessTypeComponent = require('./ProcessType');
 const MissionComponent = require('./Mission');
 const AsteroidProofComponent = require('./AsteroidProof');
 const AsteroidRewardComponent = require('./AsteroidReward');
@@ -41,7 +40,6 @@ const WhitelistAgreementComponent = require('./Agreements/Whitelist');
 const WhitelistAccountAgreementComponent = require('./Agreements/WhitelistAccount');
 
 module.exports = {
-  ProcessTypeComponent,
   MissionComponent,
   AsteroidProofComponent,
   AsteroidRewardComponent,

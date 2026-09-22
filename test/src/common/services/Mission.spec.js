@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const Koa = require('koa');
 const request = require('supertest');
 const appConfig = require('config');
-const { Mission, StarterMission, Entity, Address } = require('@influenceth/sdk');
+const { Mission, StarterMission, Entity, Address, Process } = require('@influenceth/sdk');
 const { hash, shortString } = require('starknet');
 const EventProcessor = require('@common/lib/events/processor/EventProcessor');
 const MissionService = require('@common/services/Mission');
@@ -14,15 +14,13 @@ const ConstantHandler = require('@common/lib/events/handlers/starknet/Dispatcher
 const RetrieverConfig = require('@common/lib/events/retrievers/starknet/config');
 const ProcessorConfig = require('@common/lib/events/processor/config');
 const router = require('@api/controllers/missions');
-const ProcessTypeHandler = require('@common/lib/events/handlers/starknet/Dispatcher/components/ProcessType');
 const MissionBindingService = require('@common/services/MissionBinding');
-const backfillProcessTypes = require('@common/lib/backfillMissionProcessTypes');
-const StarknetEventService = require('@common/services/Event/Starknet');
 const { decodeComponent } = require('@common/lib/missionBindings');
-// Cairo-generated SDK 2.6.3 vectors; provenance is recorded alongside this fixture.
+// Cairo-generated SDK 2.6.4 vectors; provenance is recorded alongside this fixture.
 const bindingVectors = require('@test/fixtures/missionBindings.json');
 const emitter = require('@common/lib/sio/emitter');
 const { ElasticSearchService, CrewReadyNotificationService } = require('@common/services');
+const ProcessorV1 = require('@common/lib/events/handlers/starknet/Dispatcher/components/Processor/v1');
 const CrewV0 = require('@common/lib/events/handlers/starknet/Dispatcher/components/Crew/v0');
 const CrewV1 = require('@common/lib/events/handlers/starknet/Dispatcher/components/Crew/v1');
 
@@ -102,13 +100,13 @@ describe('Mission indexing and API', function () {
     expect(ProcessorConfig.config).to.equal(processorRegistry);
     expect(RetrieverConfig.config).to.equal(retrieverRegistry);
     await this.utils.resetCollections([
-      'MissionComponent', 'Constant', 'CrewComponent', 'Activity', 'Starknet', 'ProcessTypeComponent',
+      'MissionComponent', 'Constant', 'CrewComponent', 'Activity', 'Starknet',
       'BuildingComponent', 'DepositComponent', 'ExtractorComponent', 'ProcessorComponent', 'DeliveryComponent'
     ]);
   });
 
   it('registers component and lifecycle selectors for retrieval and processing', function () {
-    for (const Handler of [ComponentHandler, ProcessTypeHandler, ...Object.values(lifecycleHandlers)]) {
+    for (const Handler of [ComponentHandler, ...Object.values(lifecycleHandlers)]) {
       const address = appConfig.get('Contracts.starknet.dispatcher');
       expect(RetrieverConfig.getHandler({ address, keys: Handler.eventConfig.keys })).to.equal(Handler);
       expect(ProcessorConfig.getHandlerByAddressAndEvent({ address, eventName: Handler.eventName })).to.equal(Handler);
@@ -360,21 +358,6 @@ describe('Mission indexing and API', function () {
     })).to.throw();
   });
 
-  it('indexes exact process definitions, preserving item order and rejecting stale updates', async function () {
-    const vector = bindingVectors.find((item) => item.name === 'process');
-    const raw = [1, 23, ...vector.serialized.slice(12)];
-    const event = await eventFor(ProcessTypeHandler, raw);
-    await new ProcessTypeHandler(event).processEvent();
-    const saved = await mongoose.model('ProcessTypeComponent').findOne({ processId: '23' }).lean();
-    expect(saved.definition.inputs.map((item) => item.product)).to.deep.equal(['24', '1']);
-    expect(saved.definition.recipe_time).to.equal('56160');
-    raw[3] = 999;
-    const older = await eventFor(ProcessTypeHandler, raw, { blockNumber: 9 });
-    await new ProcessTypeHandler(older).processEvent();
-    expect((await mongoose.model('ProcessTypeComponent').findOne({ processId: '23' })).definition.recipe_time)
-      .to.equal('56160');
-  });
-
   for (const [name, kind, component, label, slotted] of [
     ['sample', 'Sample', 'Deposit', 'DEPOSIT', false],
     ['extraction', 'Extraction', 'Extractor', 'BUILDING', true],
@@ -389,10 +372,6 @@ describe('Mission indexing and API', function () {
       const entity = { label: Entity.IDS[label], id: 42 };
       const slot = slotted ? 1 : 0;
       const raw = [...vector.serialized];
-      if (kind === 'Process') {
-        const definition = await eventFor(ProcessTypeHandler, [1, 23, ...raw.splice(12)]);
-        await new ProcessTypeHandler(definition).processEvent();
-      }
       if (kind === 'Delivery') raw.unshift(4);
       const event = await mongoose.model('Starknet').create({
         event: `ComponentUpdated_${component}${kind === 'Process' ? '_V1' : ''}`,
@@ -436,19 +415,10 @@ describe('Mission indexing and API', function () {
         .to.equal('mismatched');
       await mongoose.model('Starknet').updateOne({ _id: event.id }, { data: event.data });
       if (kind === 'Process') {
-        await mongoose.model('ProcessTypeComponent')
-          .updateOne({ processId: '23' }, { 'definition.recipe_time': '56161' });
-        expect((await MissionBindingService.getBinding(campaign, subject, kind, entity, slot)).status)
-          .to.equal('mismatched');
         await mongoose.model('Starknet').updateOne({ _id: event.id }, { event: 'ComponentUpdated_Processor' });
         expect(await MissionBindingService.getBinding(campaign, subject, kind, entity, slot))
           .to.include({ status: 'unknown', reason: 'unsupported_component_version' });
         await mongoose.model('Starknet').updateOne({ _id: event.id }, { event: event.event });
-        await mongoose.model('ProcessTypeComponent').deleteMany({});
-        const missing = await MissionBindingService.getBinding(campaign, subject, kind, entity, slot);
-        expect(missing).to.include({ status: 'unknown', reason: 'process_definition_not_indexed' });
-        const definition = await eventFor(ProcessTypeHandler, [1, 23, ...vector.serialized.slice(12)]);
-        await new ProcessTypeHandler(definition).processEvent();
       }
       await writeCell(path, '1');
       const mismatched = await MissionBindingService.getBinding(campaign, subject, kind, entity, slot);
@@ -458,6 +428,48 @@ describe('Mission indexing and API', function () {
       expect(cleared.status).to.equal('unbound');
     });
   }
+
+  it('preserves a running binding across recipe changes, orders resets, and rejects another run', async function () {
+    await register();
+    this._sandbox.stub(ElasticSearchService, 'queueEntityForIndexing').resolves();
+    const vector = bindingVectors.find((item) => item.name === 'process');
+    const entity = { label: Entity.IDS.BUILDING, id: 42 };
+    const path = Mission.getEvidencePath(
+      assignment,
+      StarterMission.getActionEvidenceSlot({ kind: 'Process', entity, slot: 1 })
+    );
+    const running = [2, Entity.packEntity(entity), 1, ...vector.serialized];
+    const start = await eventFor(ProcessorV1, running, { blockNumber: 20, logIndex: 1 });
+    await new ProcessorV1(start).processEvent();
+    await writeCell(path, vector.hash, { blockNumber: 20, logIndex: 2 });
+    const read = () => MissionBindingService.getBinding(campaign, subject, 'Process', entity, 1);
+    expect((await read()).status).to.equal('matched');
+
+    // Recipe metadata is not part of the commitment or a dependency of this endpoint.
+    const recipe = Process.TYPES[23];
+    this._sandbox.stub(Process.TYPES, '23').value({ ...recipe, recipeTime: recipe.recipeTime + 1 });
+    expect((await read()).status).to.equal('matched');
+
+    const reset = [2, Entity.packEntity(entity), 1, 1, 0, 0, 0, 0, 0,
+      vector.serialized[6], vector.serialized[7], 0, 0, 0, 0];
+    const finish = await eventFor(ProcessorV1, reset, { blockNumber: 21, logIndex: 1 });
+    await new ProcessorV1(finish).processEvent();
+    expect(await read()).to.include({ status: 'unknown', reason: 'processor_not_running', expectedValue: null });
+    // A delayed replay must not restore the earlier running snapshot.
+    await new ProcessorV1(start).processEvent();
+    expect((await read()).reason).to.equal('processor_not_running');
+    await writeCell(path, 0, { blockNumber: 21, logIndex: 2 });
+    expect((await read()).status).to.equal('unbound');
+    await writeCell(path, vector.hash, { blockNumber: 20, logIndex: 2 });
+    expect((await read()).status).to.equal('unbound');
+
+    const nextRun = [...running];
+    nextRun[nextRun.length - 1] = String(BigInt(nextRun[nextRun.length - 1]) + 100n);
+    const next = await eventFor(ProcessorV1, nextRun, { blockNumber: 22, logIndex: 1 });
+    await new ProcessorV1(next).processEvent();
+    await writeCell(path, vector.hash, { blockNumber: 22, logIndex: 2 });
+    expect((await read()).status).to.equal('mismatched');
+  });
 
   it('checks building commitments, isolates subjects and reports missing source data', async function () {
     await register();
@@ -488,24 +500,6 @@ describe('Mission indexing and API', function () {
     await mongoose.model('Starknet').deleteOne({ _id: event.id });
     expect(await MissionBindingService.getBinding(campaign, subject, kind, entity, 0))
       .to.include({ status: 'unknown', reason: 'source_event_unavailable' });
-  });
-
-  it('backfills only process definitions, following pagination and reusing canonical event indices', async function () {
-    const getEvents = this._sandbox.stub();
-    getEvents.onFirstCall().resolves({ events: [{ block_number: 20 }], continuation_token: 'next' });
-    getEvents.onSecondCall().resolves({ events: [{ block_number: 10 }, { block_number: 20 }] });
-    const definition = { event: ProcessTypeHandler.eventName, logIndex: 7 };
-    const pullAndFormatEvents = this._sandbox.stub().resolves([definition, { event: 'MissionAccepted' }]);
-    const persist = this._sandbox.stub(StarknetEventService, 'updateOrCreateMany').resolves();
-    const result = await backfillProcessTypes({
-      rpc: { getEvents }, retriever: { pullAndFormatEvents }, address: '0x123', fromBlock: 0, toBlock: 30
-    });
-    expect(result).to.deep.equal({ blocks: 2, events: 2 });
-    expect(getEvents.firstCall.args[0].keys).to.deep.equal(ProcessTypeHandler.eventConfig.keys.map((key) => [key]));
-    expect(getEvents.secondCall.args[0].continuation_token).to.equal('next');
-    expect(pullAndFormatEvents.firstCall.args[0]).to.deep.equal({ blockNumber: 10 });
-    expect(pullAndFormatEvents.secondCall.args[0]).to.deep.equal({ blockNumber: 20 });
-    expect(persist.args).to.deep.equal([[[definition]], [[definition]]]);
   });
 
   it('rejects unsupported binding inputs and malformed raw components', async function () {
