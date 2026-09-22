@@ -1,3 +1,4 @@
+const missionLifecycle = require('./MissionLifecycle');
 const AddedToWhitelist = require('./AddedToWhitelist/v0');
 const AddedToWhitelistV1 = require('./AddedToWhitelist/v1');
 const AddedAccountToWhitelist = require('./AddedAccountToWhitelist');
@@ -104,6 +105,7 @@ const TransitFinished = require('./TransitFinished');
 const TransitStarted = require('./TransitStarted');
 
 module.exports = {
+  ...missionLifecycle,
   AddedToWhitelist,
   AddedToWhitelistV1,
   AddedAccountToWhitelist,

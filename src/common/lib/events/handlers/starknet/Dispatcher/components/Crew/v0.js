@@ -32,6 +32,10 @@ class Handler extends BaseHandler {
     });
 
     if (!updated) return;
+    if (crewComponentDoc?.delegatedTo !== Address.toStandard(data.delegatedTo)
+      || JSON.stringify(crewComponentDoc?.roster) !== JSON.stringify(data.roster)) {
+      this.addCrewRoomMessage(entity);
+    }
     await ElasticSearchService.queueEntityForIndexing(entity);
   }
 

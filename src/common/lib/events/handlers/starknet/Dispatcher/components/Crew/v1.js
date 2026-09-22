@@ -39,6 +39,10 @@ class Handler extends BaseHandler {
     });
 
     if (!updated) return;
+    if (crewComponentDoc?.delegatedTo !== Address.toStandard(data.delegatedTo)
+      || JSON.stringify(crewComponentDoc?.roster) !== JSON.stringify(data.roster)) {
+      this.addCrewRoomMessage(entity);
+    }
 
     // create or update the CrewReadyNotification
     await CrewReadyNotificationService.createOrUpdate({ crew: entity, readyAt });

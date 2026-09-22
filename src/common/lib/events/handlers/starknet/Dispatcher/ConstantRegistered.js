@@ -11,6 +11,7 @@ class Handler extends StarknetBaseHandler {
   async processEvent() {
     const { returnValues: data } = this.eventDoc;
     await ConstantService.updateOrCreateFromEvent({ event: this.eventDoc, data });
+    if (['STARTER_MISSION_CAMPAIGN', 'STARTER_MISSION_CUTOFF'].includes(data.name)) this.messages.push({});
   }
 
   static transformEventData(event) {

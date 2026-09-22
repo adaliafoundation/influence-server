@@ -1,3 +1,4 @@
+const MissionComponent = require('./Mission');
 const AsteroidProofComponent = require('./AsteroidProof');
 const AsteroidRewardComponent = require('./AsteroidReward');
 const BuildingComponent = require('./Building');
@@ -39,6 +40,7 @@ const WhitelistAgreementComponent = require('./Agreements/Whitelist');
 const WhitelistAccountAgreementComponent = require('./Agreements/WhitelistAccount');
 
 module.exports = {
+  MissionComponent,
   AsteroidProofComponent,
   AsteroidRewardComponent,
   BuildingComponent,
