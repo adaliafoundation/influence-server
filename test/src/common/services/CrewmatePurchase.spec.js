@@ -37,6 +37,30 @@ describe('CrewmatePurchaseService', function () {
     return this.utils.resetCollections(['CrewmatePurchase', 'NftComponent']);
   });
 
+  it('should recover multiple purchases without hiding them behind newer checkouts', async function () {
+    const statuses = ['paid_pending_customization', 'paid_pending_customization', 'checkout_created', 'grant_confirmed'];
+    const purchases = [];
+    for (const [index, status] of statuses.entries()) {
+      purchases.push(await mongoose.model('CrewmatePurchase').create({
+        purchaser: '0x789', recipient: '0x789', stripeProductId: 'prod_crewmate', stripePriceId: 'price_1',
+        stripeCheckoutSessionId: `cs_pending_${index}`, status, createdAt: new Date(2026, 0, index + 1)
+      }));
+    }
+    await mongoose.model('CrewmatePurchase').create({
+      purchaser: '0x123', recipient: '0x123', stripeProductId: 'prod_crewmate', stripePriceId: 'price_1',
+      stripeCheckoutSessionId: 'cs_other', status: 'paid_pending_customization'
+    });
+
+    const result = await CrewmatePurchaseService.pendingPurchasesForPurchaser({ purchaser: '0x789' });
+    expect(result.map((purchase) => purchase.id)).to.deep.equal([purchases[2].id, purchases[1].id, purchases[0].id]);
+    expect(await CrewmatePurchaseService.pendingPurchasesForPurchaser({ purchaser: '0x456' })).to.deep.equal([]);
+
+    purchases[1].status = 'grant_confirmed';
+    await purchases[1].save();
+    const remaining = await CrewmatePurchaseService.pendingPurchasesForPurchaser({ purchaser: '0x789' });
+    expect(remaining.map((purchase) => purchase.id)).to.deep.equal([purchases[2].id, purchases[0].id]);
+  });
+
   it('should return Stripe-managed product presentation', async function () {
     const stripe = {
       prices: {

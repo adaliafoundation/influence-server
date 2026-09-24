@@ -40,7 +40,8 @@ const createCheckoutSession = async function (ctx) {
 const getPendingPurchase = async function (ctx) {
   const { state: { user: { sub: purchaser } } } = ctx;
   if (!purchaser) ctx.throw(401, 'Not authorized');
-  ctx.body = { purchase: await CrewmatePurchaseService.pendingPurchaseForPurchaser({ purchaser }) };
+  const purchases = await CrewmatePurchaseService.pendingPurchasesForPurchaser({ purchaser });
+  ctx.body = { purchase: purchases[0] || null, purchases };
 };
 
 const getPurchaseByCheckoutSession = async function (ctx) {
