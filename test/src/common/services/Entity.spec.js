@@ -152,7 +152,7 @@ describe('EntityService', function () {
       it('should load the default component data for an Lot', async function () {
         const results = await EntityService.getEntities({ ...Entity.Lot(1), format: false });
         expect(results[0]).to.have.keys(['uuid', 'id', 'label', 'entity', 'ContractAgreement',
-          'PrepaidAgreementAuction', 'PrepaidAgreement', 'StarterPackLotLease', 'WhitelistAgreement',
+          'UseLot', 'PrepaidAgreementAuction', 'PrepaidAgreement', 'StarterPackLotLease', 'WhitelistAgreement',
           'WhitelistAccountAgreement']);
       });
 
@@ -222,7 +222,7 @@ describe('EntityService', function () {
       it('should format the data correctly for an Lot (format: true)', async function () {
         const results = await EntityService.getEntities({ ...Entity.Lot(1), format: true });
         expect(results[0]).to.have.keys(['uuid', 'id', 'label', 'ContractAgreements',
-          'PrepaidAgreementAuction', 'PrepaidAgreements', 'StarterPackLotLeases', 'WhitelistAgreements',
+          'UseLot', 'PrepaidAgreementAuction', 'PrepaidAgreements', 'StarterPackLotLeases', 'WhitelistAgreements',
           'WhitelistAccountAgreements']);
 
         ['ContractAgreements', 'PrepaidAgreements', 'StarterPackLotLeases', 'WhitelistAgreements'].forEach((key) => {

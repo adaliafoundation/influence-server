@@ -6,7 +6,7 @@ const { v1: formatter } = require('@common/lib/elasticsearch/formatters/lot');
 
 describe('Lot formatter (v1)', function () {
   afterEach(function () {
-    return this.utils.resetCollections(['Entity', 'PrepaidAgreementComponent']);
+    return this.utils.resetCollections(['Entity', 'PrepaidAgreementComponent', 'UseLotComponent']);
   });
 
   describe('formatter', function () {
@@ -23,6 +23,7 @@ describe('Lot formatter (v1)', function () {
           id: 4294967297,
           label: 4,
           uuid: '0x1000000010004',
+          UseLot: null,
           ContractAgreements: [],
           PrepaidAgreements: [],
           WhitelistAgreements: [],
@@ -34,6 +35,16 @@ describe('Lot formatter (v1)', function () {
           meta: {}
         }
       });
+    });
+
+    it('should include current and cleared tenancy in search documents', async function () {
+      const entity = Entity.lotFromIndex(1, 1);
+      const doc = await mongoose.model('UseLotComponent').create({ entity, tenant: Entity.Crew(2) });
+      const indexItem = mongoose.model('IndexItem')({ identifier: entity, model: 'Entity' });
+      expect((await formatter(indexItem)).formatted.UseLot.tenant.id).to.equal(2);
+      doc.tenant = null;
+      await doc.save();
+      expect((await formatter(indexItem)).formatted.UseLot.tenant).to.equal(null);
     });
 
     it('should filter old prepaid agreements from the lot search document', async function () {

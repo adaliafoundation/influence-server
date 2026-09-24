@@ -50,6 +50,32 @@ describe('crewmate purchases controller', function () {
     });
   });
 
+  it('should return every pending purchase for the authenticated purchaser', async function () {
+    const app = new Koa();
+    const server = request(app.callback());
+    const { user, userToken } = this.GLOBALS;
+    const purchases = [
+      { id: 'purchase_1', status: 'paid_pending_customization' },
+      { id: 'purchase_2', status: 'paid_pending_customization' }
+    ];
+    const pending = this._sandbox.stub(CrewmatePurchaseService, 'pendingPurchasesForPurchaser').resolves(purchases);
+    app.use(loadController().routes());
+
+    const response = await server.get('/v2/crewmate-purchases/pending')
+      .set('Authorization', `Bearer ${userToken}`);
+
+    expect(response.status).to.equal(200);
+    expect(response.body).to.deep.equal({ purchase: purchases[0], purchases });
+    expect(pending.calledOnceWithExactly({ purchaser: user.address })).to.equal(true);
+  });
+
+  it('should reject unauthenticated pending purchase requests', async function () {
+    const app = new Koa();
+    app.use(loadController().routes());
+    const response = await request(app.callback()).get('/v2/crewmate-purchases/pending');
+    expect(response.status).to.equal(401);
+  });
+
   it('should submit customization for an authenticated purchase', async function () {
     const app = new Koa();
     const server = request(app.callback());

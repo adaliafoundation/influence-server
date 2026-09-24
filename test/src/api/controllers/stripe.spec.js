@@ -3,6 +3,7 @@ const Koa = require('koa');
 const request = require('supertest');
 const appConfig = require('config');
 const Stripe = require('stripe');
+const createRateLimit = require('@api/plugins/rateLimit');
 const { CrewmatePurchaseService, StarterPackPurchaseService } = require('@common/services');
 
 const loadController = () => {
@@ -46,6 +47,7 @@ describe('stripe controller', function () {
       .stub(StarterPackPurchaseService, 'handleCheckoutSessionCompleted').resolves();
     const app = new Koa();
     const server = request(app.callback());
+    app.use(createRateLimit());
     app.use(loadController().routes());
 
     const response = await server
@@ -85,5 +87,25 @@ describe('stripe controller', function () {
 
     expect(response.status).to.equal(200);
     expect(starterPackHandler.called).to.equal(false);
+  });
+
+  it('should still reject invalid webhook signatures after exhausting the API rate limit', async function () {
+    const handler = this._sandbox.stub(CrewmatePurchaseService, 'handleCheckoutSessionCompleted').resolves();
+    const app = new Koa();
+    app.use(createRateLimit());
+    app.use(loadController().routes());
+    const server = request(app.callback());
+
+    for (let i = 0; i < 50; i += 1) {
+      await server.get('/unmatched');
+    }
+    expect((await server.get('/unmatched')).status).to.equal(429);
+
+    const response = await server.post('/v2/stripe/webhook')
+      .set('stripe-signature', 'invalid')
+      .send({ type: 'checkout.session.completed' });
+
+    expect(response.status).to.equal(400);
+    expect(handler.called).to.equal(false);
   });
 });

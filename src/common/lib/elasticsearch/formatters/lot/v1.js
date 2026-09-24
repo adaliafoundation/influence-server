@@ -3,6 +3,7 @@ const moment = require('moment');
 const { ComponentService, EntityService } = require('@common/services');
 
 const components = [
+  'UseLot',
   'ContractAgreement',
   'PrepaidAgreement',
   'WhitelistAgreement',

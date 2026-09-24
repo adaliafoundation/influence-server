@@ -20,6 +20,7 @@ const schema = {
         ...ContractAgreement
       },
       Location,
+      UseLot: { properties: { tenant: entity } },
       meta: {
         properties: {
           asteroid: {

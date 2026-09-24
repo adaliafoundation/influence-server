@@ -167,12 +167,12 @@ class CrewmatePurchaseService {
     };
   }
 
-  static async pendingPurchaseForPurchaser({ purchaser }) {
-    const purchase = await mongoose.model('CrewmatePurchase').findOne({
+  static async pendingPurchasesForPurchaser({ purchaser }) {
+    const purchases = await mongoose.model('CrewmatePurchase').find({
       purchaser: Address.toStandard(purchaser),
       status: { $in: PENDING_PURCHASE_STATUSES }
-    }).sort({ createdAt: -1 });
-    return this.serializePurchase(purchase);
+    }).sort({ createdAt: -1, _id: -1 });
+    return purchases.map((purchase) => this.serializePurchase(purchase));
   }
 
   static async purchaseForCheckoutSession({ checkoutSessionId, purchaser }) {

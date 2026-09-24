@@ -5,9 +5,8 @@ const Koa = require('koa');
 const { createServer } = require('http');
 const serveStatic = require('koa-static');
 const cors = require('@koa/cors');
-const ratelimit = require('koa-ratelimit');
 const compress = require('koa-compress');
-const { isWhiteList } = require('@api/plugins/origin');
+const createRateLimit = require('./plugins/rateLimit');
 const requestLogging = require('./plugins/requestLogging');
 const { createHealthMiddleware } = require('./plugins/health');
 const logger = require('../common/lib/logger');
@@ -29,15 +28,7 @@ server.use(serveStatic(`${__dirname}/../common/assets`));
 
 // Middleware
 server.use(cors());
-server.use(ratelimit({
-  driver: 'memory',
-  db: new Map(),
-  duration: 10000,
-  errorMessage: 'API is rate-limited to 5 requests per second',
-  id: (ctx) => ((ctx.state.user && ctx.state.user.sub) ? ctx.state.user.sub : ctx.ip),
-  max: 50,
-  whitelist: isWhiteList
-}));
+server.use(createRateLimit());
 
 server.use(compress());
 
