@@ -13,6 +13,7 @@
     "paymasterApiKey": null,
     "paymasterMaxStarterPackBudgetStrk": 100,
     "paymasterReservationTtlSeconds": 300,
+    "paymasterStarterPackSponsorshipDays": 30,
     "paymasterUrl": null,
     "rateLimitPerMinute": 120,
     "requestTimeoutMs": 10000

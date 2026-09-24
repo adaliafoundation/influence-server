@@ -18,6 +18,7 @@
     "paymasterApiKey": "AVNU_PAYMASTER_API_KEY",
     "paymasterMaxStarterPackBudgetStrk": "AVNU_PAYMASTER_MAX_STARTER_PACK_BUDGET_STRK",
     "paymasterReservationTtlSeconds": "AVNU_PAYMASTER_RESERVATION_TTL_SECONDS",
+    "paymasterStarterPackSponsorshipDays": "AVNU_PAYMASTER_STARTER_PACK_SPONSORSHIP_DAYS",
     "paymasterUrl": "AVNU_PAYMASTER_URL",
     "rateLimitPerMinute": "AVNU_PAYMASTER_RATE_LIMIT_PER_MINUTE",
     "requestTimeoutMs": "AVNU_PAYMASTER_REQUEST_TIMEOUT_MS"

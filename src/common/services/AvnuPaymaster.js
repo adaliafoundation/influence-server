@@ -20,7 +20,6 @@ const TRANSACTION_METHODS = [
 
 const ALLOWED_METHODS = [...READ_METHODS, ...TRANSACTION_METHODS];
 const READY_V05_CLASS_HASH = '0x073414441639dcd11d1846f287650a00c60c416b9d3ba45d31c651672125b2c2';
-const STARTER_PACK_SPONSORSHIP_DAYS = 14;
 const FRI_PER_MILLI_STRK = 10n ** 15n;
 const DEPLOY_PURCHASE_STATUSES = ['paid_pending_customization'];
 const INVOKE_PURCHASE_STATUSES = ['grant_confirmed'];
@@ -43,7 +42,9 @@ const normalizeCalldata = (calldata = []) => calldata.map(normalizeFelt);
 const callContractAddress = (call) => call.contract_address || call.contractAddress || call.to || call.To;
 const callSelector = (call) => call.entry_point_selector || call.entrypoint || call.selector || call.Selector;
 
-const paidSinceCutoff = () => new Date(Date.now() - STARTER_PACK_SPONSORSHIP_DAYS * 24 * 60 * 60 * 1000);
+const paidSinceCutoff = () => new Date(
+  Date.now() - Number(appConfig.get('Avnu.paymasterStarterPackSponsorshipDays')) * 24 * 60 * 60 * 1000
+);
 
 const chainId = () => appConfig.get('Starknet.chainId')?.toString();
 const budgetMilliStrk = () => Number(appConfig.get('Avnu.paymasterMaxStarterPackBudgetStrk')) * 1000;

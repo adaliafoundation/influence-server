@@ -190,7 +190,7 @@ describe('AvnuPaymasterService', function () {
   });
 
   it('should reject invoke sponsorship without a recent confirmed starter pack purchase', async function () {
-    await createPurchase({ grantedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) });
+    await createPurchase({ grantedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) });
 
     await expectReject(AvnuPaymasterService.validateRequest({
       body: paymasterRequest(),
