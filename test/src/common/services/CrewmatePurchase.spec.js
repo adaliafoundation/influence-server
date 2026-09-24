@@ -38,17 +38,28 @@ describe('CrewmatePurchaseService', function () {
   });
 
   it('should recover multiple purchases without hiding them behind newer checkouts', async function () {
-    const statuses = ['paid_pending_customization', 'paid_pending_customization', 'checkout_created', 'grant_confirmed'];
+    const statuses = [
+      'paid_pending_customization', 'paid_pending_customization', 'checkout_created', 'grant_confirmed'
+    ];
     const purchases = [];
     for (const [index, status] of statuses.entries()) {
       purchases.push(await mongoose.model('CrewmatePurchase').create({
-        purchaser: '0x789', recipient: '0x789', stripeProductId: 'prod_crewmate', stripePriceId: 'price_1',
-        stripeCheckoutSessionId: `cs_pending_${index}`, status, createdAt: new Date(2026, 0, index + 1)
+        purchaser: '0x789',
+        recipient: '0x789',
+        stripeProductId: 'prod_crewmate',
+        stripePriceId: 'price_1',
+        stripeCheckoutSessionId: `cs_pending_${index}`,
+        status,
+        createdAt: new Date(2026, 0, index + 1)
       }));
     }
     await mongoose.model('CrewmatePurchase').create({
-      purchaser: '0x123', recipient: '0x123', stripeProductId: 'prod_crewmate', stripePriceId: 'price_1',
-      stripeCheckoutSessionId: 'cs_other', status: 'paid_pending_customization'
+      purchaser: '0x123',
+      recipient: '0x123',
+      stripeProductId: 'prod_crewmate',
+      stripePriceId: 'price_1',
+      stripeCheckoutSessionId: 'cs_other',
+      status: 'paid_pending_customization'
     });
 
     const result = await CrewmatePurchaseService.pendingPurchasesForPurchaser({ purchaser: '0x789' });
