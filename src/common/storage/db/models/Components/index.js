@@ -36,6 +36,7 @@ const StarterPackComponent = require('./StarterPack');
 const StarterPackBuildingFundingComponent = require('./StarterPackBuildingFunding');
 const StarterPackCrewmateComponent = require('./StarterPackCrewmate');
 const StarterPackLotLeaseComponent = require('./StarterPackLotLease');
+const UseLotComponent = require('./UseLot');
 const WhitelistAgreementComponent = require('./Agreements/Whitelist');
 const WhitelistAccountAgreementComponent = require('./Agreements/WhitelistAccount');
 
@@ -78,6 +79,7 @@ module.exports = {
   StarterPackBuildingFundingComponent,
   StarterPackCrewmateComponent,
   StarterPackLotLeaseComponent,
+  UseLotComponent,
   WhitelistAgreementComponent,
   WhitelistAccountAgreementComponent
 };

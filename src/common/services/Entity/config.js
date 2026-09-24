@@ -122,6 +122,7 @@ const config = {
   },
   Lot: {
     components: [
+      'UseLot',
       'ContractAgreement',
       'PrepaidAgreementAuction',
       'PrepaidAgreement',
