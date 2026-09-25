@@ -5,6 +5,7 @@ const { EntityHelper } = require('@common/storage/db/helpers');
 
 const schema = new Schema([
   ChainComponent, {
+    snapshot: { blockNumber: Number, blockHash: String },
     tenant: { type: EntitySchema, set: (value) => (value === null ? null : EntityHelper.toEntity(value)) }
   }
 ], {

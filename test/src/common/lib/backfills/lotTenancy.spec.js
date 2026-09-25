@@ -1,142 +1,179 @@
 const { expect } = require('chai');
 const mongoose = require('mongoose');
-const { Address } = require('@influenceth/sdk');
+const axios = require('axios');
+const { Address, Permission } = require('@influenceth/sdk');
 const Entity = require('@common/lib/Entity');
 const { ElasticSearchService } = require('@common/services');
 const Handler = require('@common/lib/events/handlers/starknet/Dispatcher/components/Unique');
 const LotTenancyBackfill = require('@common/lib/backfills/lotTenancy');
+const { RpcProvider } = require('@common/lib/starknet/providers');
 
 const dispatcher = Address.toStandard('0x123', 'starknet');
 const lot = Entity.lotFromIndex(1, 1);
 const tenant = Entity.Crew(2);
-const rawEvent = (blockNumber, value, logIndex = 0) => ({
-  address: dispatcher,
-  blockNumber,
-  blockHash: `0x${blockNumber.toString(16)}`,
-  transactionHash: `0x${blockNumber.toString(16).padStart(64, '0')}`,
-  transactionIndex: 0,
-  logIndex,
-  timestamp: 1000 + blockNumber,
-  status: 'ACCEPTED_ON_L1',
-  keys: Handler.eventConfig.keys,
-  data: ['0x2', '0x5573654c6f74', lot.uuid, value]
-});
+const eventAt = async (blockNumber, value) => {
+  const data = ['0x2', '0x5573654c6f74', lot.uuid, value];
+  return mongoose.model('Starknet').create({
+    event: Handler.eventName,
+    blockNumber,
+    blockHash: `0x${blockNumber.toString(16)}`,
+    transactionHash: `0x${blockNumber.toString(16)}`,
+    transactionIndex: 0,
+    logIndex: 1,
+    timestamp: blockNumber + 1000,
+    data,
+    returnValues: Handler.transformEventData({ data })
+  });
+};
 
-describe('Lot tenancy backfill', function () {
+describe('Lot tenancy state backfill', function () {
   let backfill;
   let provider;
 
-  beforeEach(function () {
+  beforeEach(async function () {
     provider = {
       getBlock: this._sandbox.stub().resolves({ blockNumber: 12, blockHash: '0xc', status: 'ACCEPTED_ON_L1' }),
-      getEvents: this._sandbox.stub().resolves([])
+      getStorageAt: this._sandbox.stub().resolves(tenant.uuid)
     };
-    backfill = new LotTenancyBackfill({
-      provider, addresses: [dispatcher], dispatcher, originBlock: 10, log: () => {}
-    });
+    backfill = new LotTenancyBackfill({ provider, dispatcher, log: () => {} });
     this._sandbox.stub(ElasticSearchService, 'queueEntityForIndexing').resolves();
+    await mongoose.model('PrepaidAgreementComponent').create({
+      entity: lot, permission: Permission.IDS.USE_LOT, permitted: tenant, endTime: 1
+    });
   });
 
   afterEach(async function () {
     await backfill.jobs.deleteMany({});
     await backfill.lots.deleteMany({});
-    await this.utils.resetCollections(['UseLotComponent', 'Event', 'Entity']);
+    await this.utils.resetCollections([
+      'UseLotComponent', 'Event', 'Entity', 'PrepaidAgreementComponent', 'ContractAgreementComponent',
+      'WhitelistAgreementComponent', 'WhitelistAccountAgreementComponent', 'LocationComponent'
+    ]);
   });
 
-  it('stages only latest tenancy, retains zero, and applies without pending historical events', async function () {
-    const unrelated = { ...rawEvent(10, tenant.uuid), keys: ['0x1'] };
-    const occupancy = { ...rawEvent(10, tenant.uuid), data: ['0x2', '0x4c6f74557365', lot.uuid, tenant.uuid] };
-    provider.getEvents.resolves([rawEvent(12, '0x0'), unrelated, occupancy, rawEvent(10, tenant.uuid)]);
-    const status = await backfill.scan({ job: 'test' });
-    expect(status).to.include({ lots: 1, cleared: 1, assigned: 0, phase: 'ready' });
+  it('reads each candidate at a fixed block and records snapshot provenance', async function () {
+    const status = await backfill.scan({ job: 'test', delayMs: 0 });
+    expect(status).to.include({ lots: 1, read: 1, assigned: 1, phase: 'ready' });
+    expect(provider.getStorageAt.calledOnce).to.equal(true);
+    expect(provider.getStorageAt.firstCall.args[0]).to.equal(dispatcher);
+    // Vector independently obtained from influence-starknet's componentKey implementation.
+    expect(provider.getStorageAt.firstCall.args[1])
+      .to.equal('0x30ab43ae215caef7fb02069276343bdbcce0abaadde3dc8d6343ef2fad14d5d');
+    expect(provider.getStorageAt.firstCall.args[2]).to.equal('0xc');
     expect(await mongoose.model('UseLotComponent').countDocuments()).to.equal(0);
-    expect(await mongoose.model('Starknet').countDocuments()).to.equal(0);
-    const result = await backfill.apply({ job: 'test', processorStopped: true });
-    expect(result).to.include({ phase: 'complete', applied: 1 });
-    expect((await mongoose.model('UseLotComponent').findOne()).tenant).to.equal(null);
-    expect((await mongoose.model('Starknet').findOne()).lastProcessed).to.be.instanceOf(Date);
-    expect(ElasticSearchService.queueEntityForIndexing.calledOnce).to.equal(true);
+    await backfill.apply({ job: 'test', processorStopped: true });
+    const result = await mongoose.model('UseLotComponent').findOne();
+    expect(result.tenant.id).to.equal(2);
+    expect(result.snapshot.blockNumber).to.equal(12);
+    expect(await mongoose.model('Event').countDocuments()).to.equal(0);
   });
 
-  it('resumes scan at the first unfinished batch and rejects changed bounds', async function () {
-    provider.getEvents.onCall(0).resolves([rawEvent(10, tenant.uuid)]);
-    provider.getEvents.onCall(1).rejects(new Error('RPC interrupted'));
+  it('deduplicates all agreement types, building locations, and already indexed tenancy', async function () {
+    for (const name of ['ContractAgreement', 'WhitelistAgreement', 'WhitelistAccountAgreement']) {
+      await mongoose.model(`${name}Component`).create({
+        entity: lot,
+        permission: Permission.IDS.USE_LOT,
+        permitted: name === 'WhitelistAccountAgreement' ? '0x123' : tenant
+      });
+    }
+    await mongoose.model('LocationComponent').create({ entity: Entity.Building(1), location: lot });
+    await mongoose.model('UseLotComponent').create({ entity: Entity.lotFromIndex(1, 2), tenant: null });
+    await mongoose.model('LocationComponent').create({
+      entity: Entity.Building(2), location: Entity.lotFromIndex(1, 3)
+    });
+    const result = await backfill.scan({ job: 'test', delayMs: 0 });
+    expect(result.lots).to.equal(3);
+    expect(provider.getStorageAt.callCount).to.equal(3);
+  });
+
+  it('resumes failed reads and never treats an RPC error as cleared tenancy', async function () {
+    provider.getStorageAt.onFirstCall().rejects(new Error('RPC unavailable'));
     try {
-      await backfill.scan({ job: 'test', batchSize: 2 });
-      expect.fail('expected interruption');
-    } catch (error) { expect(error.message).to.equal('RPC interrupted'); }
-    expect((await backfill.status('test')).nextBlock).to.equal(12);
-    provider.getEvents.resolves([rawEvent(12, '0x0')]);
-    await backfill.scan({ job: 'test', batchSize: 2 });
-    expect(provider.getEvents.lastCall.args[0].fromBlock).to.equal(12);
+      await backfill.scan({ job: 'test', delayMs: 0 });
+      expect.fail('expected failure');
+    } catch (error) { expect(error.message).to.equal('RPC unavailable'); }
+    expect((await backfill.status('test')).read).to.equal(0);
+    provider.getStorageAt.resolves('0x0');
+    await backfill.scan({ job: 'test', delayMs: 0 });
     expect((await backfill.status('test')).cleared).to.equal(1);
-    try {
-      await backfill.scan({ job: 'test', toBlock: 13 });
-      expect.fail('expected bounds rejection');
-    } catch (error) { expect(error.message).to.include('Block bounds differ'); }
+    await backfill.scan({ job: 'test', delayMs: 0 });
+    expect(provider.getStorageAt.callCount).to.equal(2);
   });
 
-  it('does not overwrite a newer live tenancy', async function () {
-    provider.getEvents.resolves([rawEvent(10, tenant.uuid)]);
-    await backfill.scan({ job: 'test' });
-    const newer = await mongoose.model('Starknet').create(Handler.parseEvent(rawEvent(13, '0x0')));
-    await new Handler(newer).processEvent();
-    const result = await backfill.apply({ job: 'test', processorStopped: true });
-    expect(result.skippedNewer).to.equal(1);
+  it('protects snapshots from older and same-block events and accepts later live updates', async function () {
+    provider.getStorageAt.resolves('0x0');
+    await backfill.scan({ job: 'test', delayMs: 0 });
+    await backfill.apply({ job: 'test', processorStopped: true });
+    for (const block of [11, 12]) await new Handler(await eventAt(block, tenant.uuid)).processEvent();
     expect((await mongoose.model('UseLotComponent').findOne()).tenant).to.equal(null);
+    await new Handler(await eventAt(13, tenant.uuid)).processEvent();
+    const result = await mongoose.model('UseLotComponent').findOne().lean();
+    expect(result.tenant.id).to.equal(2);
+    expect(result.snapshot).to.equal(undefined);
   });
 
-  it('retries an interrupted apply without duplicate source events', async function () {
-    provider.getEvents.resolves([rawEvent(10, tenant.uuid)]);
-    await backfill.scan({ job: 'test' });
+  it('preserves newer live events and newer snapshots', async function () {
+    await backfill.scan({ job: 'test', delayMs: 0 });
+    await new Handler(await eventAt(13, '0x0')).processEvent();
+    expect((await backfill.apply({ job: 'test', processorStopped: true })).skippedNewer).to.equal(1);
+    expect((await mongoose.model('UseLotComponent').findOne()).tenant).to.equal(null);
+    await backfill.scan({ job: 'second', delayMs: 0 });
+    await mongoose.model('UseLotComponent').deleteMany({});
+    await mongoose.model('UseLotComponent').create({
+      entity: lot, tenant: null, snapshot: { blockNumber: 14, blockHash: '0xe' }
+    });
+    expect((await backfill.apply({ job: 'second', processorStopped: true })).skippedNewer).to.equal(1);
+  });
+
+  it('resumes interrupted apply and requeues search indexing', async function () {
+    await backfill.scan({ job: 'test', delayMs: 0 });
     ElasticSearchService.queueEntityForIndexing.onFirstCall().rejects(new Error('index unavailable'));
     try {
       await backfill.apply({ job: 'test', processorStopped: true });
-      expect.fail('expected interruption');
+      expect.fail('expected failure');
     } catch (error) { expect(error.message).to.equal('index unavailable'); }
-    expect((await backfill.status('test')).phase).to.equal('apply');
-    await backfill.apply({ job: 'test', processorStopped: true });
-    expect(await mongoose.model('Starknet').countDocuments()).to.equal(1);
-    expect((await backfill.status('test')).applied).to.equal(1);
-    expect((await mongoose.model('UseLotComponent').findOne()).tenant.id).to.equal(tenant.id);
-    await backfill.apply({ job: 'test', processorStopped: true });
+    expect((await backfill.apply({ job: 'test', processorStopped: true })).applied).to.equal(1);
+    expect(await mongoose.model('UseLotComponent').countDocuments()).to.equal(1);
     expect(ElasticSearchService.queueEntityForIndexing.callCount).to.equal(2);
   });
 
-  it('leaves business data and checkpoints unchanged in dry run', async function () {
-    provider.getEvents.resolves([rawEvent(10, tenant.uuid)]);
-    expect((await backfill.scan({ job: 'test', dryRun: true })).matched).to.equal(1);
+  it('estimates candidate count in dry run without storage reads or checkpoint writes', async function () {
+    const result = await backfill.scan({ job: 'test', dryRun: true });
+    expect(result.candidates).to.equal(1);
+    expect(provider.getStorageAt.called).to.equal(false);
     expect(await backfill.jobs.countDocuments()).to.equal(0);
     expect(await backfill.lots.countDocuments()).to.equal(0);
-    expect(await mongoose.model('Starknet').countDocuments()).to.equal(0);
-    await backfill.scan({ job: 'test' });
-    await backfill.apply({ job: 'test', dryRun: true });
-    expect(await mongoose.model('UseLotComponent').countDocuments()).to.equal(0);
-    expect((await backfill.status('test')).phase).to.equal('ready');
   });
 
-  it('orders updates within a transaction and refuses a changed cutoff hash', async function () {
-    provider.getEvents.resolves([rawEvent(12, '0x0', 2), rawEvent(12, tenant.uuid, 1)]);
-    await backfill.scan({ job: 'test' });
-    expect((await backfill.status('test')).cleared).to.equal(1);
-    provider.getBlock.resolves({ blockNumber: 12, blockHash: '0xd', status: 'ACCEPTED_ON_L1' });
-    try {
-      await backfill.apply({ job: 'test', processorStopped: true });
-      expect.fail('expected cutoff mismatch');
-    } catch (error) { expect(error.message).to.include('cutoff no longer matches'); }
-    expect(await mongoose.model('UseLotComponent').countDocuments()).to.equal(0);
-  });
-
-  it('requires processor acknowledgement and finalized cutoff', async function () {
+  it('requires pausing, rejects old jobs, and verifies snapshot finality', async function () {
     try {
       await backfill.apply({ job: 'test' });
       expect.fail('expected acknowledgement');
     } catch (error) { expect(error.message).to.include('--processorStopped'); }
+    await backfill.jobs.insertOne({ _id: 'old', dispatcher });
+    try {
+      await backfill.scan({ job: 'old' });
+      expect.fail('expected version rejection');
+    } catch (error) { expect(error.message).to.include('version'); }
     provider.getBlock.resolves({ blockNumber: 12, blockHash: '0xc', status: 'ACCEPTED_ON_L2' });
     try {
       await backfill.scan({ job: 'test' });
       expect.fail('expected finality check');
-    } catch (error) { expect(error.message).to.include('finalized'); }
-    expect(await backfill.jobs.countDocuments()).to.equal(0);
+    } catch (error) { expect(error.message).to.include('L1-accepted'); }
+  });
+
+  it('uses a pinned storage RPC and fails on RPC errors', async function () {
+    const rpc = new RpcProvider({ endpoint: 'http://rpc.test' });
+    this._sandbox.stub(rpc, '_callWithBackoff').callsFake((fn) => fn());
+    const post = this._sandbox.stub(axios, 'post').resolves({ data: { result: '0x0' } });
+    expect(await rpc.getStorageAt(dispatcher, '0x456', '0xc')).to.equal('0x0');
+    expect(post.firstCall.args[1].params).to.deep.equal({
+      contract_address: dispatcher, key: '0x456', block_id: { block_hash: '0xc' }
+    });
+    post.resolves({ data: { error: { code: 24, message: 'Block not found' } } });
+    try {
+      await rpc.getStorageAt(dispatcher, '0x456', '0xc');
+      expect.fail('expected RPC error');
+    } catch (error) { expect(error.message).to.include('Storage read failed'); }
   });
 });

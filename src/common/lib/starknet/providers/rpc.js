@@ -219,6 +219,20 @@ class RpcProvider extends DefaultStarknetProvider {
     return block;
   }
 
+  async getStorageAt(address, key, blockHash) {
+    return this._callWithBackoff(async () => {
+      const response = await axios.post(this.endpoint, {
+        jsonrpc: '2.0',
+        id: 0,
+        method: 'starknet_getStorageAt',
+        params: { contract_address: address, key, block_id: { block_hash: blockHash } }
+      }, { responseType: 'json' });
+      if (response.data.error) throw new Error(`Storage read failed: ${JSON.stringify(response.data.error)}`);
+      if (typeof response.data.result !== 'string') throw new Error('Invalid storage response');
+      return response.data.result;
+    }, 'getStorageAt');
+  }
+
   async getBlockNumber({ withBackOff = true } = {}) {
     return (withBackOff) ? this._callWithBackoff(() => this._getBlockNumber(), 'getBlockNumber')
       : this._getBlockNumber();
