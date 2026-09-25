@@ -83,6 +83,11 @@ class ComponentService {
     let created = false;
     const oldDoc = (existing) ? existing.toObject() : null;
 
+    // A state snapshot includes every event through the end of its block.
+    if (existing?.snapshot?.blockNumber >= event.blockNumber) {
+      return { filter: _filter, doc: existing, updated };
+    }
+
     // test against the populated event
     const existingEvent = existing?.virtuals?.event;
 
@@ -108,7 +113,7 @@ class ComponentService {
       } else if (event.timestamp < existingEvent.timestamp) {
         return { filter: _filter, doc: existing, updated };
       }
-    } else if (existing?._id) {
+    } else if (existing?._id && !existing.snapshot) {
       logger.warn('No associated event found for component:', existing?._id);
     }
 
