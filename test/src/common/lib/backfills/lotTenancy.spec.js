@@ -100,6 +100,20 @@ describe('Lot tenancy state backfill', function () {
     expect(provider.getStorageAt.callCount).to.equal(2);
   });
 
+  it('identifies unexpected storage values and leaves the candidate unread', async function () {
+    provider.getStorageAt.resolves(Entity.Building(7).uuid);
+    try {
+      await backfill.scan({ job: 'test', delayMs: 0 });
+      expect.fail('expected invalid tenant');
+    } catch (error) {
+      expect(error.message).to.include('asteroid=1 lot=1');
+      expect(error.message).to.include(`value=${Entity.Building(7).uuid}`);
+      expect(error.message).to.include('decodedId=7');
+    }
+    expect((await backfill.status('test')).read).to.equal(0);
+    expect(await mongoose.model('UseLotComponent').countDocuments()).to.equal(0);
+  });
+
   it('protects snapshots from older and same-block events and accepts later live updates', async function () {
     provider.getStorageAt.resolves('0x0');
     await backfill.scan({ job: 'test', delayMs: 0 });

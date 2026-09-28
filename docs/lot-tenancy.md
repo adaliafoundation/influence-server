@@ -14,6 +14,15 @@ The Unique event handler indexes only `['UseLot', lot]` paths. Changes queue the
 
 Deploy a server image containing the rewritten backfill **and snapshot ordering guard** before starting. Run these commands from the influence-stack checkout, with its `.env`. Include any local Compose overrides that change application connectivity or credentials. No host Node installation, copied secrets, or writable container volume is required.
 
+Before using raw Compose commands, set the host identity as the `./stack` wrapper does (if your `.env` explicitly configures a different `HOST_UID`/`HOST_GID`, use those configured values):
+
+```sh
+export HOST_UID="${HOST_UID:-$(id -u)}"
+export HOST_GID="${HOST_GID:-$(id -g)}"
+```
+
+Without these values, Compose defaults to UID/GID 1000, which may not be able to read the host-owned secret files. Do not change secret permissions to work around a mismatched container user. A client orphan warning from using only the base Compose file is unrelated; do not use `--remove-orphans` for this operation.
+
 ### What it reads
 
 The command builds a deduplicated candidate list from MongoDB:

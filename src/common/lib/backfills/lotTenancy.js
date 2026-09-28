@@ -123,7 +123,14 @@ class LotTenancyBackfill {
       for await (const row of cursor) {
         const value = await this.provider.getStorageAt(this.dispatcher, storageKey(row.entity), state.blockHash);
         const tenant = BigInt(value) === 0n ? null : Entity.fromUuid(value);
-        if (tenant && (!tenant.isCrew() || !tenant.isValid())) throw new Error('Invalid UseLot tenant in storage');
+        if (tenant && (!tenant.isCrew() || !tenant.isValid())) {
+          const position = Entity.toEntity(row.entity).unpackLot();
+          throw new Error(
+            `Invalid UseLot tenant: asteroid=${position.asteroidId} lot=${position.lotIndex}`
+            + ` entity=${row.entity.uuid} block=${state.blockNumber} value=${value}`
+            + ` decodedLabel=${tenant.label} decodedId=${tenant.id}`
+          );
+        }
         await this.lots.updateOne({ _id: row._id }, { $set: { tenant: tenant?.toObject() || null, read: true } });
         processed += 1;
         if (processed % 100 === 0) this.log(`Read ${processed} lots this run`);
