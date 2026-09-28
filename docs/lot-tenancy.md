@@ -8,6 +8,8 @@ Lot detail responses and newly indexed lot search documents include `UseLot`:
 
 Live updates carry normal source-event metadata. Backfilled records instead carry `snapshot: { blockNumber, blockHash }`, representing state at the end of that block. Historical events through that block cannot overwrite the snapshot. A later live update replaces it with normal event provenance. A recorded tenant is not proof of active permission; consumers must evaluate the corresponding agreement separately.
 
+`tenant` preserves the recorded entity, including non-crew entities such as buildings that agreement acceptance can store. Neither live indexing nor the backfill converts it to that entity's controller. Consumers must not assume its ID is a crew ID.
+
 The Unique event handler indexes only `['UseLot', lot]` paths. Changes queue the lot for search indexing and notify the lot, asteroid, and affected tenant crew rooms with `ComponentUpdated_Unique`. Consumers must handle that event to refresh their data. Historical agreements remain available in lot details; search documents retain their existing agreement retention window. `LotUse` occupancy is not indexed by this change.
 
 ## Current-state backfill from influence-stack
