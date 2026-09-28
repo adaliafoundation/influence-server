@@ -123,7 +123,8 @@ class LotTenancyBackfill {
       for await (const row of cursor) {
         const value = await this.provider.getStorageAt(this.dispatcher, storageKey(row.entity), state.blockHash);
         const tenant = BigInt(value) === 0n ? null : Entity.fromUuid(value);
-        if (tenant && (!tenant.isCrew() || !tenant.isValid())) {
+        // Agreement acceptance can record non-crew permitted entities; preserve the chain value.
+        if (tenant && !tenant.isValid()) {
           const position = Entity.toEntity(row.entity).unpackLot();
           throw new Error(
             `Invalid UseLot tenant: asteroid=${position.asteroidId} lot=${position.lotIndex}`
