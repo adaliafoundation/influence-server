@@ -47,7 +47,7 @@ describe('Lot formatter (v1)', function () {
       expect((await formatter(indexItem)).formatted.UseLot.tenant).to.equal(null);
     });
 
-    it('should filter old prepaid agreements from the lot search document', async function () {
+    it('should preserve old prepaid agreements for SDK authorization in search documents', async function () {
       const entity = Entity.lotFromIndex(1, 1);
       const now = Math.floor(Date.now() / 1000);
 
@@ -66,7 +66,8 @@ describe('Lot formatter (v1)', function () {
       const indexItemdoc = mongoose.model('IndexItem')({ identifier: entity, model: 'Entity' });
       const result = await formatter(indexItemdoc);
 
-      expect(result.formatted.PrepaidAgreements).to.deep.equal([]);
+      expect(result.formatted.PrepaidAgreements).to.have.length(1);
+      expect(result.formatted.PrepaidAgreements[0].endTime).to.equal(now - 20 * 24 * 60 * 60);
     });
   });
 });

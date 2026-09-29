@@ -50,7 +50,7 @@ describe('Ship formatter (v1)', function () {
       expect(result._index).to.equal('ship_v1');
     });
 
-    it('should filter out upcoming or expired prepaid agreements', async function () {
+    it('should preserve complete prepaid agreements for SDK authorization', async function () {
       await mongoose.model('PrepaidAgreementComponent').create([
         {
           entity: Entity.Ship(1),
@@ -76,7 +76,7 @@ describe('Ship formatter (v1)', function () {
       ]);
       const indexItemdoc = mongoose.model('IndexItem')({ identifier: Entity.Ship(1), model: 'Entity' });
       const result = await formatter(indexItemdoc.toJSON());
-      expect(result.formatted.PrepaidAgreements).to.have.length(2);
+      expect(result.formatted.PrepaidAgreements).to.have.length(3);
     });
   });
 });
