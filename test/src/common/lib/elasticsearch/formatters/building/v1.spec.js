@@ -51,7 +51,7 @@ describe('Building formatter (v1)', function () {
       });
     });
 
-    it('should filter out upcoming or expired prepaid agreements', async function () {
+    it('should preserve complete prepaid agreements for SDK authorization', async function () {
       await mongoose.model('PrepaidAgreementComponent').create([
         {
           entity: Entity.Building(1),
@@ -77,7 +77,7 @@ describe('Building formatter (v1)', function () {
       ]);
       const indexItemdoc = mongoose.model('IndexItem')({ identifier: Entity.Building(1), model: 'Entity' });
       const result = await formatter(indexItemdoc.toJSON());
-      expect(result.formatted.PrepaidAgreements).to.have.length(2);
+      expect(result.formatted.PrepaidAgreements).to.have.length(3);
     });
   });
 });
