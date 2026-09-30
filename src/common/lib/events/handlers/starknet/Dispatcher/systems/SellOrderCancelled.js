@@ -1,5 +1,5 @@
 const { Address } = require('@influenceth/sdk');
-const { ActivityService } = require('@common/services');
+const { ActivityService, LocationComponentService } = require('@common/services');
 const StarknetBaseHandler = require('../../Handler');
 
 class Handler extends StarknetBaseHandler {
@@ -20,6 +20,14 @@ class Handler extends StarknetBaseHandler {
     if (activityResult?.created === 0) return;
 
     this.messages.push({ to: `Crew::${callerCrew.id}` });
+
+    const [exchangeAsteroid, storageAsteroid] = await Promise.all([
+      LocationComponentService.getAsteroidForEntity(exchange),
+      LocationComponentService.getAsteroidForEntity(storage)
+    ]);
+
+    if (exchangeAsteroid) this.addAsteroidRoomMessage(exchangeAsteroid);
+    if (storageAsteroid) this.addAsteroidRoomMessage(storageAsteroid);
   }
 
   static transformEventData(event) {
