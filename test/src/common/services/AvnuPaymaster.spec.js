@@ -10,6 +10,11 @@ const { AvnuPaymasterService } = require('@common/services');
 const USER_ADDRESS = Address.toStandard('0x123', 'starknet');
 const READY_CLASS_HASH = '0x073414441639dcd11d1846f287650a00c60c416b9d3ba45d31c651672125b2c2';
 
+const deploymentEligibilityCases = [
+  { status: 'paid_pending_customization', sinceField: 'paidAt', otherField: 'grantedAt' },
+  { status: 'grant_confirmed', sinceField: 'grantedAt', otherField: 'paidAt' }
+];
+
 const readyDeployTransaction = ({ address = USER_ADDRESS, publicKey = '0x789' } = {}) => ({
   deployment: {
     address,
@@ -241,6 +246,116 @@ describe('AvnuPaymasterService', function () {
         }
       }),
       userAddress: transaction.deployment.address
+    });
+  });
+
+  describe('deployment purchase eligibility', function () {
+    let transaction;
+    let body;
+    let expiredAt;
+
+    beforeEach(function () {
+      transaction = readyDeployTransaction();
+      transaction.deployment.address = hash.calculateContractAddressFromHash(
+        transaction.deployment.salt,
+        transaction.deployment.class_hash,
+        transaction.deployment.calldata,
+        0
+      );
+      body = paymasterRequest({
+        params: {
+          parameters: { fee_mode: { mode: 'sponsored' }, version: '0x1' },
+          transaction
+        }
+      });
+      expiredAt = new Date(Date.now()
+        - (Number(appConfig.get('Avnu.paymasterStarterPackSponsorshipDays')) + 1) * 24 * 60 * 60 * 1000);
+      this._sandbox.stub(starknetClient, 'createRpcProvider').resolves({
+        getClassAt: this._sandbox.stub().rejects(
+          new RpcError({ code: 20, message: 'Contract not found' }, 'starknet_getClassAt', [])
+        )
+      });
+    });
+
+    // Generate the same eligibility checks for both purchase states.
+    // eslint-disable-next-line mocha/no-setup-in-describe
+    deploymentEligibilityCases.forEach(({ status, sinceField, otherField }) => {
+      it(`should accept ${status} using ${sinceField} despite an expired ${otherField}`, async function () {
+        const purchase = await createPurchase({
+          recipient: transaction.deployment.address,
+          status,
+          [otherField]: expiredAt
+        });
+        const eligible = await AvnuPaymasterService.validateRequest({
+          body, userAddress: transaction.deployment.address
+        });
+        expect(eligible._id.toString()).to.equal(purchase._id.toString());
+      });
+
+      ['expired', 'missing'].forEach((timestamp) => {
+        it(`should reject ${status} with ${timestamp} ${sinceField} despite recent ${otherField}`, async function () {
+          await createPurchase({
+            recipient: transaction.deployment.address,
+            status,
+            [sinceField]: timestamp === 'expired' ? expiredAt : undefined
+          });
+          await expectReject(AvnuPaymasterService.validateRequest({
+            body, userAddress: transaction.deployment.address
+          }), 'No eligible starter pack purchase for paymaster sponsorship');
+        });
+      });
+
+      [{ recipient: USER_ADDRESS }, { chainId: 'OTHER_CHAIN' }].forEach((overrides) => {
+        it(`should reject ${status} for another ${Object.keys(overrides)[0]}`, async function () {
+          await createPurchase({ recipient: transaction.deployment.address, status, ...overrides });
+          await expectReject(AvnuPaymasterService.validateRequest({
+            body, userAddress: transaction.deployment.address
+          }), 'No eligible starter pack purchase for paymaster sponsorship');
+        });
+      });
+    });
+
+    it('should share the existing purchase budget between gameplay and deployment', async function () {
+      appConfig.Avnu.paymasterMaxStarterPackBudgetStrk = 1;
+      const purchase = await createPurchase({
+        recipient: transaction.deployment.address,
+        paidAt: expiredAt,
+        paymasterReservedMilliStrk: 998
+      });
+      const invokeBody = paymasterRequest();
+      invokeBody.params.transaction.invoke.user_address = transaction.deployment.address;
+      const postStub = this._sandbox.stub(axios, 'post');
+      postStub.onFirstCall().resolves(buildResponse(invokeBody.params.transaction));
+      postStub.onSecondCall().resolves(buildResponse(transaction));
+      await AvnuPaymasterService.forward({ body: invokeBody, userAddress: transaction.deployment.address });
+      await AvnuPaymasterService.forward({ body, userAddress: transaction.deployment.address });
+
+      const updated = await mongoose.model('StarterPackPurchase').findById(purchase._id);
+      expect(updated.paymasterReservedMilliStrk).to.equal(1000);
+      expect(updated.paidAt.getTime()).to.equal(purchase.paidAt.getTime());
+      expect(updated.grantedAt.getTime()).to.equal(purchase.grantedAt.getTime());
+      const reservations = await mongoose.model('PaymasterSponsorship').find({ purchase: purchase._id });
+      expect(reservations).to.have.length(2);
+      expect(reservations.map(({ transactionType }) => transactionType)).to.have.members(['deploy', 'invoke']);
+
+      await expectReject(AvnuPaymasterService.validateRequest({
+        body: {
+          ...body,
+          method: 'paymaster_executeTransaction',
+          params: { ...body.params, parameters: { ...body.params.parameters, version: '0x2' } } },
+        userAddress: transaction.deployment.address
+      }), 'No matching paymaster sponsorship reservation');
+    });
+
+    it('should reject deployment when a confirmed purchase has exhausted its budget', async function () {
+      await createPurchase({
+        recipient: transaction.deployment.address,
+        paymasterReservedMilliStrk: Number(appConfig.get('Avnu.paymasterMaxStarterPackBudgetStrk')) * 1000
+      });
+      this._sandbox.stub(axios, 'post').resolves(buildResponse(transaction));
+      await expectReject(AvnuPaymasterService.forward({
+        body, userAddress: transaction.deployment.address
+      }), 'Starter pack paymaster budget exceeded');
     });
   });
 
