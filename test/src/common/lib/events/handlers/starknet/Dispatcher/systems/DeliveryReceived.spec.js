@@ -100,6 +100,31 @@ describe('DeliveryReceived Handler', function () {
       await handler.processEvent();
       expect(handler.messages._messages).to.have.lengthOf(3);
     });
+
+    it('should resolve the start activity on retry after resolution fails', async function () {
+      const failure = new Error('Activity resolution failed');
+      const resolveStartActivity = this._sandbox.stub(ActivityService, 'resolveStartActivity').rejects(failure);
+      let error;
+      try {
+        await (new Handler(event)).processEvent();
+      } catch (err) {
+        error = err;
+      }
+      expect(error).to.equal(failure);
+      expect(await mongoose.model('Activity').countDocuments({ 'event.name': 'DeliveryReceived' })).to.equal(1);
+      const unresolvedActivity = await mongoose.model('Activity').findOne({ 'event.name': 'DeliverySent' });
+      expect(unresolvedActivity.unresolvedFor).to.have.lengthOf(1);
+      expect(unresolvedActivity.isUnresolved).to.equal(true);
+
+      resolveStartActivity.restore();
+      await (new Handler(event)).processEvent();
+      await (new Handler(event)).processEvent();
+
+      const resolvedActivity = await mongoose.model('Activity').findOne({ 'event.name': 'DeliverySent' });
+      expect(resolvedActivity.unresolvedFor).to.equal(null);
+      expect(resolvedActivity.isUnresolved).to.equal(null);
+      expect(await mongoose.model('Activity').countDocuments({ 'event.name': 'DeliveryReceived' })).to.equal(1);
+    });
   });
 
   describe('transformEventData', function () {

@@ -21,8 +21,11 @@ const TRANSACTION_METHODS = [
 const ALLOWED_METHODS = [...READ_METHODS, ...TRANSACTION_METHODS];
 const READY_V05_CLASS_HASH = '0x073414441639dcd11d1846f287650a00c60c416b9d3ba45d31c651672125b2c2';
 const FRI_PER_MILLI_STRK = 10n ** 15n;
-const DEPLOY_PURCHASE_STATUSES = ['paid_pending_customization'];
-const INVOKE_PURCHASE_STATUSES = ['grant_confirmed'];
+const DEPLOY_PURCHASE_ELIGIBILITY = [
+  { status: 'paid_pending_customization', sinceField: 'paidAt' },
+  { status: 'grant_confirmed', sinceField: 'grantedAt' }
+];
+const INVOKE_PURCHASE_ELIGIBILITY = [{ status: 'grant_confirmed', sinceField: 'grantedAt' }];
 const ZERO_ADDRESS = Address.toStandard(0, 'starknet');
 
 const normalizeSelector = (selector) => {
@@ -42,7 +45,7 @@ const normalizeCalldata = (calldata = []) => calldata.map(normalizeFelt);
 const callContractAddress = (call) => call.contract_address || call.contractAddress || call.to || call.To;
 const callSelector = (call) => call.entry_point_selector || call.entrypoint || call.selector || call.Selector;
 
-const paidSinceCutoff = () => new Date(
+const sponsorshipSinceCutoff = () => new Date(
   Date.now() - Number(appConfig.get('Avnu.paymasterStarterPackSponsorshipDays')) * 24 * 60 * 60 * 1000
 );
 
@@ -52,12 +55,17 @@ const reservationCutoff = () => new Date(
   Date.now() - Number(appConfig.get('Avnu.paymasterReservationTtlSeconds')) * 1000
 );
 
-const starterPackPurchaseQuery = ({ recipient, sinceField, statuses }) => ({
-  chainId: chainId(),
-  [sinceField]: { $gte: paidSinceCutoff() },
-  recipient: Address.toStandard(recipient, 'starknet'),
-  status: { $in: statuses }
-});
+const starterPackPurchaseQuery = ({ recipient, eligibility }) => {
+  const cutoff = sponsorshipSinceCutoff();
+  return {
+    chainId: chainId(),
+    recipient: Address.toStandard(recipient, 'starknet'),
+    $or: eligibility.map(({ status, sinceField }) => ({
+      status,
+      [sinceField]: { $gte: cutoff }
+    }))
+  };
+};
 
 const isBuildMethod = (method) => method === 'paymaster_buildTransaction';
 const isExecuteMethod = (method) => method === 'paymaster_executeTransaction';
@@ -207,14 +215,14 @@ class AvnuPaymasterService {
     }
   }
 
-  static async starterPackPurchaseForRecipient({ recipient, sinceField, statuses }) {
+  static async starterPackPurchaseForRecipient({ recipient, sinceField, eligibility }) {
     return mongoose.model('StarterPackPurchase').findOne(
-      starterPackPurchaseQuery({ recipient, sinceField, statuses })
+      starterPackPurchaseQuery({ recipient, eligibility })
     ).sort({ [sinceField]: -1 });
   }
 
-  static async validateStarterPackEligibility({ recipient, sinceField, statuses }) {
-    const purchase = await this.starterPackPurchaseForRecipient({ recipient, sinceField, statuses });
+  static async validateStarterPackEligibility({ recipient, sinceField, eligibility }) {
+    const purchase = await this.starterPackPurchaseForRecipient({ recipient, sinceField, eligibility });
     if (!purchase) throw new ValidationError('No eligible starter pack purchase for paymaster sponsorship');
     return purchase;
   }
@@ -239,7 +247,7 @@ class AvnuPaymasterService {
     const purchase = await this.validateStarterPackEligibility({
       recipient: deploymentAddress,
       sinceField: 'paidAt',
-      statuses: DEPLOY_PURCHASE_STATUSES
+      eligibility: DEPLOY_PURCHASE_ELIGIBILITY
     });
     await this.validateAccountUndeployed(deploymentAddress);
 
@@ -311,7 +319,7 @@ class AvnuPaymasterService {
     const purchase = await this.validateStarterPackEligibility({
       recipient: transaction.invoke.user_address,
       sinceField: 'grantedAt',
-      statuses: INVOKE_PURCHASE_STATUSES
+      eligibility: INVOKE_PURCHASE_ELIGIBILITY
     });
 
     const calls = invokeCalls(transaction) || [];

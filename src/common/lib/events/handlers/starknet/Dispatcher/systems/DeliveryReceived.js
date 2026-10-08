@@ -40,6 +40,9 @@ class Handler extends StarknetBaseHandler {
       event: this.eventDoc
     });
 
+    // Retry resolution even if the completion activity was created on a previous attempt.
+    await ActivityService.resolveStartActivity('DeliverySent', this.eventDoc, ['name', 'returnValues.delivery.id']);
+
     if (activityResult?.created === 0) return;
 
     const [
@@ -53,9 +56,6 @@ class Handler extends StarknetBaseHandler {
       LocationComponentService.getAsteroidForEntity(dest),
       LocationComponentService.getAsteroidForEntity(origin)
     ]);
-
-    // resolve the DeliverySent activity
-    await ActivityService.resolveStartActivity('DeliverySent', this.eventDoc, ['name', 'returnValues.delivery.id']);
 
     // add WS messages
     this.addCrewRoomMessage(callerCrew);
