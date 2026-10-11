@@ -162,7 +162,8 @@ contains `grantedCrewmate` and `grantedCrew`; the normal component events update
 
 The purchase refund window and starter pack subsidy window are separate. The refund window closes when the server
 submits the starter pack grant transaction, or 14 days after Stripe payment if customization never completes. The
-subsidized Starknet fee window starts from the indexed `OffchainStarterPackGranted` timestamp and lasts 14 days. The
+subsidized Starknet fee window starts from the indexed `OffchainStarterPackGranted` timestamp and defaults to 30 days,
+configurable with `AVNU_PAYMASTER_STARTER_PACK_SPONSORSHIP_DAYS`. The API's `sponsorshipEndsAt` uses this same setting. The
 server also owns the `restrictedUntil` value sent to the grant transaction so on-chain starter restrictions are based
 on grant submission timing, not client-supplied payment timing.
 
@@ -237,7 +238,7 @@ tracking and rotation. Requests are limited per authenticated user; the default 
 changed with
 `AVNU_PAYMASTER_RATE_LIMIT_PER_MINUTE`.
 
-Each starter pack has a default sponsored fee budget of 100 STRK across account deployment and the 14-day post-grant
+Each starter pack has a default sponsored fee budget of 100 STRK across account deployment and the configured post-grant
 subsidy window. The server reserves AVNU's `suggested_max_fee_in_strk` from `paymaster_buildTransaction`, rounded up to
 the nearest milliSTRK, and `paymaster_executeTransaction` must match a recent reserved build response. The budget can be
 changed with `AVNU_PAYMASTER_MAX_STARTER_PACK_BUDGET_STRK`; the reservation TTL defaults to 300 seconds and can be
@@ -260,7 +261,7 @@ Starter account deployment sponsorship is allowed only when:
   `signerCount = 0x1`, `salt = publicKey`, and the recomputed address matching `deployment.address`
 
 Sponsored invoke transactions are allowed only for confirmed starter pack recipients in the current Starknet
-environment. The 14-day sponsorship window starts at the indexed `OffchainStarterPackGranted` timestamp, not the
+environment. The sponsorship window (30 days by default) starts at the indexed `OffchainStarterPackGranted` timestamp, not the
 Stripe payment timestamp. Multicalls are supported, but every call in the multicall must target one of:
 - `Contracts.starknet.dispatcher` with entrypoint `run_system`
 - `Contracts.starknet.sway` with entrypoint `transfer_with_confirmation`

@@ -240,7 +240,10 @@ class StarterPackPurchaseService {
       requiredCrewmates: STARTER_PACK_COUNTS[doc.productId],
       refundWindowClosesAt: refundClosesAt,
       refundWindowOpen: Boolean(refundClosesAt && new Date(refundClosesAt) > new Date()),
-      sponsorshipEndsAt: OffchainPurchaseService.addRestrictionWindow(doc.grantedAt),
+      sponsorshipEndsAt: doc.grantedAt ? new Date(
+        new Date(doc.grantedAt).getTime()
+        + Number(appConfig.get('Avnu.paymasterStarterPackSponsorshipDays')) * 24 * 60 * 60 * 1000
+      ) : null,
       status: doc.status,
       stripeCheckoutSessionId: doc.stripeCheckoutSessionId,
       txHash: doc.txHash
