@@ -68,6 +68,12 @@ async function main() {
     server.stderr.on('data', (chunk) => { logs += chunk; });
     const get = (path) => fetch(`http://127.0.0.1:3001${path}`, { signal: AbortSignal.timeout(4000) });
     await waitFor(async () => (await get('/livez')).ok, 'API startup');
+    // The HTTP listener starts before the API's dependency connections are ready.
+    // Workers remain absent so readiness must still fail once dependencies connect.
+    await waitFor(async () => {
+      const { checks } = await (await get('/readyz')).json();
+      return ['mongodb', 'redis', 'elasticsearch'].every((name) => checks[name] === true);
+    }, 'API dependency connections');
     const initial = await get('/readyz');
     assert.equal(initial.status, 503);
     const initialState = await initial.json();
