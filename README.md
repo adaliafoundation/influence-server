@@ -255,10 +255,14 @@ Starter account deployment sponsorship is allowed only when:
 - the recipient has a paid starter pack purchase in the current Starknet environment with status
   `paid_pending_customization`
 - the account is not yet deployed on Starknet
-- the deployment uses Ready v0.5 class hash
-  `0x073414441639dcd11d1846f287650a00c60c416b9d3ba45d31c651672125b2c2`
-- the deployment constructor calldata is `[guardian, publicKey, signerCount]`, with `guardian = 0x0`,
-  `signerCount = 0x1`, `salt = publicKey`, and the recomputed address matching `deployment.address`
+- the deployment uses Ready v0.4.0 class hash
+  `0x036078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f`
+- the deployment constructor calldata is `[signerType, publicKey, guardianOption]`, with `signerType = 0x0` (Starknet signer),
+  `guardianOption = 0x1` (no guardian), `salt = publicKey`, and the recomputed address matching `deployment.address`
+
+The Privy client must use this same v0.4.0 class hash when deriving account addresses and submitting deployments.
+The Argent relayer endpoint forwards the client-provided class hash unchanged. Changing the class hash changes the
+derived address; this switch does not migrate existing v0.5.0 accounts or their balances.
 
 Sponsored invoke transactions are allowed only for confirmed starter pack recipients in the current Starknet
 environment. The sponsorship window (30 days by default) starts at the indexed `OffchainStarterPackGranted` timestamp, not the

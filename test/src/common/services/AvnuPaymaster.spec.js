@@ -8,7 +8,7 @@ const starknetClient = require('@common/lib/starknet/client');
 const { AvnuPaymasterService } = require('@common/services');
 
 const USER_ADDRESS = Address.toStandard('0x123', 'starknet');
-const READY_CLASS_HASH = '0x073414441639dcd11d1846f287650a00c60c416b9d3ba45d31c651672125b2c2';
+const READY_CLASS_HASH = '0x036078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f';
 
 const deploymentEligibilityCases = [
   { status: 'paid_pending_customization', sinceField: 'paidAt', otherField: 'grantedAt' },
@@ -220,7 +220,7 @@ describe('AvnuPaymasterService', function () {
     );
   });
 
-  it('should allow Ready deploys for paid starter pack purchasers with undeployed accounts', async function () {
+  it('should allow Ready v0.4.0 deploys for paid starter pack purchasers with undeployed accounts', async function () {
     const transaction = readyDeployTransaction({ publicKey: '0x789' });
     transaction.deployment.address = hash.calculateContractAddressFromHash(
       transaction.deployment.salt,
@@ -246,6 +246,47 @@ describe('AvnuPaymasterService', function () {
         }
       }),
       userAddress: transaction.deployment.address
+    });
+  });
+
+  describe('Ready v0.4.0 deployment validation', function () {
+    const invalidDeployments = [
+      {
+        name: 'v0.5.0 accounts',
+        overrides: { class_hash: '0x073414441639dcd11d1846f287650a00c60c416b9d3ba45d31c651672125b2c2' },
+        error: 'Unsupported account class hash'
+      },
+      {
+        name: 'non-Starknet signers',
+        overrides: { calldata: ['0x1', '0x789', '0x1'] },
+        error: 'Invalid account signer type'
+      },
+      {
+        name: 'accounts with a guardian',
+        overrides: { calldata: ['0x0', '0x789', '0x0'] },
+        error: 'Invalid account guardian'
+      }
+    ];
+
+    // eslint-disable-next-line mocha/no-setup-in-describe
+    invalidDeployments.forEach(({ name, overrides, error }) => {
+      it(`should reject ${name}`, async function () {
+        const transaction = readyDeployTransaction();
+        Object.assign(transaction.deployment, overrides);
+        transaction.deployment.address = hash.calculateContractAddressFromHash(
+          transaction.deployment.salt,
+          transaction.deployment.class_hash,
+          transaction.deployment.calldata,
+          0
+        );
+        this._sandbox.stub(AvnuPaymasterService, 'validateStarterPackEligibility').resolves({});
+        this._sandbox.stub(AvnuPaymasterService, 'validateAccountUndeployed').resolves();
+
+        await expectReject(AvnuPaymasterService.validateDeployTransaction({
+          transaction,
+          userAddress: transaction.deployment.address
+        }), error);
+      });
     });
   });
 

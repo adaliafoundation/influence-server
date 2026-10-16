@@ -5,13 +5,13 @@ const { ArgentService } = require('@common/services');
 
 describe('ArgentService', function () {
   describe('deployAccount', function () {
-    it('should return the result from the relayerPath', async function () {
+    it('should relay a Ready v0.4.0 deployment unchanged', async function () {
       const stub = this._sandbox.stub(axios, 'post').resolves({ transactionHash: '0x1234567890abcdef' });
 
       const result = await ArgentService.deployAccount({
-        calldata: ['0x12345678'],
-        class_hash: '0x0123456789',
-        salt: '0x1'
+        calldata: ['0x0', '0x12345678', '0x1'],
+        class_hash: '0x036078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f',
+        salt: '0x12345678'
       });
 
       const expectedUrl = 'http://null.localhost/v1/relayer/execute';
@@ -20,7 +20,10 @@ describe('ArgentService', function () {
         calls: [{
           contractAddress: '0x041a78e741e5af2fec34b695679bc6891742439f7afb8484ecd7766661ad02bf',
           entrypoint: '0x1987cbd17808b9a23693d4de7e246a443cfe37e6e7fbaeabd7d7e6532b07c3d',
-          calldata: ['0x0123456789', '0x1', '0x0', '0x1', '0x12345678']
+          calldata: [
+            '0x036078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f',
+            '0x12345678', '0x0', '0x3', '0x0', '0x12345678', '0x1'
+          ]
         }]
       };
 

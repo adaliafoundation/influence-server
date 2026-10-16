@@ -19,7 +19,7 @@ const TRANSACTION_METHODS = [
 ];
 
 const ALLOWED_METHODS = [...READ_METHODS, ...TRANSACTION_METHODS];
-const READY_V05_CLASS_HASH = '0x073414441639dcd11d1846f287650a00c60c416b9d3ba45d31c651672125b2c2';
+const READY_V04_CLASS_HASH = '0x036078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f';
 const FRI_PER_MILLI_STRK = 10n ** 15n;
 const DEPLOY_PURCHASE_ELIGIBILITY = [
   { status: 'paid_pending_customization', sinceField: 'paidAt' },
@@ -252,7 +252,7 @@ class AvnuPaymasterService {
     await this.validateAccountUndeployed(deploymentAddress);
 
     const classHash = Address.toStandard(deployment.class_hash, 'starknet');
-    if (classHash !== Address.toStandard(READY_V05_CLASS_HASH, 'starknet')) {
+    if (classHash !== Address.toStandard(READY_V04_CLASS_HASH, 'starknet')) {
       throw new ValidationError('Unsupported account class hash');
     }
     if (Number(deployment.version) !== 1) throw new ValidationError('Unsupported account deployment version');
@@ -260,11 +260,11 @@ class AvnuPaymasterService {
     const calldata = normalizeCalldata(deployment.calldata);
     if (calldata.length !== 3) throw new ValidationError('Invalid account deployment calldata');
 
-    const [guardian, publicKey, signerCount] = calldata;
-    if (Address.toStandard(guardian, 'starknet') !== ZERO_ADDRESS) {
-      throw new ValidationError('Invalid account guardian');
+    const [signerType, publicKey, guardianOption] = calldata;
+    if (Address.toStandard(signerType, 'starknet') !== ZERO_ADDRESS) {
+      throw new ValidationError('Invalid account signer type');
     }
-    if (Number(signerCount) !== 1) throw new ValidationError('Invalid account signer count');
+    if (Number(guardianOption) !== 1) throw new ValidationError('Invalid account guardian');
     if (BigInt(deployment.salt) !== BigInt(publicKey)) throw new ValidationError('Invalid account deployment salt');
 
     const calculatedAddress = hash.calculateContractAddressFromHash(
