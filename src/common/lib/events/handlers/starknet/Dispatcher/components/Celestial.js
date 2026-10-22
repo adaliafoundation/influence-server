@@ -24,6 +24,7 @@ class Handler extends BaseHandler {
     });
 
     if (!updated) return;
+    this.messages.push({ to: `Asteroid::${entity.id}` });
     await ElasticSearchService.queueEntityForIndexing(entity);
 
     if (

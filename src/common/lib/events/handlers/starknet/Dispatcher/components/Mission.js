@@ -26,7 +26,7 @@ class Handler extends BaseHandler {
     if (data.subjectUuid) {
       const subject = subjectFromUuid(data.subjectUuid);
       this.messages.push({ to: subjectRoom(subject) });
-    } else if (['Definition', 'DefinitionCount'].includes(data.namespace)) {
+    } else if (['Definition', 'DefinitionCount', 'ColonyReward'].includes(data.namespace)) {
       this.messages.push({});
     }
   }
