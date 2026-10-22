@@ -1,4 +1,5 @@
 const { ComponentService, ElasticSearchService } = require('@common/services');
+const LocationComponentService = require('@common/services/Components/Location');
 const BaseHandler = require('../../Handler');
 
 class Handler extends BaseHandler {
@@ -19,7 +20,10 @@ class Handler extends BaseHandler {
       replace: true
     });
 
-    if (updated) await ElasticSearchService.queueEntityForIndexing(returnValues.entity);
+    if (!updated) return;
+    await ElasticSearchService.queueEntityForIndexing(returnValues.entity);
+    const asteroid = await LocationComponentService.getAsteroidForEntity(returnValues.entity);
+    if (asteroid) this.messages.push({ to: `Asteroid::${asteroid.id}` });
   }
 
   static transformEventData(event) {

@@ -5,6 +5,9 @@ const cors = require('@koa/cors');
 const corsOrJwt = require('@api/plugins/corsOrJwt');
 const { allowedOrigin } = require('@api/plugins/origin');
 const MissionService = require('@common/services/Mission');
+const ColonizationMissionService = require('@common/services/ColonizationMission');
+const MissionObservationService = require('@common/services/MissionObservation');
+const { observationInput, entityId } = require('@common/lib/missionObservation');
 const MissionBindingService = require('@common/services/MissionBinding');
 const { bindingTypes } = require('@common/lib/missionBindings');
 const { Entity } = require('@influenceth/sdk');
@@ -35,12 +38,16 @@ const router = new KoaRouter()
   .use(cors({ origin: allowedOrigin }))
   .use(corsOrJwt)
   .get('/v2/missions/starter/:crewId', async (ctx) => {
-    const crewId = readInput(ctx, () => {
-      const value = felt(ctx.params.crewId);
-      if (BigInt(value) === 0n || BigInt(value) >= (2n ** 64n)) throw new Error('Invalid crew ID');
-      return value;
-    });
+    const crewId = readInput(ctx, () => entityId(ctx.params.crewId));
     ctx.body = await MissionService.getStarter(crewId);
+  })
+  .get('/v2/missions/colonization/:asteroidId', async (ctx) => {
+    const asteroidId = readInput(ctx, () => entityId(ctx.params.asteroidId));
+    ctx.body = await ColonizationMissionService.getSummary(asteroidId);
+  })
+  .get('/v2/missions/observation-candidates', async (ctx) => {
+    const input = readInput(ctx, () => observationInput(ctx.query));
+    ctx.body = await MissionObservationService.getCandidates(input);
   })
   .get('/v2/missions/campaigns/:campaign', async (ctx) => {
     const campaign = readInput(ctx, () => felt(ctx.params.campaign));

@@ -1,5 +1,5 @@
 const { Entity } = require('@influenceth/sdk');
-const { felt } = require('./missions');
+const { felt, subjectUuid } = require('./missions');
 
 const bindingTypes = {
   Built: { component: 'Building', label: Entity.IDS.BUILDING, helper: 'getBuildingFingerprint' },
@@ -90,4 +90,16 @@ const decodeComponent = (component, event) => {
   return { path, data };
 };
 
-module.exports = { bindingTypes, decodeComponent };
+// Validate the retained source before using it for any mission fingerprint.
+const componentSource = (component, event, entity, slot) => {
+  if (!event || event.removed || !event.data?.length) return { reason: 'source_event_unavailable' };
+  const expectedName = component === 'Processor' ? 'ComponentUpdated_Processor_V1' : `ComponentUpdated_${component}`;
+  if (event.event !== expectedName) return { reason: 'unsupported_component_version' };
+  const { path, data } = decodeComponent(component, event);
+  if (path[0] !== felt(subjectUuid(entity)) || (slot !== undefined && path[1] !== String(slot))) {
+    throw new Error('Component source path mismatch');
+  }
+  return { data };
+};
+
+module.exports = { bindingTypes, decodeComponent, componentSource };

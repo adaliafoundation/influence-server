@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const { Mission, StarterMission, Processor } = require('@influenceth/sdk');
-const { bindingTypes, decodeComponent } = require('@common/lib/missionBindings');
-const { felt, pathKey, subjectUuid } = require('@common/lib/missions');
+const { bindingTypes, componentSource } = require('@common/lib/missionBindings');
+const { pathKey, subjectUuid } = require('@common/lib/missions');
 const MissionService = require('./Mission');
 
 class MissionBindingService {
@@ -46,13 +46,8 @@ class MissionBindingService {
     if (!component) return unknown('component_not_indexed');
     result.componentEventId = component.event?.id?.toString() || null;
     const event = component.event?.id && await mongoose.model('Starknet').findById(component.event.id).lean();
-    if (!event || event.removed || !event.data?.length) return unknown('source_event_unavailable');
-    const expectedName = type.component === 'Processor' ? 'ComponentUpdated_Processor_V1'
-      : `ComponentUpdated_${type.component}`;
-    if (event.event !== expectedName) return unknown('unsupported_component_version');
-    const { path: componentPath, data } = decodeComponent(type.component, event);
-    if (componentPath[0] !== felt(subjectUuid(entity))
-      || (type.slotted && componentPath[1] !== String(slot))) throw new Error('Component source path mismatch');
+    const { data, reason } = componentSource(type.component, event, entity, type.slotted ? slot : undefined);
+    if (reason) return unknown(reason);
 
     // Completion resets Processor before its mission evidence is cleared. Never hash that reset state.
     if (kind === 'Process' && Number(data.status) !== Processor.STATUSES.RUNNING) {

@@ -1,14 +1,10 @@
 const mongoose = require('mongoose');
 const { Mission, StarterMission, Entity } = require('@influenceth/sdk');
-const { felt, jsonSafe, pathKey, subjectUuid, slotOrder } = require('@common/lib/missions');
+const { felt, jsonSafe, subjectUuid, slotOrder } = require('@common/lib/missions');
+const { readCells } = require('@common/lib/missionState');
 const ConstantService = require('./Constant');
 
 const model = () => mongoose.model('MissionComponent');
-const readCells = async (paths) => {
-  const cells = await model().find({ pathKey: { $in: paths.map(pathKey) } }).lean();
-  const values = new Map(cells.map((cell) => [cell.pathKey, cell.value]));
-  return paths.map((path) => values.get(pathKey(path)) || '0');
-};
 
 class MissionService {
   static async getCampaign(campaignId) {

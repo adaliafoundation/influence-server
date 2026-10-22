@@ -17,7 +17,7 @@ class Handler extends BaseHandler {
     // calculate the full location for the entity
     const fullLocation = await LocationComponentService.getFullLocation(location);
 
-    const { updated } = await ComponentService.updateOrCreateFromEvent({
+    const { updated, oldDoc } = await ComponentService.updateOrCreateFromEvent({
       component: 'Location',
       event: this.eventDoc,
       data: { ...this.eventDoc.returnValues, locations: fullLocation },
@@ -26,6 +26,13 @@ class Handler extends BaseHandler {
 
     if (!updated) return;
     await ElasticSearchService.queueEntityForIndexing(entity);
+    if (entity.label === Entity.IDS.BUILDING) {
+      const asteroids = [...(oldDoc?.locations || []), ...fullLocation]
+        .filter((item) => item.label === Entity.IDS.ASTEROID);
+      [...new Set(asteroids.map((item) => String(item.id)))].forEach((id) => {
+        this.messages.push({ to: `Asteroid::${id}` });
+      });
+    }
 
     // If we are updating a ship's location componet data, we need to update crew's full location
     if (entity.label === Entity.IDS.SHIP) await LocationComponentService.refreshCrewLocationsAtLocation(entity);
