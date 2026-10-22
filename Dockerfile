@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Production dependencies and runtime share the same pinned OS/Node ABI.
-FROM node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284 AS production-base
+FROM node:22.23.4-trixie-slim@sha256:8eb619e402eaede1748a3c8173bffab391592812e85136452f781741c7242ddf AS production-base
 WORKDIR /app
 ENV NODE_ENV=production
 # Security updates newer than the pinned upstream image; keep versions explicit.
@@ -51,7 +51,7 @@ CMD ["node", "src/api/server.js"]
 ############################
 # Runtime image
 ############################
-FROM node:22-slim AS runtime
+FROM node:22.23.4-slim AS runtime
 
 ARG NODE_ENV=production
 ENV NODE_ENV=$NODE_ENV
