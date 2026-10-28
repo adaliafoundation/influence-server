@@ -87,13 +87,34 @@ test('only accepted risk is limited to 30 days', () => {
 
 test('recorded not-affected decisions cover December 31 and expire on January 1 UTC', () => {
   const policy = require('../../security/vulnerability-exceptions.json');
-  assert.equal(policy.exceptions.length, 7);
+  assert.equal(policy.exceptions.length, 8);
   for (const entry of policy.exceptions) {
     assert.equal(entry.disposition, 'not_affected');
     assert.equal(entry.expiresAt, '2027-01-01T00:00:00Z');
   }
   assert.doesNotThrow(() => evaluate({ matches: [] }, policy, Date.parse('2026-12-31T23:59:59.999Z')));
   assert.throws(() => evaluate({ matches: [] }, policy, Date.parse('2027-01-01T00:00:00Z')), /exception dates/);
+});
+
+test('Zod reachability exception permits only the reviewed version and advisory', () => {
+  const policy = require('../../security/vulnerability-exceptions.json');
+  const reviewedAt = Date.parse('2026-10-28T12:00:00Z');
+  const match = {
+    vulnerability: {
+      id: 'GHSA-mrhx-c7xc-m3w5', namespace: 'github:language:javascript', severity: 'High',
+      fix: { state: 'fixed', versions: ['4.6.6'] }
+    },
+    artifact: { name: 'zod', version: '3.25.76', type: 'npm', purl: 'pkg:npm/zod@3.25.76' }
+  };
+  const result = evaluate({ matches: [match] }, policy, reviewedAt);
+  assert.equal(result.blocking.length, 0);
+  assert.equal(result.excepted.length, 1);
+  for (const version of ['3.23.8', '3.25.77', '4.6.5']) {
+    const other = { ...match, artifact: { ...match.artifact, version, purl: `pkg:npm/zod@${version}` } };
+    assert.equal(evaluate({ matches: [other] }, policy, reviewedAt).blocking.length, 1);
+  }
+  const other = { ...match, vulnerability: { ...match.vulnerability, id: 'GHSA-another-advisory' } };
+  assert.equal(evaluate({ matches: [other] }, policy, reviewedAt).blocking.length, 1);
 });
 
 
