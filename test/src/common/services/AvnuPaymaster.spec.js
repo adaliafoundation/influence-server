@@ -1,5 +1,6 @@
 const { expect } = require('chai');
 const axios = require('axios');
+const crypto = require('crypto');
 const appConfig = require('config');
 const mongoose = require('mongoose');
 const { hash, RpcError } = require('starknet');
@@ -124,6 +125,132 @@ describe('AvnuPaymasterService', function () {
     const purchase = await mongoose.model('StarterPackPurchase').findOne().lean();
     expect(sponsorship.reservedMilliStrk).to.equal(1);
     expect(purchase.paymasterReservedMilliStrk).to.equal(1);
+  });
+
+  describe('reservation rebuilds', function () {
+    let body;
+    let purchase;
+
+    beforeEach(async function () {
+      body = paymasterRequest();
+      purchase = await createPurchase();
+      this._sandbox.stub(axios, 'post').resolves(buildResponse(body.params.transaction));
+      await AvnuPaymasterService.forward({ body, userAddress: USER_ADDRESS });
+    });
+
+    const executeRequest = () => AvnuPaymasterService.validateRequest({
+      body: { ...body, method: 'paymaster_executeTransaction' }, userAddress: USER_ADDRESS
+    });
+
+    it('should renew expired reservations without charging the budget again', async function () {
+      await mongoose.model('PaymasterSponsorship').updateOne({}, {
+        $set: { reservedAt: new Date(0) }
+      });
+      await expectReject(executeRequest(), 'No matching paymaster sponsorship reservation');
+      await AvnuPaymasterService.forward({ body, userAddress: USER_ADDRESS });
+      await executeRequest();
+      const updated = await mongoose.model('StarterPackPurchase').findById(purchase._id);
+      expect(updated.paymasterReservedMilliStrk).to.equal(1);
+    });
+
+    it('should renew legacy reservations without charging again', async function () {
+      const legacyIdentity = {
+        parameters: { fee_mode: { mode: 'sponsored' }, version: '0x1' },
+        transaction: {
+          calls: [{
+            calldata: [],
+            contract_address: Address.toStandard(allowedDispatcherCall().contract_address, 'starknet'),
+            entry_point_selector: `0x${BigInt(allowedDispatcherCall().entry_point_selector).toString(16)}`
+          }],
+          type: 'invoke'
+        }
+      };
+      const legacyFingerprint = crypto.createHash('sha256').update(JSON.stringify(legacyIdentity)).digest('hex');
+      await mongoose.model('PaymasterSponsorship').updateOne({}, {
+        $set: { requestFingerprint: legacyFingerprint }, $unset: { reservedAt: 1 }
+      });
+      await AvnuPaymasterService.forward({ body, userAddress: USER_ADDRESS });
+      await executeRequest();
+      expect(await mongoose.model('PaymasterSponsorship').countDocuments()).to.equal(1);
+      const updated = await mongoose.model('StarterPackPurchase').findById(purchase._id);
+      expect(updated.paymasterReservedMilliStrk).to.equal(1);
+    });
+
+    it('should roll back a budget increase if saving the reservation fails', async function () {
+      this._sandbox.stub(mongoose.model('PaymasterSponsorship'), 'updateOne').rejects(new Error('Save failed'));
+      const response = buildResponse({
+        ...body.params.transaction,
+        fee: { suggested_max_fee_in_strk: '2000000000000000' }
+      });
+      await expectReject(AvnuPaymasterService.reserveBudget({ body, purchase, response }), 'Save failed');
+      const updated = await mongoose.model('StarterPackPurchase').findById(purchase._id);
+      expect(updated.paymasterReservedMilliStrk).to.equal(1);
+    });
+
+    it('should reserve a new budget allocation after submission', async function () {
+      await AvnuPaymasterService.markSubmitted({
+        body: { ...body, method: 'paymaster_executeTransaction' },
+        response: { status: 200, data: { result: { transaction_hash: '0xtx' } } },
+        userAddress: USER_ADDRESS
+      });
+      await AvnuPaymasterService.forward({ body, userAddress: USER_ADDRESS });
+      await executeRequest();
+      const updated = await mongoose.model('StarterPackPurchase').findById(purchase._id);
+      expect(updated.paymasterReservedMilliStrk).to.equal(2);
+    });
+
+    it('should account for higher rebuild estimates and enforce the budget', async function () {
+      appConfig.Avnu.paymasterMaxStarterPackBudgetStrk = 0.002;
+      const response = buildResponse({
+        ...body.params.transaction,
+        fee: { suggested_max_fee_in_strk: '2000000000000000' }
+      });
+      await AvnuPaymasterService.reserveBudget({ body, purchase, response });
+      const updated = await mongoose.model('StarterPackPurchase').findById(purchase._id);
+      expect(updated.paymasterReservedMilliStrk).to.equal(2);
+      response.data.result.fee.suggested_max_fee_in_strk = '3000000000000000';
+      await expectReject(
+        AvnuPaymasterService.reserveBudget({ body, purchase, response }),
+        'Starter pack paymaster budget exceeded'
+      );
+      await executeRequest();
+    });
+
+    it('should keep identical calls for different wallets independent', async function () {
+      const otherAddress = Address.toStandard('0x456', 'starknet');
+      await createPurchase({ recipient: otherAddress });
+      body.params.transaction.invoke.user_address = otherAddress;
+      await AvnuPaymasterService.forward({ body, userAddress: otherAddress });
+      await AvnuPaymasterService.validateRequest({
+        body: { ...body, method: 'paymaster_executeTransaction' }, userAddress: otherAddress
+      });
+      expect(await mongoose.model('PaymasterSponsorship').countDocuments()).to.equal(2);
+    });
+
+    it('should charge concurrent first builds only once', async function () {
+      body.params.transaction.invoke.calls[0].calldata = ['0x1'];
+      const response = buildResponse(body.params.transaction);
+      await Promise.all(Array.from({ length: 4 }, () => (
+        AvnuPaymasterService.reserveBudget({ body, purchase, response })
+      )));
+      const updated = await mongoose.model('StarterPackPurchase').findById(purchase._id);
+      expect(updated.paymasterReservedMilliStrk).to.equal(2);
+      expect(await mongoose.model('PaymasterSponsorship').countDocuments()).to.equal(2);
+      await executeRequest();
+    });
+
+    it('should charge concurrent rebuilds only once', async function () {
+      const response = buildResponse({
+        ...body.params.transaction,
+        fee: { suggested_max_fee_in_strk: '2000000000000000' }
+      });
+      await Promise.all(Array.from({ length: 4 }, () => (
+        AvnuPaymasterService.reserveBudget({ body, purchase, response })
+      )));
+      const updated = await mongoose.model('StarterPackPurchase').findById(purchase._id);
+      expect(updated.paymasterReservedMilliStrk).to.equal(2);
+      await executeRequest();
+    });
   });
 
   it('should reject unsupported methods', async function () {

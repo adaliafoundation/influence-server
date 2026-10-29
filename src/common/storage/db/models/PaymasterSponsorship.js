@@ -10,6 +10,7 @@ const schema = new mongoose.Schema({
   requestFingerprint: { type: String, required: true },
   preparedFingerprint: { type: String, required: true },
   estimatedFeeFri: { type: String, required: true },
+  reservedAt: { type: Date },
   reservedMilliStrk: { type: Number, required: true },
   status: {
     type: String,

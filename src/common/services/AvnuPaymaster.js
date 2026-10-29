@@ -332,7 +332,10 @@ class AvnuPaymasterService {
     const preparedFingerprint = fingerprint(reservationIdentity(preparedPayloadForExecuteRequest(body)));
     const sponsorship = await mongoose.model('PaymasterSponsorship').findOne({
       chainId: chainId(),
-      createdAt: { $gte: reservationCutoff() },
+      $or: [
+        { reservedAt: { $gte: reservationCutoff() } },
+        { reservedAt: { $exists: false }, createdAt: { $gte: reservationCutoff() } }
+      ],
       preparedFingerprint,
       status: 'reserved',
       userAddress: Address.toStandard(userAddress, 'starknet')
@@ -359,43 +362,80 @@ class AvnuPaymasterService {
 
     const purchaseModel = mongoose.model('StarterPackPurchase');
     const sponsorshipModel = mongoose.model('PaymasterSponsorship');
-    const requestFingerprint = fingerprint(reservationIdentity({
-      parameters: body.params.parameters,
-      transaction: body.params.transaction
+    const userAddress = Address.toStandard(
+      body.params.transaction.deployment?.address || body.params.transaction.invoke?.user_address,
+      'starknet'
+    );
+    const legacyRequestFingerprint = fingerprint(reservationIdentity({
+      parameters: body.params.parameters, transaction: body.params.transaction
     }));
+    const requestFingerprint = fingerprint({
+      chainId: chainId(),
+      purchase: purchase._id.toString(),
+      userAddress,
+      ...reservationIdentity({ parameters: body.params.parameters, transaction: body.params.transaction })
+    });
     const preparedFingerprint = fingerprint(reservationIdentity(preparedPayloadForBuildResult(result)));
 
-    const existing = await sponsorshipModel.findOne({ requestFingerprint });
-    if (existing) return;
+    // Compare-and-swap keeps concurrent rebuilds from charging the same reservation twice.
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const existing = await sponsorshipModel.findOne({
+        chainId: chainId(),
+        purchase: purchase._id,
+        userAddress,
+        requestFingerprint: { $in: [requestFingerprint, legacyRequestFingerprint] }
+      });
+      const previousReservation = existing?.status === 'reserved' ? existing.reservedMilliStrk : 0;
+      const budgetIncrease = Math.max(0, reservedMilliStrk - previousReservation);
+      const updatedPurchase = await purchaseModel.findOneAndUpdate(
+        {
+          _id: purchase._id,
+          paymasterReservedMilliStrk: { $lte: budgetMilliStrk() - budgetIncrease }
+        },
+        { $inc: { paymasterReservedMilliStrk: budgetIncrease } },
+        { new: true }
+      );
+      if (!updatedPurchase) throw new ValidationError('Starter pack paymaster budget exceeded');
 
-    const updatedPurchase = await purchaseModel.findOneAndUpdate(
-      {
-        _id: purchase._id,
-        paymasterReservedMilliStrk: { $lte: budgetMilliStrk() - reservedMilliStrk }
-      },
-      { $inc: { paymasterReservedMilliStrk: reservedMilliStrk } },
-      { new: true }
-    );
-    if (!updatedPurchase) throw new ValidationError('Starter pack paymaster budget exceeded');
-
-    try {
-      await sponsorshipModel.create({
+      const reservation = {
         chainId: chainId(),
         estimatedFeeFri: estimatedFeeFri.toString(),
         method: body.method,
         preparedFingerprint,
         purchase: purchase._id,
         requestFingerprint,
-        reservedMilliStrk,
+        reservedAt: new Date(),
+        reservedMilliStrk: Math.max(previousReservation, reservedMilliStrk),
+        status: 'reserved',
         transactionType: body.params.transaction.type,
-        userAddress: body.params.transaction.deployment?.address || body.params.transaction.invoke?.user_address
-      });
-    } catch (error) {
+        userAddress
+      };
+      try {
+        if (existing) {
+          const updated = await sponsorshipModel.updateOne(
+            { _id: existing._id, __v: existing.__v, status: existing.status },
+            { $set: reservation, $unset: { txHash: 1 }, $inc: { __v: 1 } }
+          );
+          if (updated.modifiedCount) return;
+        } else {
+          await sponsorshipModel.create(reservation);
+          return;
+        }
+      } catch (error) {
+        if (existing || error.code !== 11000) {
+          await purchaseModel.updateOne(
+            { _id: purchase._id },
+            { $inc: { paymasterReservedMilliStrk: -budgetIncrease } }
+          );
+          throw error;
+        }
+      }
+
       await purchaseModel.updateOne(
         { _id: purchase._id },
-        { $inc: { paymasterReservedMilliStrk: -reservedMilliStrk } }
+        { $inc: { paymasterReservedMilliStrk: -budgetIncrease } }
       );
-      throw error;
     }
   }
 
