@@ -42,6 +42,22 @@ describe('BuyOrderCancelled Handler', function () {
   });
 
   describe('processEvent', function () {
+    it('notifies the buyer as well as a distinct cancelling administrator', async function () {
+      const adminEvent = mongoose.model('Starknet')({
+        ...event.toObject(),
+        returnValues: { ...event.returnValues, callerCrew: { label: 1, id: 123 } }
+      });
+      const handler = new Handler(adminEvent);
+      await handler.processEvent();
+      expect(handler.messages.map(({ to }) => to)).to.include.members(['Crew::123', 'Crew::933']);
+    });
+
+    it('notifies a buyer cancelling their own order only once', async function () {
+      const handler = new Handler(event);
+      await handler.processEvent();
+      expect(handler.messages.map(({ to }) => to).filter(to => to === 'Crew::933')).to.have.lengthOf(1);
+    });
+
     it('should create an Activity Item correctly', async function () {
       const handler = new Handler(event);
 

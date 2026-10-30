@@ -49,7 +49,7 @@ describe('SellOrderCancelled Handler', function () {
       expect(activityDocs).to.have.lengthOf(1);
     });
 
-    it('should notify the caller crew and both exchange and storage asteroids', async function () {
+    it('should notify the caller and seller crews and both exchange and storage asteroids', async function () {
       const getAsteroid = this._sandbox.stub(LocationComponentService, 'getAsteroidForEntity');
       getAsteroid.withArgs(event.returnValues.exchange).resolves({ label: 3, id: 10 });
       getAsteroid.withArgs(event.returnValues.storage).resolves({ label: 3, id: 20 });
@@ -57,7 +57,7 @@ describe('SellOrderCancelled Handler', function () {
 
       await handler.processEvent();
 
-      expect(handler.messages.map(({ to }) => to)).to.have.members(['Crew::1', 'Asteroid::10', 'Asteroid::20']);
+      expect(handler.messages.map(({ to }) => to)).to.have.members(['Crew::1', 'Crew::2', 'Asteroid::10', 'Asteroid::20']);
     });
 
     it('should notify a shared asteroid only once', async function () {
@@ -66,7 +66,7 @@ describe('SellOrderCancelled Handler', function () {
 
       await handler.processEvent();
 
-      expect(handler.messages.map(({ to }) => to)).to.have.members(['Crew::1', 'Asteroid::10']);
+      expect(handler.messages.map(({ to }) => to)).to.have.members(['Crew::1', 'Crew::2', 'Asteroid::10']);
     });
 
     it('should still notify the caller crew when asteroid locations are missing', async function () {
@@ -75,7 +75,7 @@ describe('SellOrderCancelled Handler', function () {
 
       await handler.processEvent();
 
-      expect(handler.messages.map(({ to }) => to)).to.deep.equal(['Crew::1']);
+      expect(handler.messages.map(({ to }) => to)).to.deep.equal(['Crew::1', 'Crew::2']);
     });
   });
 

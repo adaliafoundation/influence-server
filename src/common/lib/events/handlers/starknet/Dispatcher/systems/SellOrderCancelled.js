@@ -20,6 +20,7 @@ class Handler extends StarknetBaseHandler {
     if (activityResult?.created === 0) return;
 
     this.messages.push({ to: `Crew::${callerCrew.id}` });
+    if (sellerCrew.id !== callerCrew.id) this.messages.push({ to: `Crew::${sellerCrew.id}` });
 
     const [exchangeAsteroid, storageAsteroid] = await Promise.all([
       LocationComponentService.getAsteroidForEntity(exchange),
