@@ -4,21 +4,39 @@ const { mongoose } = require('@common/storage/db');
 
 const logger = console;
 
-const done = function (error) {
-  if (error) logger.error(error);
-  process.exit();
-};
-
 const main = async function () {
-  for (const modelName of Object.keys(mongoose.models)) {
-    logger.info(`Snycing indexes for ${modelName}...`);
-    const model = mongoose.model(modelName);
-    const diffs = await model.diffIndexes();
-    logger.info(`Diffs: ${JSON.stringify(diffs, null, 2)}`);
-    await model.syncIndexes();
+  let operationFailed = false;
+  try {
+    // Wait for the database connection.
+    await mongoose.connection.asPromise();
+
+    for (const modelName of Object.keys(mongoose.models)) {
+      logger.info(`Syncing indexes for ${modelName}...`);
+
+      const model = mongoose.model(modelName);
+      const diffs = await model.diffIndexes();
+
+      logger.info(`Diffs: ${JSON.stringify(diffs, null, 2)}`);
+
+      await model.syncIndexes();
+    }
+  } catch (error) {
+    operationFailed = true;
+    throw error;
+  } finally {
+    // Close the connection on success or failure.
+    try {
+      await mongoose.disconnect();
+    } catch (error) {
+      if (!operationFailed) throw error;
+      logger.error(error);
+    }
   }
 };
 
 main()
-  .then(done)
-  .catch(done);
+  .then(() => process.exit(0))
+  .catch((error) => {
+    logger.error(error);
+    process.exit(1);
+  });

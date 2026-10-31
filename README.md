@@ -58,6 +58,59 @@ The licensor considers non-commercial use under this license to include deployme
 2. Grab the output and run `truffle test ./test/lib/TestScansMock.js` with the output in the contracts project.
 3. Get the output from #2 and run `node ./bin/updateCommon.js` with `updateDatabase` method uncommented.
 
+## MongoDB Index Synchronization
+
+Influence disables automatic MongoDB index creation in production and prerelease environments. When initializing a fresh database, synchronize indexes **before starting the API and background workers**.
+
+Index synchronization is an explicit maintenance operation. It does not run automatically when the server starts.
+
+### Local setup
+
+Configure `MONGO_URL` to point to the intended MongoDB database, then execute:
+
+```bash
+npm run syncIndexes
+```
+
+Verify that the command completes successfully before starting workers.
+
+### Docker setup
+
+For development, with the project's Docker Compose configuration and `.env` file prepared, run:
+
+```bash
+docker compose -f compose.yaml run --rm --no-deps \
+  --entrypoint npm influence-server run syncIndexes
+```
+
+For production, replace `<released-digest>` below with the released image digest used by your deployment:
+
+```bash
+export PRODUCTION_IMAGE='ghcr.io/adaliafoundation/influence-server@sha256:<released-digest>'
+
+docker compose -f compose.yaml -f compose.prod.yaml \
+  run --rm --no-deps --entrypoint node \
+  influence-server bin/sync_mongo_indexes.js
+```
+
+Use the same released image digest and configuration as the deployment. The production override selects that image, removes development source mounts, and sets `NODE_ENV=production`. The production image has no npm, so invoke the script with Node directly.
+
+Before either command, prepare the application configuration, external `web` network, and a MongoDB instance reachable from the container. These commands run synchronization in a temporary container and do not start dependencies. Include any additional Compose overrides used by your deployment, such as secret mounts. For a fresh database, complete synchronization successfully before starting the API and workers.
+
+### Important warning
+
+**Index synchronization can delete existing MongoDB indexes.**
+
+Mongoose's `syncIndexes()` removes indexes that are not defined in the application's models and creates missing indexes.
+
+Before running this command against an existing database:
+
+- Verify the `MONGO_URL` configuration.
+- Review the expected index changes.
+- Ensure an appropriate database backup exists.
+
+If synchronization fails, the command exits with a nonzero status. Do not start dependent workers until the problem has been resolved.
+
 ## Running as a Docker container 🐋
 Notes:
 - The `compose.yaml` file in the project expects a Docker network named `web` for the communication across containers (your mongo, redis, elasticsearch instances, optionally your own Starknet node if you want to run indexers, or a reverse-proxy e.g. Caddy). To create it, run `docker network create web` .
