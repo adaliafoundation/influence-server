@@ -11,6 +11,28 @@ describe('paymaster controller', function () {
     delete require.cache[require.resolve('@api/controllers/paymaster')];
   });
 
+  it('should return eligibility for the authenticated account without caching it', async function () {
+    const app = new Koa();
+    const { user, userToken } = this.GLOBALS;
+    const eligibility = { deployment: true, invoke: false };
+    const stub = this._sandbox.stub(AvnuPaymasterService, 'getEligibility').resolves(eligibility);
+    app.use(paymasterController.routes());
+    const response = await request(app.callback())
+      .get('/v2/paymaster/eligibility')
+      .set('Authorization', `Bearer ${userToken}`);
+    expect(response.status).to.equal(200);
+    expect(response.body).to.deep.equal(eligibility);
+    expect(response.headers['cache-control']).to.equal('no-store');
+    expect(stub.calledOnceWith(user.address)).to.equal(true);
+  });
+
+  it('should require authentication to read eligibility', async function () {
+    const app = new Koa();
+    app.use(paymasterController.routes());
+    const response = await request(app.callback()).get('/v2/paymaster/eligibility');
+    expect(response.status).to.equal(401);
+  });
+
   it('should proxy authenticated JSON-RPC requests', async function () {
     const app = new Koa();
     const server = request(app.callback());

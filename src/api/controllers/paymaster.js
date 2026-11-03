@@ -43,6 +43,10 @@ if (isAvnuPaymasterEnabled()) {
     .use(koaJwt({ secret: appConfig.get('App.jwtSecret') }))
     .use(cors({ origin: allowedOrigin }))
     .use(paymasterRateLimit)
+    .get('/v2/paymaster/eligibility', async (ctx) => {
+      ctx.set('Cache-Control', 'no-store');
+      ctx.body = await AvnuPaymasterService.getEligibility(ctx.state.user.sub);
+    })
     .post('/v2/paymaster', bodyParser(), proxyPaymasterRequest);
 }
 

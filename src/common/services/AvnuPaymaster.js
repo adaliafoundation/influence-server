@@ -221,6 +221,19 @@ class AvnuPaymasterService {
     ).sort({ [sinceField]: -1 });
   }
 
+  static async getEligibility(recipient) {
+    if (!this.isConfigured()) return { deployment: false, invoke: false };
+    const [deployment, invoke] = await Promise.all([
+      this.starterPackPurchaseForRecipient({
+        recipient, sinceField: 'paidAt', eligibility: DEPLOY_PURCHASE_ELIGIBILITY
+      }),
+      this.starterPackPurchaseForRecipient({
+        recipient, sinceField: 'grantedAt', eligibility: INVOKE_PURCHASE_ELIGIBILITY
+      })
+    ]);
+    return { deployment: !!deployment, invoke: !!invoke };
+  }
+
   static async validateStarterPackEligibility({ recipient, sinceField, eligibility }) {
     const purchase = await this.starterPackPurchaseForRecipient({ recipient, sinceField, eligibility });
     if (!purchase) throw new ValidationError('No eligible starter pack purchase for paymaster sponsorship');

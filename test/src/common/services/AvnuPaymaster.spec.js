@@ -103,6 +103,36 @@ describe('AvnuPaymasterService', function () {
     ...overrides
   });
 
+  describe('sponsorship eligibility', function () {
+    it('should exclude accounts without a starter pack', async function () {
+      expect(await AvnuPaymasterService.getEligibility(USER_ADDRESS)).to.deep.equal({
+        deployment: false, invoke: false
+      });
+    });
+
+    it('should allow setup but not gameplay before customization', async function () {
+      await createPurchase({ status: 'paid_pending_customization', grantedAt: undefined });
+      expect(await AvnuPaymasterService.getEligibility(USER_ADDRESS)).to.deep.equal({
+        deployment: true, invoke: false
+      });
+    });
+
+    it('should allow setup and gameplay for a recent confirmed grant', async function () {
+      await createPurchase();
+      expect(await AvnuPaymasterService.getEligibility(USER_ADDRESS)).to.deep.equal({
+        deployment: true, invoke: true
+      });
+    });
+
+    it('should exclude expired grants and purchases for another account', async function () {
+      await createPurchase({ grantedAt: new Date(0) });
+      await createPurchase({ recipient: Address.toStandard('0x456', 'starknet') });
+      expect(await AvnuPaymasterService.getEligibility(USER_ADDRESS)).to.deep.equal({
+        deployment: false, invoke: false
+      });
+    });
+  });
+
   it('should forward a sponsored request with the server-side API key', async function () {
     const body = paymasterRequest();
     const response = buildResponse({
