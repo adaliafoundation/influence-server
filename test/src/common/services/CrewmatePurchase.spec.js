@@ -214,34 +214,43 @@ describe('CrewmatePurchaseService', function () {
     expect(call.calldata[1]).to.equal(21);
   });
 
-  it('should require indexed ownership of the destination crew before granting', async function () {
-    const purchase = await mongoose.model('CrewmatePurchase').create({
-      externalRef: '0xabc',
-      purchaser: '0x789',
-      recipient: '0x789',
-      status: 'paid_pending_customization',
-      stripeCheckoutSessionId: 'cs_1',
-      stripePriceId: 'price_1',
-      stripeProductId: 'prod_crewmate'
-    });
-    await mongoose.model('NftComponent').create({
-      entity: Entity.Crew(42),
-      owners: { starknet: '0x789' }
-    });
-    this._sandbox.stub(CrewmatePurchaseService, 'submitGrant').callsFake(async (doc) => {
-      await mongoose.model('CrewmatePurchase').updateOne(
-        { _id: doc._id },
-        { $set: { status: 'grant_submitted', txHash: '0xtx' } }
-      );
-    });
+  // Exercise persistence for both new and existing destination crews.
+  // eslint-disable-next-line mocha/no-setup-in-describe
+  [0, 42].forEach((crewId) => {
+    it(`should submit a paid grant for ${crewId === 0 ? 'a new' : 'an owned'} crew`, async function () {
+      const purchase = await mongoose.model('CrewmatePurchase').create({
+        externalRef: '0xabc',
+        purchaser: '0x789',
+        recipient: '0x789',
+        status: 'paid_pending_customization',
+        stripeCheckoutSessionId: 'cs_1',
+        stripePriceId: 'price_1',
+        stripeProductId: 'prod_crewmate'
+      });
+      if (crewId > 0) {
+        await mongoose.model('NftComponent').create({
+          entity: Entity.Crew(crewId),
+          owners: { starknet: '0x789' }
+        });
+      }
+      this._sandbox.stub(CrewmatePurchaseService, 'submitGrant').callsFake(async (doc) => {
+        await mongoose.model('CrewmatePurchase').updateOne(
+          { _id: doc._id },
+          { $set: { status: 'grant_submitted', txHash: '0xtx' } }
+        );
+      });
 
-    const result = await CrewmatePurchaseService.completeGrantRequest({
-      grantRequest: validGrantRequest(),
-      purchaseId: purchase.id,
-      purchaser: '0x789'
+      const result = await CrewmatePurchaseService.completeGrantRequest({
+        grantRequest: { ...validGrantRequest(), callerCrew: { label: 1, id: crewId } },
+        purchaseId: purchase.id,
+        purchaser: '0x789'
+      });
+      expect(result.status).to.equal('grant_submitted');
+      expect(result.txHash).to.equal('0xtx');
+      const saved = await mongoose.model('CrewmatePurchase').findById(purchase.id);
+      expect(saved.grantRequest.callerCrew.id).to.equal(crewId);
+      expect(CrewmatePurchaseService.calldataFromPurchase(saved).slice(5, 7)).to.deep.equal([1, crewId]);
     });
-    expect(result.status).to.equal('grant_submitted');
-    expect(result.txHash).to.equal('0xtx');
   });
 
   it('should reject customization for a crew owned by another account', async function () {
@@ -272,5 +281,21 @@ describe('CrewmatePurchaseService', function () {
 
     expect(error).to.be.an('error');
     expect(error.message).to.equal('Recipient does not own callerCrew');
+  });
+
+  it('accepts the explicit new-crew sentinel and encodes it without requiring an existing NFT', async function () {
+    const grantRequest = { ...validGrantRequest(), callerCrew: { label: 1, id: 0 } };
+    CrewmatePurchaseService.validateGrantRequest(grantRequest);
+    await CrewmatePurchaseService.validateCrewOwnership({
+      callerCrew: grantRequest.callerCrew, recipient: grantRequest.recipient
+    });
+    const calldata = CrewmatePurchaseService.calldataFromPurchase({ externalRef: '0xabc', grantRequest });
+    expect(calldata.slice(5, 7)).to.deep.equal([1, 0]);
+  });
+
+  it('rejects a zero id for an entity other than a crew', function () {
+    expect(() => CrewmatePurchaseService.validateGrantRequest({
+      ...validGrantRequest(), callerCrew: { label: 5, id: 0 }
+    })).to.throw('Invalid callerCrew');
   });
 });

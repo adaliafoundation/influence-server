@@ -1,7 +1,7 @@
 const appConfig = require('config');
 const mongoose = require('mongoose');
 const { shortString } = require('starknet');
-const { Address } = require('@influenceth/sdk');
+const { Address, Entity: { IDS, packEntity } } = require('@influenceth/sdk');
 const logger = require('@common/lib/logger');
 const starknetClient = require('@common/lib/starknet/client');
 const Entity = require('@common/lib/Entity');
@@ -26,6 +26,8 @@ const validatedEntity = (value, message) => {
     throw new ValidationError(message);
   }
 };
+
+const isNewCrew = (crew) => crew?.label === IDS.CREW && crew?.id === 0;
 
 class CrewmatePurchaseService {
   static configuredProductId() {
@@ -57,8 +59,10 @@ class CrewmatePurchaseService {
     const station = validatedEntity(grantRequest.station, 'Invalid station');
     if (!station.isValid()) throw new ValidationError('Invalid station');
 
-    const callerCrew = validatedEntity(grantRequest.callerCrew, 'Invalid callerCrew');
-    if (!callerCrew.isCrew()) throw new ValidationError('Invalid callerCrew');
+    if (!isNewCrew(grantRequest.callerCrew)) {
+      const callerCrew = validatedEntity(grantRequest.callerCrew, 'Invalid callerCrew');
+      if (!callerCrew.isCrew()) throw new ValidationError('Invalid callerCrew');
+    }
 
     if ((grantRequest.impactful || []).length !== 1) throw new ValidationError('Invalid impactful length');
     if ((grantRequest.cosmetic || []).length !== 3) throw new ValidationError('Invalid cosmetic length');
@@ -192,6 +196,7 @@ class CrewmatePurchaseService {
   }
 
   static async validateCrewOwnership({ callerCrew, recipient }) {
+    if (isNewCrew(callerCrew)) return;
     const crew = Entity.toEntity(callerCrew);
     const owner = Address.toStandard(recipient, 'starknet');
     const ownedCrew = await mongoose.model('NftComponent').exists({
@@ -220,6 +225,10 @@ class CrewmatePurchaseService {
       restrictedUntil: OffchainPurchaseService.restrictedUntil()
     };
     this.validateGrantRequest(request);
+    if (isNewCrew(request.callerCrew)) {
+      // Entity persistence needs a packed UUID to retain an explicit zero id.
+      request.callerCrew = { ...request.callerCrew, uuid: packEntity(request.callerCrew) };
+    }
     await this.validateCrewOwnership({ callerCrew: request.callerCrew, recipient: purchase.recipient });
 
     purchase.grantRequest = request;
@@ -232,7 +241,7 @@ class CrewmatePurchaseService {
   static calldataFromPurchase(purchase) {
     const request = purchase.grantRequest;
     const station = Entity.toEntity(request.station);
-    const callerCrew = Entity.toEntity(request.callerCrew);
+    const callerCrew = isNewCrew(request.callerCrew) ? request.callerCrew : Entity.toEntity(request.callerCrew);
 
     return [
       Address.toStandard(request.recipient, 'starknet'),
