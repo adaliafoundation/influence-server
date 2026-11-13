@@ -4,3 +4,6 @@ node_modules
 data
 .DS_Store
 tmp/*
+
+# Local encrypted retention worker data
+data/private-records/

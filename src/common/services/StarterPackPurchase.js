@@ -20,7 +20,7 @@ const STARTER_PACK_DEFINITIONS = {
       { id: 1, name: 'Warehouse' },
       { id: 2, name: 'Extractor' }
     ],
-    coreSampleAllowance: 5,
+    coreSampleAllowance: 10,
     foodReloadAllowance: 1,
     lotAllowance: 2,
     productId: 1,
@@ -32,7 +32,7 @@ const STARTER_PACK_DEFINITIONS = {
       { id: 2, name: 'Extractor' },
       { id: 3, name: 'Refinery' }
     ],
-    coreSampleAllowance: 8,
+    coreSampleAllowance: 15,
     foodReloadAllowance: 1,
     lotAllowance: 3,
     productId: 2,
@@ -46,7 +46,7 @@ const STARTER_PACK_DEFINITIONS = {
       { id: 4, name: 'Bioreactor' },
       { id: 5, name: 'Factory' }
     ],
-    coreSampleAllowance: 12,
+    coreSampleAllowance: 20,
     foodReloadAllowance: 1,
     lotAllowance: 5,
     productId: 3,

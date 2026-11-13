@@ -41,6 +41,7 @@ const WhitelistAgreementComponent = require('./Agreements/Whitelist');
 const WhitelistAccountAgreementComponent = require('./Agreements/WhitelistAccount');
 
 module.exports = {
+  ...require('./Prospecting'),
   MissionComponent,
   AsteroidProofComponent,
   AsteroidRewardComponent,

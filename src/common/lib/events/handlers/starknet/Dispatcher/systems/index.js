@@ -105,6 +105,8 @@ const TransitFinished = require('./TransitFinished');
 const TransitStarted = require('./TransitStarted');
 
 module.exports = {
+  ...require('./Prospecting'),
+  ResourceExtractionStartedV1: require('./ResourceExtractionStartedV1'),
   ...missionLifecycle,
   AddedToWhitelist,
   AddedToWhitelistV1,

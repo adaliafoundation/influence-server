@@ -21,6 +21,7 @@ const schema = {
       },
       Location,
       UseLot: { properties: { tenant: entity } },
+      ProspectingOrigin: { properties: { campaignId: { type: 'keyword' } } },
       meta: {
         properties: {
           asteroid: {

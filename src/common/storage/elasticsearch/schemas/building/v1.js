@@ -44,6 +44,7 @@ const schema = {
       },
       Exchange,
       Extractor,
+      ExtractorSlots: { properties: { count: { type: 'integer' } } },
       Inventories: {
         type: 'nested',
         ...Inventory

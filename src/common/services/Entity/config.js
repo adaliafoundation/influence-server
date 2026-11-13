@@ -53,6 +53,7 @@ const config = {
       'DryDock',
       'Exchange',
       'Extractor',
+      'ExtractorSlots',
       'Inventory',
       'Location',
       'Name',
@@ -99,6 +100,7 @@ const config = {
   },
   Deposit: {
     components: [
+      'Claim',
       'Control',
       'Deposit',
       'Location',
@@ -108,6 +110,7 @@ const config = {
   },
   Lot: {
     components: [
+      'ProspectingOrigin',
       'UseLot',
       'ContractAgreement',
       'PrepaidAgreementAuction',
