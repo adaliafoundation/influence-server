@@ -41,6 +41,9 @@ jobs:
         run: |
           docker run --rm ${{ steps.image.outputs.image_name }}:ci
 
+      - name: Run private-data security tests
+        run: docker run --rm ${{ steps.image.outputs.image_name }}:ci npm run test:private-data
+
       - name: Build production image
         uses: docker/build-push-action@v6
         with:
