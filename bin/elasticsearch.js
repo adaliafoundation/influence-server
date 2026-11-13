@@ -54,6 +54,14 @@ const createIndex = async function ({ type, version }) {
   process.exit(0);
 };
 
+const updateMapping = async function ({ type, version }) {
+  const index = indexName({ type, version });
+  const { mappings } = getSchema({ type, version });
+  await client.indices.putMapping({ index, body: mappings });
+  logger.info(`Updated mapping for ${index}`);
+  process.exit(0);
+};
+
 const dropAndCreate = async function ({ indices }) {
   for (const index of indices) {
     const [, type, version] = index.match(/([a-zA-Z]+)_v([1-9]+)/);
@@ -130,6 +138,16 @@ const reIndex = async function ({ indices }) {
 };
 
 yargs(process.argv.slice(2))
+  .command({
+    command: 'updateMapping',
+    desc: 'add schema mappings to an existing index without deleting documents',
+    builder: (y) => {
+      y.version(false);
+      y.option('type', { choices: Object.keys(schemas), demand: true });
+      y.option('version', { type: 'number', demand: true });
+    },
+    handler: updateMapping
+  })
   .command({
     command: 'createindex',
     desc: 'create an index',

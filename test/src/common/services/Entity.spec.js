@@ -101,7 +101,7 @@ describe('EntityService', function () {
         const results = await EntityService.getEntities({ ...Entity.Building(1), format: false });
         expect(results[0]).to.have.keys([
           'id', 'label', 'uuid', 'entity', 'Building', 'ContractAgreement', 'ContractPolicy', 'Control', 'Dock',
-          'DryDock', 'Exchange', 'Extractor', 'Inventory', 'Location', 'Name', 'PrepaidAgreement', 'PrepaidPolicy',
+          'DryDock', 'Exchange', 'Extractor', 'ExtractorSlots', 'Inventory', 'Location', 'Name', 'PrepaidAgreement', 'PrepaidPolicy',
           'Processor', 'PublicPolicy', 'StarterPackBuildingFunding', 'Station', 'WhitelistAgreement',
           'WhitelistAccountAgreement'
         ]);
@@ -145,13 +145,13 @@ describe('EntityService', function () {
 
       it('should load the default component data for an Deposit', async function () {
         const results = await EntityService.getEntities({ ...Entity.Deposit(1), format: false });
-        expect(results[0]).to.have.keys(['id', 'label', 'uuid', 'entity', 'Control', 'Deposit', 'Location',
+        expect(results[0]).to.have.keys(['id', 'label', 'uuid', 'entity', 'Claim', 'Control', 'Deposit', 'Location',
           'PrivateSale']);
       });
 
       it('should load the default component data for an Lot', async function () {
         const results = await EntityService.getEntities({ ...Entity.Lot(1), format: false });
-        expect(results[0]).to.have.keys(['uuid', 'id', 'label', 'entity', 'ContractAgreement',
+        expect(results[0]).to.have.keys(['uuid', 'id', 'label', 'entity', 'ProspectingOrigin', 'ContractAgreement',
           'UseLot', 'PrepaidAgreementAuction', 'PrepaidAgreement', 'StarterPackLotLease', 'WhitelistAgreement',
           'WhitelistAccountAgreement']);
       });
@@ -184,7 +184,7 @@ describe('EntityService', function () {
         const results = await EntityService.getEntities({ ...Entity.Building(1), format: true });
         expect(results[0]).to.have.keys([
           'id', 'label', 'uuid', 'Building', 'ContractAgreements', 'ContractPolicies', 'Control', 'Dock',
-          'DryDocks', 'Exchange', 'Extractors', 'Inventories', 'Location', 'Name', 'PrepaidAgreements',
+          'DryDocks', 'Exchange', 'ExtractorSlots', 'Extractors', 'Inventories', 'Location', 'Name', 'PrepaidAgreements',
           'PrepaidPolicies', 'Processors', 'PublicPolicies', 'StarterPackBuildingFunding', 'Station',
           'WhitelistAgreements', 'WhitelistAccountAgreements'
         ]);
@@ -216,12 +216,12 @@ describe('EntityService', function () {
 
       it('should format the data correctly for an Deposit (format: true)', async function () {
         const results = await EntityService.getEntities({ ...Entity.Deposit(1), format: true });
-        expect(results[0]).to.have.keys(['id', 'label', 'uuid', 'Control', 'Deposit', 'Location', 'PrivateSale']);
+        expect(results[0]).to.have.keys(['id', 'label', 'uuid', 'Claim', 'Control', 'Deposit', 'Location', 'PrivateSale']);
       });
 
       it('should format the data correctly for an Lot (format: true)', async function () {
         const results = await EntityService.getEntities({ ...Entity.Lot(1), format: true });
-        expect(results[0]).to.have.keys(['uuid', 'id', 'label', 'ContractAgreements',
+        expect(results[0]).to.have.keys(['uuid', 'id', 'label', 'ProspectingOrigin', 'ContractAgreements',
           'UseLot', 'PrepaidAgreementAuction', 'PrepaidAgreements', 'StarterPackLotLeases', 'WhitelistAgreements',
           'WhitelistAccountAgreements']);
 

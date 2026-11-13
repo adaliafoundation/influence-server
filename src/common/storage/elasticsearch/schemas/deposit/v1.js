@@ -16,6 +16,8 @@ const schema = {
       uuid: entity.properties.uuid,
       Control,
       Deposit,
+      Claim: { properties: { rulesVersion: { type: 'integer' }, rateBps: { type: 'integer' },
+        referenceAbundancePpm: { type: 'integer' }, campaignId: { type: 'keyword' } } },
       Location,
       PrivateSale,
       meta: {

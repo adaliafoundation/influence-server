@@ -39,7 +39,7 @@ class Handler extends StarknetBaseHandler {
     const activityResult = await ActivityService.findOrCreateOne({
       addresses: [caller],
       data,
-      entities: [deposit, extractor, destination, callerCrew],
+      entities: [deposit, extractor, destination, callerCrew].filter(Boolean),
       event: this.eventDoc,
       hashKeys: Handler.hashKeys,
       unresolvedFor: [callerCrew]

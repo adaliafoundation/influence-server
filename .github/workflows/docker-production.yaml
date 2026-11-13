@@ -32,13 +32,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Require the main workflow branch and a supported channel
-        env:
-          CHANNEL: ${{ inputs.channel || 'production' }}
-        run: |
-          test "$GITHUB_REF" = refs/heads/main
-          [[ "$CHANNEL" = production || "$CHANNEL" = prerelease ]]
-
       - name: Checkout trusted workflow policy
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -46,10 +39,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Require main ancestry before executing candidate code
+      - name: Verify release channel and selected branch ancestry
         env:
           COMMIT_SHA: ${{ inputs.commit_sha }}
-        run: bash scripts/verify-release.sh "$COMMIT_SHA"
+          CHANNEL: ${{ inputs.channel || 'production' }}
+        run: bash scripts/verify-release.sh "$COMMIT_SHA" "$CHANNEL"
 
       - name: Checkout validated source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -72,10 +66,13 @@ jobs:
       - name: Run unit and deployment tests
         run: docker run --rm influence-server:unittest
 
+      - name: Run private-data security tests
+        run: docker run --rm influence-server:unittest npm run test:private-data
+
   build:
     name: Build image
     needs: validate
-    if: github.ref == 'refs/heads/main'
+    if: inputs.channel == 'prerelease' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -92,10 +89,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Require main ancestry before executing candidate code
+      - name: Verify release channel and selected branch ancestry
         env:
           COMMIT_SHA: ${{ inputs.commit_sha }}
-        run: bash scripts/verify-release.sh "$COMMIT_SHA"
+          CHANNEL: ${{ inputs.channel || 'production' }}
+        run: bash scripts/verify-release.sh "$COMMIT_SHA" "$CHANNEL"
 
       - name: Checkout validated source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -155,10 +153,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Require main ancestry before executing candidate code
+      - name: Verify release channel and selected branch ancestry
         env:
           COMMIT_SHA: ${{ inputs.commit_sha }}
-        run: bash scripts/verify-release.sh "$COMMIT_SHA"
+          CHANNEL: ${{ inputs.channel || 'production' }}
+        run: bash scripts/verify-release.sh "$COMMIT_SHA" "$CHANNEL"
 
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -197,7 +196,7 @@ jobs:
   publish:
     name: ${{ inputs.channel == 'prerelease' && 'Publish prerelease image and request deployment' || 'Publish production image' }}
     needs: [build, verify]
-    if: github.ref == 'refs/heads/main'
+    if: inputs.channel == 'prerelease' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: ${{ inputs.channel || 'production' }}
@@ -213,10 +212,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Require main ancestry before executing candidate code
+      - name: Verify release channel and selected branch ancestry
         env:
           COMMIT_SHA: ${{ inputs.commit_sha }}
-        run: bash scripts/verify-release.sh "$COMMIT_SHA"
+          CHANNEL: ${{ inputs.channel || 'production' }}
+        run: bash scripts/verify-release.sh "$COMMIT_SHA" "$CHANNEL"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -255,11 +255,12 @@ jobs:
       - name: Sign and verify the candidate digest
         env:
           IMAGE: ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}
+          WORKFLOW_REF: ${{ github.ref }}
         run: |
           cosign sign --yes "$IMAGE"
           # Sigstore identifies the signing workflow, including when called by another workflow.
           cosign verify "$IMAGE" \
-            --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/docker-production.yaml@refs/heads/main" \
+            --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/docker-production.yaml@$WORKFLOW_REF" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
       - name: Publish release aliases and deployment reference
@@ -269,12 +270,13 @@ jobs:
           DIGEST: ${{ needs.build.outputs.digest }}
           COMMIT_SHA: ${{ inputs.commit_sha }}
           CHANNEL: ${{ inputs.channel || 'production' }}
+          WORKFLOW_REF: ${{ github.ref }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           aliases=(-t "$RELEASE")
           if [ "$CHANNEL" = production ]; then
             aliases+=(-t "$IMAGE:production" -t "$IMAGE:latest")
-          elif [ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$COMMIT_SHA" ]; then
+          elif [ "$WORKFLOW_REF" = refs/heads/main ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$COMMIT_SHA" ]; then
             aliases+=(-t "$IMAGE:stack-prerelease")
           fi
           docker buildx imagetools create --prefer-index=false \
@@ -300,7 +302,7 @@ jobs:
           path: production-image.txt
 
       - name: Notify prerelease deployment after publication
-        if: inputs.channel == 'prerelease' && vars.STACK_PRERELEASE_WEBHOOK_URL != ''
+        if: inputs.channel == 'prerelease' && github.ref == 'refs/heads/main' && vars.STACK_PRERELEASE_WEBHOOK_URL != ''
         env:
           WEBHOOK_URL: ${{ vars.STACK_PRERELEASE_WEBHOOK_URL }}
           WEBHOOK_TOKEN: ${{ secrets.STACK_PRERELEASE_WEBHOOK_TOKEN }}

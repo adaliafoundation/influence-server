@@ -37,6 +37,7 @@ const ComponentUpdatedPrepaidPolicy = require('./policies/Prepaid');
 const ComponentUpdatedUnique = require('./Unique');
 
 module.exports = {
+  ...require('./Prospecting'),
   ComponentUpdatedMission,
   ComponentUpdatedAsteroidSale,
   ComponentUpdatedBuilding,

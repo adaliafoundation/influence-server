@@ -133,6 +133,7 @@ describe('StarterPackPurchaseService', function () {
       const products = await StarterPackPurchaseService.listProducts({ stripe });
 
       expect(products.map((product) => product.packType)).to.deep.equal(['explorer', 'strategist', 'industrialist']);
+      expect(products.map((product) => product.coreSampleAllowance)).to.deep.equal([10, 15, 20]);
       expect(products[0]).to.deep.include({
         amount: 2500,
         currency: 'usd',

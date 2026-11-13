@@ -27,6 +27,7 @@ const stripe = require('./stripe');
 const users = require('./users');
 
 module.exports = {
+  prospecting: require('./prospecting'),
   missions,
   activity,
   annotations,

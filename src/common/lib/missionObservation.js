@@ -8,6 +8,8 @@ const observationSystems = {
   ConstructionFinish: { label: Entity.IDS.BUILDING, starter: [], colony: true },
   SampleDepositStart: { label: Entity.IDS.LOT, starter: [1] },
   SampleDepositFinish: { label: Entity.IDS.DEPOSIT, starter: [1] },
+  ProspectingFinalize: { label: Entity.IDS.LOT, starter: [1] },
+  BaselineExtractResourceStart: { label: Entity.IDS.BUILDING, starter: [2, 3] },
   ExtractResourceStart: { label: Entity.IDS.BUILDING, starter: [2, 3] },
   ExtractResourceFinish: { label: Entity.IDS.BUILDING, starter: [2, 3] },
   ProcessProductsStart: { label: Entity.IDS.BUILDING, starter: [] },
