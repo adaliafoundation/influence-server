@@ -6,11 +6,11 @@ const { resolve, join } = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
 
 const script = resolve(__dirname, '../../scripts/verify-release.sh');
-test('release validation requires main workflow and a full commit SHA on main history', () => {
+test('production stays on main; prerelease auto-releases use prerelease history', () => {
   const dir = mkdtempSync(join(tmpdir(), 'release-test-'));
   const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  const verify = (sha, ref = 'refs/heads/main', cwd = dir) => spawnSync('bash', [script, sha], {
-    cwd, env: { ...process.env, GITHUB_REF: ref }, encoding: 'utf8'
+  const verify = (sha, ref = 'refs/heads/main', cwd = dir, channel = 'production', event = 'workflow_dispatch') => spawnSync('bash', [script, sha, channel], {
+    cwd, env: { ...process.env, GITHUB_REF: ref, GITHUB_EVENT_NAME: event }, encoding: 'utf8'
   }).status;
   try {
     git('init', '-b', 'main');
@@ -29,6 +29,22 @@ test('release validation requires main workflow and a full commit SHA on main hi
     for (const sha of [unreviewed, 'a'.repeat(40), main.slice(0, 7), '--help']) assert.notEqual(verify(sha), 0);
     assert.notEqual(verify(main, 'refs/heads/unreviewed'), 0);
     assert.notEqual(verify(main, 'refs/tags/main'), 0);
+    git('update-ref', 'refs/remotes/origin/unreviewed', unreviewed);
+    for (const event of ['push', 'workflow_dispatch']) {
+      assert.notEqual(verify(unreviewed, 'refs/heads/unreviewed', dir, 'prerelease', event), 0);
+      assert.notEqual(verify(main, 'refs/heads/main', dir, 'prerelease', event), 0);
+    }
+    assert.notEqual(verify(main, 'refs/tags/main', dir, 'prerelease'), 0);
+    assert.notEqual(verify(main, 'refs/heads/main', dir, 'other'), 0);
+    git('update-ref', 'refs/remotes/origin/prerelease', unreviewed);
+    for (const event of ['push', 'workflow_dispatch']) {
+      assert.equal(verify(unreviewed, 'refs/heads/prerelease', dir, 'prerelease', event), 0);
+      assert.equal(verify(ancestor, 'refs/heads/prerelease', dir, 'prerelease', event), 0);
+      assert.notEqual(verify(main, 'refs/heads/prerelease', dir, 'prerelease', event), 0);
+      assert.notEqual(verify(unreviewed, 'refs/heads/prerelease', dir, 'production', event), 0);
+      assert.notEqual(verify(unreviewed, 'refs/heads/main', dir, 'production', event), 0);
+    }
+    assert.notEqual(verify(unreviewed, 'refs/pull/1/merge', dir, 'prerelease', 'pull_request'), 0);
     git('tag', '-a', 'release', main, '-m', 'tag');
     assert.notEqual(verify(git('rev-parse', 'release')), 0);
     git('clone', '--depth', '1', '--branch', 'main', `file://${dir}`, join(dir, 'shallow'));
