@@ -4,6 +4,7 @@
   "description": "API and caching layer for Influence data",
   "main": "./src/api/server.js",
   "scripts": {
+    "syncIndexes": "node ./bin/sync_mongo_indexes.js",
     "importAsteroids": "node ./bin/importAsteroids.js",
     "importPlanets": "node ./bin/importPlanets.js",
     "updatePositions": "node ./bin/updatePositions.js",
